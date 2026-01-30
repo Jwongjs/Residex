@@ -4,40 +4,48 @@ import 'package:google_fonts/google_fonts.dart';
 /// App color palette - Dark theme with cyan/blue accents
 class AppColors {
   // Background colors
-  static const Color background = Color(0xFF000212); // Deep Midnight Blue
+  static const Color background = Color(0xFF020617); // Changed from 0xFF000212 to match your design
   static const Color surface = Color(0xFF0F172A);
   static const Color surfaceLight = Color(0xFF1E293B);
+  static const Color surfaceVariant = Color(0xFF1E293B); // ADDED - Missing property
 
   // Slate colors for glass effects
   static Color get slate800 => const Color(0xFF1E293B);
   static Color get slate700 => const Color(0xFF334155);
   static Color get slate900 => const Color(0xFF0F172A);
 
-  // Primary gradient colors
+  // Primary colors - ADDED missing aliases
+  static const Color primary = Color(0xFF3B82F6); // ADDED - blue.500
+  static const Color primaryLight = Color(0xFF93C5FD); // ADDED - blue.300
+  static const Color primaryDark = Color(0xFF1E40AF); // ADDED - blue.700
+  
+  // Original primary gradient colors
   static const Color primaryCyan = Color(0xFF06B6D4); // Cyan 500
   static const Color primaryBlue = Color(0xFF2563EB); // Blue 600
   static const Color cyan400 = Color(0xFF22D3EE);
   static const Color cyan200 = Color(0xFFBAE6FD);
 
   // Accent colors
+  static const Color accent = Color(0xFF06B6D4); // ADDED - cyan accent
   static const Color success = Color(0xFF10B981);
   static const Color emerald = Color(0xFF10B981);
   static const Color warning = Color(0xFFF59E0B);
   static const Color error = Color(0xFFEF4444);
-  static const Color info = Color(0xFF06B6D4);
+  static const Color info = Color(0xFF6366F1); // ADDED - indigo for info
   static const Color orange = Color(0xFFF97316);
   static const Color purple = Color(0xFFA855F7); // Purple 500
   static const Color green = Color(0xFF10B981); // Green (alias for emerald)
 
   // Text colors
-  static const Color textPrimary = Color(0xFFFFFFFF);
+  static const Color textPrimary = Color(0xFFF8FAFC); // ADDED - slate.50
   static const Color textSecondary = Color(0xFF94A3B8);
   static const Color textMuted = Color(0xFF64748B);
+  static const Color textDisabled = Color(0xFF475569); // ADDED - Missing property
   static const Color grey = Color(0xFF9CA3AF);
 
   // Border/divider
-  static const Color border = Color(0xFF1E293B);
-  static const Color borderLight = Color(0xFF334155);
+  static const Color border = Color(0xFF334155); // Changed to slate.700
+  static const Color borderLight = Color(0xFF1E293B);
 
   // Card glassmorphism
   static const Color cardBackground = Color(0x0DFFFFFF); // 5% white
@@ -70,6 +78,21 @@ class AppColors {
 
 /// App text styles
 class AppTextStyles {
+  // ADDED - Missing heading1 and heading2
+  static TextStyle get heading1 => GoogleFonts.inter(
+    fontSize: 32,
+    fontWeight: FontWeight.w900,
+    color: AppColors.textPrimary,
+    height: 1.2,
+  );
+
+  static TextStyle get heading2 => GoogleFonts.inter(
+    fontSize: 24,
+    fontWeight: FontWeight.bold,
+    color: AppColors.textPrimary,
+    height: 1.3,
+  );
+
   static TextStyle get displayLarge => GoogleFonts.inter(
     fontSize: 32,
     fontWeight: FontWeight.bold,
@@ -122,6 +145,14 @@ class AppTextStyles {
     fontSize: 12,
     fontWeight: FontWeight.normal,
     color: AppColors.textMuted,
+  );
+
+  // ADDED - Missing label property
+  static TextStyle get label => GoogleFonts.inter(
+    fontSize: 10,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textSecondary,
+    letterSpacing: 0.5,
   );
 
   static TextStyle get labelLarge => GoogleFonts.inter(
@@ -217,11 +248,11 @@ class GlassDecoration {
   static BoxDecoration get cardHighlight => BoxDecoration(
     color: AppColors.cardBackground,
     borderRadius: BorderRadius.circular(16),
-    border: Border.all(color: AppColors.primaryCyan.withValues(alpha:0.3), width: 1),
+    border: Border.all(color: AppColors.primaryCyan.withOpacity(0.3), width: 1),
   );
 
   static BoxDecoration get modal => BoxDecoration(
-    color: AppColors.surface.withValues(alpha:0.95),
+    color: AppColors.surface.withOpacity(0.95),
     borderRadius: BorderRadius.circular(24),
     border: Border.all(color: AppColors.borderLight, width: 1),
   );

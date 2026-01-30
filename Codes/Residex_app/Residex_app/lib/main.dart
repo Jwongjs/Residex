@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
-import 'features/landlord/presentation/screens/landlord_home_screen.dart';
 import 'core/router/app_router.dart';
 
 void main() async {
@@ -16,7 +16,11 @@ void main() async {
     ),
   );
 
-  runApp(const ResidexApp());
+  runApp(
+    const ProviderScope(
+      child: ResidexApp(),
+    ),
+  );
 }
 
 class ResidexApp extends StatelessWidget {
@@ -28,7 +32,6 @@ class ResidexApp extends StatelessWidget {
       title: 'Residex',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const LandlordHomeScreen(),
       initialRoute: AppRouter.landlordHome,
       onGenerateRoute: AppRouter.generateRoute,
     );
