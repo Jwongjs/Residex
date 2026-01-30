@@ -1,0 +1,24 @@
+name: splitlah
+description: A modern bill splitting app.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_fonts: ^6.1.0
+  lucide_icons: ^1.0.0
+  animate_do: ^3.3.4
+  glassmorphism: ^3.0.0
+  dotted_border: ^2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

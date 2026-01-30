@@ -1,0 +1,95 @@
+Tiered Monetization Strategy
+1️⃣ Core Revenue — Payment-Linked Fees (Primary)
+
+Why this works: People are willing to pay a tiny fee to save effort and avoid hassle. This is your main source of income.
+
+Implementation options:
+
+Model	How it works	Notes
+Convenience fee	RM0.20–RM0.50 per successful settlement	Invisible to most users; can be split among group members
+“Pay All” premium	Free to view debts; one-tap settlement for a small fee	Perfect for recurring roommates / clubs
+Optional payment prioritization	Charge for ordering multiple payments by priority	Adds value to frequent users
+
+Key point: You never hold money, you just generate revenue from payment facilitation. Low risk, legal-safe, and scalable.
+
+2️⃣ Subscription — Pro Tier (Secondary)
+
+Why this works: Some users (especially roommates or clubs) want convenience and history. They’ll pay if it saves them effort.
+
+Suggested Pro features:
+
+Unlimited recurring groups
+
+Unlimited receipts / OCR scans
+
+Monthly statement exports (PDF / CSV)
+
+Advanced debt simplification
+
+Soft late-payment automation
+
+Optional cosmetic/gamification perks bundled
+
+Price idea (Malaysia): RM8–15/month or RM80–120/year.
+
+People pay for effort saved, not badges. Make cosmetics a bonus, not the reason.
+
+3️⃣ Cosmetics / Gamification (Tertiary / Optional)
+
+Why this works: Fun & viral, but revenue will be minor unless bundled.
+
+Animated badges, seasonal flair, rank effects
+
+Could be free for Pro users
+
+Optional standalone micro-purchase: RM2–RM5 for cosmetic packs
+
+Keep it optional; must never be core revenue
+
+Think of it like icing on the cake. It increases retention, indirectly boosting primary revenue.
+
+4️⃣ Optional B2B / Club Targeting (Advanced)
+
+Clubs, societies, or student associations may pay for admin features:
+
+Role-based groups (treasurer/admin tools)
+
+Exportable statements
+
+Recurring templates
+
+Could charge per group per month instead of individual users
+
+This is optional but lucrative if you capture the right niche early.
+
+⚡ Key Principles
+
+Revenue comes from pain, not fun.
+
+Users pay to reduce friction, not for a funny badge.
+
+Bundle gamification smartly.
+
+Cosmetics + fun = retention
+
+Never sell it standalone at launch
+
+Start lean, test the fee.
+
+Roll out with 1 wallet + “Pay All” convenience fee first
+
+Measure conversion and adoption before adding Pro tier or cosmetics
+
+Avoid subscription-first pitfalls
+
+Malaysia is price-sensitive
+
+Free tier must feel complete, Pro tier is premium convenience
+
+💡 Revenue funnel recap:
+
+User splits bills → uses auto-settlement / multi-wallet → tiny fee (primary)
+
+High-frequency / heavy-use groups upgrade to Pro → subscription (secondary)
+
+Cosmetic flair + gamification → optional micro-purchase (tertiary, bonus)

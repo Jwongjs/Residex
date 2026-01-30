@@ -1,0 +1,8 @@
+{
+  "name": "Residex",
+  "description": "A residential super-app for tenants and landlords both",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

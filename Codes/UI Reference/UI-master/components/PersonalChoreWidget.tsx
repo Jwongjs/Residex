@@ -1,0 +1,45 @@
+
+import React from 'react';
+import { ClipboardList, ChevronRight, Clock } from 'lucide-react';
+
+interface PersonalChoreWidgetProps {
+  onOpenDetail: () => void;
+}
+
+export const PersonalChoreWidget: React.FC<PersonalChoreWidgetProps> = ({ onOpenDetail }) => {
+  return (
+    <button 
+      onClick={onOpenDetail}
+      className="w-full text-left bg-black/20 border border-white/5 rounded-[2rem] p-5 group hover:border-cyan-500/30 hover:bg-cyan-500/5 transition-all duration-300 relative overflow-hidden"
+    >
+      <div className="flex justify-between items-start mb-4 relative z-10">
+         <div className="flex items-center gap-3">
+             <div className="h-10 w-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center border border-cyan-500/20 shadow-lg shadow-cyan-900/10">
+                 <ClipboardList size={20} />
+             </div>
+             <div>
+                 <h3 className="text-white font-bold text-sm">My Protocol</h3>
+                 <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Personal Tasks</p>
+             </div>
+         </div>
+         <div className="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center text-slate-500 group-hover:text-cyan-400 group-hover:bg-cyan-500/10 transition-all">
+             <ChevronRight size={16} />
+         </div>
+      </div>
+
+      <div className="space-y-2 relative z-10">
+          {[
+              { name: 'Kitchen Sanitization', due: '11:30 AM' },
+              { name: 'Trash Disposal', due: '09:00 PM' }
+          ].map((task, i) => (
+              <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-slate-800/40 border border-white/5">
+                  <span className="text-xs font-bold text-slate-300">{task.name}</span>
+                  <div className="flex items-center gap-1 text-[9px] font-mono text-cyan-500/80">
+                      <Clock size={10} /> {task.due}
+                  </div>
+              </div>
+          ))}
+      </div>
+    </button>
+  );
+};

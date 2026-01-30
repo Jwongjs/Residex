@@ -1,0 +1,8 @@
+{
+  "name": "SplitLah - Malaysian Bill Splitter",
+  "description": "A modern, aesthetic bill splitting application optimized for Malaysian users with RM currency support and smart bill scanning capabilities using Gemini.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
