@@ -4,7 +4,7 @@ import 'landlord_finance_screen.dart';
 import 'landlord_rex_ai_screen.dart';
 import 'landlord_portfolio_screen.dart';
 import 'landlord_community_screen.dart';
-import '../../../../core/widgets/custom_bottom_nav_bar.dart';
+import '../../../../core/widgets/navigation/custom_bottom_nav_bar.dart';
 
 /// Landlord Home Screen with 5-tab bottom navigation
 /// 
