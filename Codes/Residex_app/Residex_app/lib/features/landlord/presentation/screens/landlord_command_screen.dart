@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/widgets/common/hero_financial_card.dart';
-import '../../../../core/widgets/common/stat_card.dart';
-import '../../../../core/widgets/common/progress_bar.dart';
+import '../widgets/common/hero_financial_card.dart';
+import '../widgets/common/stat_card.dart';
+import '../widgets/common/progress_bar.dart';
 import '../providers/landlord_command_provider.dart';
 
 /// Landlord Command Center - Dashboard overview
