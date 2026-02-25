@@ -6,7 +6,8 @@ import '../../features/shared/presentation/screens/splash_screen.dart';
 import '../../features/shared/presentation/screens/welcome_screen.dart';
 import '../../features/shared/presentation/screens/login_screen.dart';
 import '../../features/shared/presentation/screens/register_screen.dart';
-import '../providers/auth_provider.dart';
+import '../../features/shared/domain/entities/user_entity.dart';
+import '../../features/shared/presentation/providers/auth_providers.dart';
 
 class AppRouter {
   // Route names
@@ -39,7 +40,7 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => const AuthGuard(
             child: LandlordHomeScreen(),
-            requiredRole: 'landlord',
+            requiredRole: UserRole.landlord,
           ),
         );
       
@@ -122,7 +123,7 @@ class AppRouter {
 /// Auth Guard Widget - Protects routes that require authentication
 class AuthGuard extends ConsumerWidget {
   final Widget child;
-  final String requiredRole;
+  final UserRole requiredRole;
 
   const AuthGuard({
     super.key,
@@ -132,7 +133,7 @@ class AuthGuard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authStateProvider);
+    final authState = ref.watch(firebaseAuthStateProvider);
 
     return authState.when(
       data: (user) {
@@ -152,8 +153,8 @@ class AuthGuard extends ConsumerWidget {
         }
 
         // Check user role matches required role
-        return FutureBuilder<String?>(
-          future: ref.read(authServiceProvider).getUserRole(user.uid),
+        return FutureBuilder<UserRole?>(
+          future: ref.read(userRoleProvider(user.uid).future),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Scaffold(
@@ -170,9 +171,9 @@ class AuthGuard extends ConsumerWidget {
               // Wrong role, redirect to correct home
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 final userRole = snapshot.data;
-                if (userRole == 'landlord') {
+                if (userRole == UserRole.landlord) {
                   Navigator.pushReplacementNamed(context, AppRouter.landlordHome);
-                } else if (userRole == 'tenant') {
+                } else if (userRole == UserRole.tenant) {
                   Navigator.pushReplacementNamed(context, AppRouter.tenantHome);
                 } else {
                   Navigator.pushReplacementNamed(context, AppRouter.welcome);

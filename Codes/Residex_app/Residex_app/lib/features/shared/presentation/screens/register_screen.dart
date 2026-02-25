@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/providers/auth_provider.dart';
+import '../../domain/entities/user_entity.dart';
+import '../providers/auth_providers.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -58,13 +59,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       print('🔵 Email: ${_emailController.text.trim()}');
       print('🔵 Role: $_selectedRole');
 
-      final authService = ref.read(authServiceProvider);
+      final authController = ref.read(authControllerProvider);
+      final userRole = _selectedRole == 'landlord' ? UserRole.landlord : UserRole.tenant;
 
-      await authService.signUpWithEmail(
+      await authController.signUpWithEmail(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         displayName: _nameController.text.trim(),
-        role: _selectedRole,
+        role: userRole,
         phoneNumber: _phoneController.text.trim().isNotEmpty 
             ? _phoneController.text.trim() 
             : null,

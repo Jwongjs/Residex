@@ -1,47 +1,57 @@
+// ⚠️ DEPRECATED - DO NOT USE ⚠️
+// 
+// This file has been moved to follow Clean Architecture principles.
+// 
+// OLD LOCATION (WRONG):
+//   lib/core/providers/auth_provider.dart
+// 
+// NEW LOCATION (CORRECT):
+//   lib/features/shared/presentation/providers/auth_providers.dart
+// 
+// MIGRATION GUIDE:
+// 
+//   Import Change:
+//     OLD: import '../../core/providers/auth_provider.dart';
+//     NEW: import '../../features/shared/presentation/providers/auth_providers.dart';
+// 
+//   Provider Changes:
+//     OLD                          → NEW
+//     ───────────────────────────────────────────────────────────
+//     authServiceProvider          → authControllerProvider
+//     authStateProvider            → firebaseAuthStateProvider (Firebase User)
+//                                  → authStateProvider (UserEntity)
+//     currentUserProvider          → currentFirebaseUserProvider (Firebase User)
+//                                  → currentUserProvider (UserEntity) 
+//     userRoleProvider             → userRoleProvider(uid).future (returns UserRole enum)
+// 
+//   Type Changes:
+//     OLD: String role = 'landlord'
+//     NEW: UserRole role = UserRole.landlord
+// 
+//   Method Changes:
+//     OLD: await ref.read(authServiceProvider).signInWithEmail(...)
+//     NEW: await ref.read(authControllerProvider).signInWithEmail(...)
+// 
+// WHY THIS CHANGE?
+//   - Proper Clean Architecture layering
+//   - Auth is a business feature, not core infrastructure  
+//   - Domain entities (UserEntity, UserRole) provide type safety
+//   - Use cases encapsulate business logic
+//   - Testable without Firebase mocks
+// 
+// This file kept for reference only. Will be deleted in future release.
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../services/auth_service.dart';
 
-/// Auth Service Provider
-/// Provides singleton instance of AuthService
-final authServiceProvider = Provider<AuthService>((ref) {
-  return AuthService();
-});
+// Re-export new providers for backward compatibility during migration
+export '../../features/shared/presentation/providers/auth_providers.dart';
 
-/// Auth State Provider
-/// Streams current authentication state
-final authStateProvider = StreamProvider<User?>((ref) {
-  final authService = ref.watch(authServiceProvider);
-  return authService.authStateChanges;
-});
-
-/// Current User Provider
-/// Returns current authenticated user or null
-final currentUserProvider = Provider<User?>((ref) {
-  final authState = ref.watch(authStateProvider);
-  return authState.when(
-    data: (user) => user,
-    loading: () => null,
-    error: (_, __) => null,
+@Deprecated('Import from features/shared/presentation/providers/auth_providers.dart instead')
+final authServiceProvider = Provider((ref) {
+  throw Exception(
+    '⚠️ authServiceProvider is deprecated!\n\n'
+    'Import from: features/shared/presentation/providers/auth_providers.dart\n'
+    'Use: authControllerProvider\n\n'
+    'See file header comments for migration guide.',
   );
-});
-
-/// User Role Provider
-/// Fetches user role from Firestore
-final userRoleProvider = FutureProvider<String?>((ref) async {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) return null;
-
-  final authService = ref.watch(authServiceProvider);
-  return authService.getUserRole(user.uid);
-});
-
-/// User Role Stream Provider
-/// Real-time updates of user role
-final userRoleStreamProvider = StreamProvider<String?>((ref) {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) return Stream.value(null);
-
-  final authService = ref.watch(authServiceProvider);
-  return Stream.fromFuture(authService.getUserRole(user.uid));
 });

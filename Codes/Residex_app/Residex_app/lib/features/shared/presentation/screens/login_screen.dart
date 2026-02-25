@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/providers/auth_provider.dart';
+import '../../domain/entities/user_entity.dart';
+import '../providers/auth_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -32,9 +33,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       print('🔵 Login: Signing in user');
-      final authService = ref.read(authServiceProvider);
+      final authController = ref.read(authControllerProvider);
       
-      await authService.signInWithEmail(
+      await authController.signInWithEmail(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
@@ -42,12 +43,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       print('✅ Login successful');
 
       if (mounted) {
-        final role = await authService.getUserRole(authService.currentUser!.uid);
-        
-        Navigator.pushReplacementNamed(
-          context,
-          role == 'landlord' ? '/landlord' : '/tenant',
-        );
+        // Get user role from repository
+        final firebaseUser = ref.read(currentFirebaseUserProvider);
+        if (firebaseUser != null) {
+          final role = await ref.read(userRoleProvider(firebaseUser.uid).future);
+          
+          Navigator.pushReplacementNamed(
+            context,
+            role == UserRole.landlord ? '/landlord' : '/tenant',
+          );
+        }
       }
     } catch (e) {
       print('❌ Login error: $e');
@@ -65,18 +70,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   /// DEV ONLY: Quick login with demo accounts
-  Future<void> _handleDevLogin(String role) async {
+  Future<void> _handleDevLogin(String roleStr) async {
     setState(() => _isLoading = true);
 
     try {
-      final authService = ref.read(authServiceProvider);
-      final email = role == 'tenant' ? 'tenant@demo.com' : 'landlord@demo.com';
+      final authController = ref.read(authControllerProvider);
+      final email = roleStr == 'tenant' ? 'tenant@demo.com' : 'landlord@demo.com';
+      final userRole = roleStr == 'tenant' ? UserRole.tenant : UserRole.landlord;
       
-      print('🔵 Dev Login: Attempting to sign in as $role');
+      print('🔵 Dev Login: Attempting to sign in as $roleStr');
       
       try {
         // Try to sign in with existing demo account
-        await authService.signInWithEmail(
+        await authController.signInWithEmail(
           email: email,
           password: 'demo123',
         );
@@ -84,11 +90,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       } catch (e) {
         // If account doesn't exist, create it first
         print('⚠️ Demo account not found, creating new one...');
-        await authService.signUpWithEmail(
+        await authController.signUpWithEmail(
           email: email,
           password: 'demo123',
-          displayName: role == 'tenant' ? 'Demo Tenant' : 'Demo Landlord',
-          role: role,
+          displayName: roleStr == 'tenant' ? 'Demo Tenant' : 'Demo Landlord',
+          role: userRole,
         );
         print('✅ Dev Login: Created and signed in with new account');
       }
@@ -96,7 +102,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) {
         Navigator.pushReplacementNamed(
           context,
-          role == 'tenant' ? '/tenant' : '/landlord',
+          roleStr == 'tenant' ? '/tenant' : '/landlord',
         );
       }
     } catch (e) {
