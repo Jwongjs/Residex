@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'landlord_command_screen.dart';
-import 'landlord_finance_screen.dart';
-import 'landlord_rex_ai_screen.dart';
-import 'landlord_portfolio_screen.dart';
-import 'landlord_community_screen.dart';
+import '1-Command/landlord_command_screen.dart';
+import '2-Finance/landlord_finance_screen.dart';
+import '3-REX/rex_ai_tab_wrapper.dart';
+import '4-Portfolio/landlord_portfolio_screen.dart';
+import '5-Community/landlord_community_screen.dart';
 import '../widgets/navigation/custom_bottom_nav_bar.dart';
 
 /// Landlord Home Screen with 5-tab bottom navigation
@@ -11,7 +11,7 @@ import '../widgets/navigation/custom_bottom_nav_bar.dart';
 /// Navigation Tabs:
 /// 1. Command - Dashboard overview and analytics
 /// 2. Finance - Rental income and property expenses
-/// 3. Rex AI - AI assistant (Lease Sentinel & DocuMind) [CENTER/PROTRUDING]
+/// 3. Rex AI - AI assistant (Lease Generator & Lazy Logger) [CENTER/PROTRUDING]
 /// 4. Portfolio - Property management and listings
 /// 5. Community - Tenant communication and announcements
 class LandlordHomeScreen extends StatefulWidget {
@@ -28,7 +28,7 @@ class _LandlordHomeScreenState extends State<LandlordHomeScreen> {
   final List<Widget> _screens = const [
     LandlordCommandScreen(),
     LandlordFinanceScreen(),
-    LandlordRexAIScreen(),
+    RexAITabWrapper(),
     LandlordPortfolioScreen(),
     LandlordCommunityScreen(),
   ];

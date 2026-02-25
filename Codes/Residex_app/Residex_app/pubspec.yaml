@@ -33,6 +33,22 @@ dependencies:
   # State Management & Navigation
   flutter_riverpod: ^3.1.0
   riverpod_annotation: ^4.0.0
+
+  # Firebase Core
+  firebase_core: ^4.4.0
+
+  # Firebase Services 
+  firebase_auth: ^6.1.4
+  firebase_storage: ^13.0.6
+  cloud_firestore: ^6.1.2
+  firebase_app_check: ^0.4.1+4
+
+  # Google Sign In
+  google_sign_in: ^6.2.2
+  
+  # Local Storage
+  shared_preferences: ^2.2.2
+
   # Local Database
   drift: ^2.18.0
   sqlite3_flutter_libs: ^0.5.24
@@ -45,15 +61,15 @@ dependencies:
   image_picker: ^1.0.7
   # UI & Animations
   flutter_animate: ^4.5.2
-  google_fonts: ^5.1.0
+  google_fonts: ^6.1.0
   cupertino_icons: ^1.0.8
   lucide_icons: ^0.257.0
   # Storage & Utils
   flutter_contacts: ^1.1.7+1
   permission_handler: ^12.0.1
-  shared_preferences: ^2.2.2
   intl: ^0.20.2
   uuid: ^4.2.2
+  file_picker: ^8.1.6
 
   equatable: ^2.0.5
   dartz: ^0.10.1

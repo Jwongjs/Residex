@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../widgets/common/hero_financial_card.dart';
-import '../widgets/common/stat_card.dart';
-import '../widgets/common/progress_bar.dart';
-import '../providers/landlord_command_provider.dart';
+import '../../../../../core/theme/app_theme.dart';
+import '../../widgets/common/stat_card.dart';
+import '../../widgets/common/progress_bar.dart';
+import '../../providers/landlord_command_provider.dart';
+import 'sub/landlord_system_health_screen.dart';
+import 'sub/landlord_maintenance_screen.dart';
 
 /// Landlord Command Center - Dashboard overview
 /// 
 /// Displays:
-/// - Financial overview (projected revenue)
 /// - System health metrics
+/// - Maintenance console
 /// - Quick action modules
 /// - Occupancy status
 class LandlordCommandScreen extends ConsumerWidget {
@@ -59,16 +60,6 @@ class LandlordCommandScreen extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      // Hero Financial Card
-                      HeroFinancialCard(
-                        amount: stats.projectedRevenue,
-                        currency: 'RM',
-                        changePercentage: stats.revenueChangePercentage,
-                        period: 'this month',
-                      ),
-                      
-                      const SizedBox(height: 24),
-
                       // Section title
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -98,7 +89,14 @@ class LandlordCommandScreen extends ConsumerWidget {
                             badgeIcon: Icons.speed,
                             gradientColor: AppColors.primary,
                             onTap: () {
-                              // TODO: Navigate to Property Pulse
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => LandlordSystemHealthScreen(
+                                    healthScore: stats.systemHealthScore,
+                                  ),
+                                ),
+                              );
                             },
                           ),
                           StatCard(
@@ -108,27 +106,42 @@ class LandlordCommandScreen extends ConsumerWidget {
                             badgeIcon: Icons.handyman_outlined,
                             gradientColor: AppColors.info,
                             onTap: () {
-                              // TODO: Navigate to Maintenance
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const LandlordMaintenanceScreen(),
+                                ),
+                              );
                             },
                           ),
                           StatCard(
-                            title: 'Lazy Logger',
-                            value: 'AI Docs',
-                            badge: 'Indexer',
-                            badgeIcon: Icons.psychology_outlined,
-                            gradientColor: const Color(0xFFA855F7),
-                            onTap: () {
-                              // TODO: Navigate to Lazy Logger
-                            },
-                          ),
-                          StatCard(
-                            title: 'Sentinel',
-                            value: 'Contract',
-                            badge: 'Analyzer',
-                            badgeIcon: Icons.shield_outlined,
+                            title: 'FairFix Auditor',
+                            value: 'Scan Ready',
+                            badge: 'AI Assessment',
+                            badgeIcon: Icons.find_in_page_outlined,
                             gradientColor: AppColors.accent,
                             onTap: () {
-                              // TODO: Navigate to Lease Sentinel
+                              // TODO: Navigate to FairFix Auditor
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('FairFix Auditor - Coming Soon'),
+                                ),
+                              );
+                            },
+                          ),
+                          StatCard(
+                            title: 'Ghost Overlay',
+                            value: 'Compare',
+                            badge: 'Before/After',
+                            badgeIcon: Icons.compare_outlined,
+                            gradientColor: const Color(0xFFA855F7),
+                            onTap: () {
+                              // TODO: Navigate to Ghost Overlay
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Ghost Overlay - Coming Soon'),
+                                ),
+                              );
                             },
                           ),
                         ],
