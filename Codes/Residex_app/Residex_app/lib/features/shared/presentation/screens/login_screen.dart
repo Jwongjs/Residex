@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/router/app_router.dart';
 import '../../domain/entities/user_entity.dart';
 import '../providers/auth_providers.dart';
 
@@ -33,34 +34,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       print('🔵 Login: Signing in user');
-      final authController = ref.read(authControllerProvider);
       
-      await authController.signInWithEmail(
+      // Step 1: Sign in with use case
+      final signInUseCase = ref.read(signInWithEmailUseCaseProvider);
+      final userCredential = await signInUseCase(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       print('✅ Login successful');
+      print('🔵 User UID: ${userCredential.user?.uid}');
 
-      if (mounted) {
-        // Get user role from repository
-        final firebaseUser = ref.read(currentFirebaseUserProvider);
-        if (firebaseUser != null) {
-          final role = await ref.read(userRoleProvider(firebaseUser.uid).future);
-          
-          Navigator.pushReplacementNamed(
-            context,
-            role == UserRole.landlord ? '/landlord' : '/tenant',
-          );
-        }
+      if (!mounted) return;
+
+      // Step 2: Get user role
+      final userRepo = ref.read(userRepositoryProvider);
+      final role = await userRepo.getUserRole(userCredential.user!.uid);
+      
+      print('🔵 User role: $role');
+
+      if (!mounted) return;
+
+      // Step 3: Navigate based on role
+      if (role == UserRole.landlord) {
+        print('🔵 Navigating to landlord home');
+        Navigator.pushReplacementNamed(context, AppRouter.landlordHome);
+      } else if (role == UserRole.tenant) {
+        print('🔵 Navigating to tenant home');
+        Navigator.pushReplacementNamed(context, AppRouter.tenantHome);
+      } else {
+        print('⚠️ Unknown role, staying on login');
+        throw Exception('User role not found. Please contact support.');
       }
     } catch (e) {
       print('❌ Login error: $e');
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString()),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -70,19 +84,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   /// DEV ONLY: Quick login with demo accounts
-  Future<void> _handleDevLogin(String roleStr) async {
+  Future<void> _handleDevLogin(String role) async {
     setState(() => _isLoading = true);
 
     try {
-      final authController = ref.read(authControllerProvider);
-      final email = roleStr == 'tenant' ? 'tenant@demo.com' : 'landlord@demo.com';
-      final userRole = roleStr == 'tenant' ? UserRole.tenant : UserRole.landlord;
+      final authRepo = ref.read(authRepositoryProvider);
+      final email = role == 'tenant' ? 'tenant@demo.com' : 'landlord@demo.com';
       
-      print('🔵 Dev Login: Attempting to sign in as $roleStr');
+      print('🔵 Dev Login: Attempting to sign in as $role');
       
       try {
         // Try to sign in with existing demo account
-        await authController.signInWithEmail(
+        await authRepo.signInWithEmail(
           email: email,
           password: 'demo123',
         );
@@ -90,11 +103,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       } catch (e) {
         // If account doesn't exist, create it first
         print('⚠️ Demo account not found, creating new one...');
-        await authController.signUpWithEmail(
+        await authRepo.signUpWithEmail(
           email: email,
           password: 'demo123',
-          displayName: roleStr == 'tenant' ? 'Demo Tenant' : 'Demo Landlord',
-          role: userRole,
+          displayName: role == 'tenant' ? 'Demo Tenant' : 'Demo Landlord',
+          role: role == 'tenant' ? UserRole.tenant : UserRole.landlord,
         );
         print('✅ Dev Login: Created and signed in with new account');
       }
@@ -102,7 +115,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) {
         Navigator.pushReplacementNamed(
           context,
-          roleStr == 'tenant' ? '/tenant' : '/landlord',
+          role == 'tenant' ? AppRouter.tenantHome : AppRouter.landlordHome,
         );
       }
     } catch (e) {
@@ -192,6 +205,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             TextFormField(
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
+                              style: const TextStyle(color: Colors.white),
                               decoration: const InputDecoration(
                                 labelText: 'Email',
                                 prefixIcon: Icon(Icons.email),
@@ -213,6 +227,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             TextFormField(
                               controller: _passwordController,
                               obscureText: _obscurePassword,
+                              style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
                                 labelText: 'Password',
                                 prefixIcon: const Icon(Icons.lock),
@@ -250,12 +265,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 onPressed: _isLoading ? null : _handleLogin,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primaryCyan,
+                                  disabledBackgroundColor: AppColors.slate700,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
                                 child: _isLoading
-                                    ? const CircularProgressIndicator(
-                                        color: Colors.white,
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
                                       )
-                                    : const Text('Login'),
+                                    : const Text(
+                                        'Login',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                               ),
                             ),
                             
@@ -272,8 +302,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     icon: const Icon(Icons.play_arrow, size: 16),
                                     label: const Text('Tenant Dev'),
                                     style: OutlinedButton.styleFrom(
+                                      foregroundColor: AppColors.primaryCyan,
                                       side: const BorderSide(
                                         color: AppColors.primaryCyan,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
                                   ),
@@ -287,8 +321,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     icon: const Icon(Icons.business, size: 16),
                                     label: const Text('Landlord Dev'),
                                     style: OutlinedButton.styleFrom(
+                                      foregroundColor: AppColors.primaryCyan,
                                       side: const BorderSide(
                                         color: AppColors.primaryCyan,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
                                   ),
@@ -298,12 +336,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             
                             const SizedBox(height: 16),
                             
-                            // Sign Up Link (navigates to register screen)
+                            // Sign Up Link
                             TextButton(
-                              onPressed: () {
-                                print('🔵 Navigating to register screen');
-                                Navigator.pushNamed(context, '/register');
-                              },
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      print('🔵 Navigating to register screen');
+                                      Navigator.pushNamed(context, AppRouter.register);
+                                    },
                               child: const Text(
                                 'Don\'t have an account? Sign Up',
                                 style: TextStyle(color: AppColors.primaryCyan),
