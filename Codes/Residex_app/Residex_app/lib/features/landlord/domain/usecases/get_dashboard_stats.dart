@@ -9,6 +9,7 @@ class DashboardStats {
   final double revenueChangePercentage;
   final int occupiedUnits;
   final int totalUnits;
+  final double occupancyRate;
   final int systemHealthScore;
   final int activeMaintenance;
 
@@ -17,6 +18,7 @@ class DashboardStats {
     required this.revenueChangePercentage,
     required this.occupiedUnits,
     required this.totalUnits,
+    required this.occupancyRate,
     required this.systemHealthScore,
     required this.activeMaintenance,
   });
@@ -54,11 +56,19 @@ class GetDashboardStats {
       propertyCount: properties.length,
     );
 
+    print('✅ UseCase: Dashboard stats calculated');
+    print('   - Properties: ${properties.length}');
+    print('   - Total Units: $totalUnits');
+    print('   - Occupied: $occupiedUnits');
+    print('   - Occupancy Rate: ${occupancyRate.toStringAsFixed(1)}%');
+    print('   - Health Score: $healthScore');
+
     return DashboardStats(
       projectedRevenue: financialSummary.projectedRevenue,
       revenueChangePercentage: financialSummary.revenueChangePercentage,
       occupiedUnits: occupiedUnits,
       totalUnits: totalUnits,
+      occupancyRate: occupancyRate,
       systemHealthScore: healthScore,
       activeMaintenance: 0, // TODO: Add maintenance repository
     );

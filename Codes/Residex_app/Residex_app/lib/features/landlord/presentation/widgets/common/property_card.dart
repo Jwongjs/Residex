@@ -1,28 +1,21 @@
 import 'package:flutter/material.dart';
 import '../../../../../core/theme/app_theme.dart';
+import '../../../domain/entities/property.dart';
 
 /// Property card for portfolio screen
 /// 
 /// Displays:
-/// - Property name and unit number
-/// - Occupancy status (Occupied/Vacant)
-/// - Tenant info (if occupied)
-/// - Rent payment status
+/// - Property name and address
+/// - Property type
+/// - Occupancy rate and unit counts
+/// - Current value
 class PropertyCard extends StatelessWidget {
-  final String propertyName;
-  final String unitNumber;
-  final PropertyStatus status;
-  final String? tenantName;
-  final RentStatus? rentStatus;
+  final Property property;
   final VoidCallback? onTap;
 
   const PropertyCard({
     super.key,
-    required this.propertyName,
-    required this.unitNumber,
-    required this.status,
-    this.tenantName,
-    this.rentStatus,
+    required this.property,
     this.onTap,
   });
 
@@ -49,7 +42,7 @@ class PropertyCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header: Icon, name, and status badge
+                  // Header: Icon, name, and occupancy badge
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -71,7 +64,7 @@ class PropertyCard extends StatelessWidget {
                           ],
                         ),
                         child: Icon(
-                          Icons.apartment,
+                          _getPropertyIcon(property.type),
                           size: 20,
                           color: AppColors.textMuted,
                         ),
@@ -85,7 +78,7 @@ class PropertyCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              propertyName,
+                              property.name,
                               style: AppTextStyles.bodyLarge.copyWith(
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: -0.5,
@@ -93,7 +86,7 @@ class PropertyCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              unitNumber,
+                              '${property.address.city}, ${property.address.state}',
                               style: AppTextStyles.bodySmall.copyWith(
                                 color: AppColors.textMuted,
                               ),
@@ -102,105 +95,74 @@ class PropertyCard extends StatelessWidget {
                         ),
                       ),
 
-                      // Status badge
+                      // Occupancy badge
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: status == PropertyStatus.occupied
+                          color: property.isFullyOccupied
                               ? AppColors.success.withOpacity(0.1)
-                              : AppColors.slate800,
+                              : property.hasVacancy
+                                  ? AppColors.warning.withOpacity(0.1)
+                                  : AppColors.slate800,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: status == PropertyStatus.occupied
+                            color: property.isFullyOccupied
                                 ? AppColors.success.withOpacity(0.2)
-                                : AppColors.slate700,
+                                : property.hasVacancy
+                                    ? AppColors.warning.withOpacity(0.2)
+                                    : AppColors.slate700,
                           ),
                         ),
                         child: Text(
-                          status == PropertyStatus.occupied ? 'OCCUPIED' : 'VACANT',
+                          '${property.occupancyRate.toStringAsFixed(0)}%',
                           style: AppTextStyles.label.copyWith(
-                            fontSize: 9,
-                            color: status == PropertyStatus.occupied
+                            fontSize: 10,
+                            color: property.isFullyOccupied
                                 ? AppColors.success
-                                : AppColors.textMuted,
+                                : property.hasVacancy
+                                    ? AppColors.warning
+                                    : AppColors.textMuted,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: 1,
+                            letterSpacing: 0.5,
                           ),
                         ),
                       ),
                     ],
                   ),
 
-                  // Tenant info (only for occupied properties)
-                  if (status == PropertyStatus.occupied && tenantName != null) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.only(top: 16),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          top: BorderSide(
-                            color: Colors.white.withOpacity(0.05),
-                          ),
+                  // Property details
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.only(top: 16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.white.withOpacity(0.05),
                         ),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          // Tenant avatar and name
-                          Row(
-                            children: [
-                              Container(
-                                height: 24,
-                                width: 24,
-                                decoration: BoxDecoration(
-                                  color: AppColors.slate700,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: AppColors.slate600,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    _getInitials(tenantName!),
-                                    style: AppTextStyles.label.copyWith(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                tenantName!,
-                                style: AppTextStyles.bodySmall.copyWith(
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          // Rent status
-                          if (rentStatus != null)
-                            Text(
-                              'Rent: ${rentStatus == RentStatus.paid ? 'PAID' : 'PENDING'}',
-                              style: AppTextStyles.label.copyWith(
-                                fontSize: 9,
-                                color: rentStatus == RentStatus.paid
-                                    ? AppColors.primary
-                                    : AppColors.warning,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                        ],
-                      ),
                     ),
-                  ],
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Units info
+                        _buildInfoChip(
+                          icon: Icons.home_work_outlined,
+                          label: '${property.occupiedUnits}/${property.totalUnits} Units',
+                          color: AppColors.primary,
+                        ),
+
+                        // Property type
+                        _buildInfoChip(
+                          icon: Icons.category_outlined,
+                          label: property.type.displayName,
+                          color: AppColors.cyan400,
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -210,25 +172,42 @@ class PropertyCard extends StatelessWidget {
     );
   }
 
-  String _getInitials(String name) {
-    final parts = name.split(' ');
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return name.substring(0, 2).toUpperCase();
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 14,
+          color: color.withOpacity(0.7),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: AppTextStyles.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
-}
 
-/// Property occupancy status
-enum PropertyStatus {
-  occupied,
-  vacant,
-  maintenance,
-}
-
-/// Rent payment status
-enum RentStatus {
-  paid,
-  pending,
-  overdue,
+  IconData _getPropertyIcon(PropertyType type) {
+    switch (type) {
+      case PropertyType.apartment:
+        return Icons.apartment;
+      case PropertyType.house:
+        return Icons.house_outlined;
+      case PropertyType.condo:
+        return Icons.domain;
+      case PropertyType.commercial:
+        return Icons.business;
+    }
+  }
 }

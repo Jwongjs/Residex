@@ -1,309 +1,590 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
-import '../../providers/landlord_portfolio_provider.dart';
+import '../../providers/property_providers.dart';
 import '../../widgets/common/property_card.dart';
-import '../../widgets/common/stat_card.dart';
+import '../../widgets/common/add_property_dialog.dart';
 import 'sub/tenant_list_screen.dart';
 
-/// Landlord Portfolio Screen - Property Management
-/// 
-/// Features:
-/// - Portfolio statistics overview
-/// - Property list with occupancy status
-/// - Add property button
-/// - Filter by status (All, Occupied, Vacant)
 class LandlordPortfolioScreen extends ConsumerStatefulWidget {
   const LandlordPortfolioScreen({super.key});
 
   @override
-  ConsumerState<LandlordPortfolioScreen> createState() => _LandlordPortfolioScreenState();
+  ConsumerState<LandlordPortfolioScreen> createState() =>
+      _LandlordPortfolioScreenState();
 }
 
-class _LandlordPortfolioScreenState extends ConsumerState<LandlordPortfolioScreen> {
-  PropertyFilter _currentFilter = PropertyFilter.all;
+class _LandlordPortfolioScreenState
+    extends ConsumerState<LandlordPortfolioScreen> {
+  
+  bool _isFilterExpanded = false;
+
+  Future<void> _showAddPropertyDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AddPropertyDialog(),
+    );
+    
+    if (result == true && mounted) {
+      // Property was added successfully, stream will auto-update
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final properties = ref.watch(portfolioPropertiesProvider);
-    final stats = ref.watch(portfolioStatsProvider);
+    final propertiesAsync = ref.watch(filteredPropertiesProvider);
+    final portfolioStats = ref.watch(portfolioStatsProvider);
+    final currentFilter = ref.watch(propertyFilterProvider);
 
-    // Filter properties based on selected filter
-    final filteredProperties = properties.where((property) {
-      switch (_currentFilter) {
-        case PropertyFilter.occupied:
-          return property.status == PropertyStatus.occupied;
-        case PropertyFilter.vacant:
-          return property.status == PropertyStatus.vacant;
-        case PropertyFilter.all:
-          return true;
-      }
-    }).toList();
+    // Filter button labels
+    String filterLabel = switch (currentFilter) {
+      PropertyFilter.all => 'All Properties',
+      PropertyFilter.fullyOccupied => 'Fully Occupied',
+      PropertyFilter.hasVacancy => 'Has Vacancy',
+    };
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // Ambient background gradient
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 600,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.topCenter,
-                  radius: 1.5,
-                  colors: [
-                    AppColors.primary.withOpacity(0.3),
-                    AppColors.background,
-                    AppColors.background,
-                  ],
-                ),
+          // Ambient background gradient (FIXED: Now stays in place)
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0, -0.8),
+                radius: 1.2,
+                colors: [
+                  AppColors.primaryCyan.withOpacity(0.15),
+                  AppColors.background,
+                ],
               ),
             ),
           ),
 
-          // Main content
           SafeArea(
             child: CustomScrollView(
               slivers: [
-                // Header
-                SliverToBoxAdapter(
-                  child: _buildHeader(context),
+                SliverAppBar(
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  floating: true,
+                  snap: true,
+                  automaticallyImplyLeading: false,
+                  expandedHeight: 88,
+                  flexibleSpace: LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Prevent overflow during collapse animation
+                      final showSubtitle = constraints.maxHeight >= 44;
+
+                      return FlexibleSpaceBar(
+                        background: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 38, 24, 8),
+                          child: Align(
+                            alignment: Alignment.bottomLeft,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'MY PORTFOLIO',
+                                  style: AppTextStyles.displayMedium.copyWith(
+                                    letterSpacing: 2,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 20,
+                                    height: 1.0,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (showSubtitle) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${portfolioStats.totalProperties} PROPERTIES • ${portfolioStats.averageOccupancyRate.toStringAsFixed(0)}% OCCUPIED',
+                                    style: AppTextStyles.labelSmall.copyWith(
+                                      color: AppColors.textMuted,
+                                      letterSpacing: 1.5,
+                                      fontSize: 9,
+                                      height: 1.0,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  actions: [
+                    // View Tenants button
+                    IconButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const TenantListScreen(),
+                          ),
+                        );
+                      },
+                      icon: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryCyan.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.primaryCyan.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.people_outline,
+                          color: AppColors.primaryCyan,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                 ),
 
-                // Content
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      // Stats Grid
-                      _buildStatsGrid(stats),
-
-                      const SizedBox(height: 32),
-
-                      // Filter bar and property count
-                      _buildFilterBar(filteredProperties.length),
-
-                      const SizedBox(height: 16),
-
-                      // Property list
-                      ...filteredProperties.map((property) => PropertyCard(
-                        propertyName: property.name,
-                        unitNumber: property.unitNumber,
-                        status: property.status,
-                        tenantName: property.tenantName,
-                        rentStatus: property.rentStatus,
-                        onTap: () {
-                          // TODO: Navigate to property details
-                          _showPropertyDetails(context, property);
-                        },
-                      )),
-
-                      // Empty state
-                      if (filteredProperties.isEmpty)
-                        _buildEmptyState(),
-                    ]),
+                // Portfolio stats cards
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: _buildStatsCards(portfolioStats),
                   ),
+                ),
+
+                // Filter chips
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'PROPERTIES',
+                                style: AppTextStyles.labelLarge.copyWith(
+                                  color: AppColors.textMuted,
+                                  letterSpacing: 2,
+                                ),
+                              ),
+                            ),
+                            // Filter dropdown button
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _isFilterExpanded = !_isFilterExpanded;
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppColors.border,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.filter_list,
+                                      size: 16,
+                                      color: AppColors.primaryCyan,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      filterLabel,
+                                      style: AppTextStyles.labelSmall.copyWith(
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      _isFilterExpanded
+                                          ? Icons.expand_less
+                                          : Icons.expand_more,
+                                      size: 16,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        // Filter options (expandable)
+                        if (_isFilterExpanded) ...[
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _buildFilterChip(
+                                'All',
+                                PropertyFilter.all,
+                                currentFilter,
+                              ),
+                              _buildFilterChip(
+                                'Fully Occupied',
+                                PropertyFilter.fullyOccupied,
+                                currentFilter,
+                              ),
+                              _buildFilterChip(
+                                'Has Vacancy',
+                                PropertyFilter.hasVacancy,
+                                currentFilter,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Properties grid
+                propertiesAsync.when(
+                  data: (properties) {
+                    if (properties.isEmpty) {
+                      return SliverFillRemaining(
+                        child: _buildEmptyState(),
+                      );
+                    }
+
+                    return SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: PropertyCard(
+                                key: ValueKey('property_${properties[index].id}'),
+                                property: properties[index],
+                              ),
+                            );
+                          },
+                          childCount: properties.length,
+                        ),
+                      ),
+                    );
+                  },
+                  loading: () => SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            color: AppColors.primaryCyan,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Loading properties...',
+                            style: AppTextStyles.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  error: (error, stack) {
+                    final errorMessage = error.toString();
+                    final isIndexError = errorMessage.contains('index') || 
+                                       errorMessage.contains('FAILED_PRECONDITION');
+                    
+                    return SliverFillRemaining(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                isIndexError ? Icons.cloud_sync : Icons.error_outline,
+                                size: 48,
+                                color: isIndexError ? AppColors.warning : AppColors.error,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                isIndexError 
+                                    ? 'Database Index Required'
+                                    : 'Error loading properties',
+                                style: AppTextStyles.titleMedium,
+                              ),
+                              const SizedBox(height: 12),
+                              if (isIndexError) ...[
+                                Text(
+                                  'Firestore needs a composite index to query properties.',
+                                  style: AppTextStyles.bodyMedium.copyWith(
+                                    color: AppColors.textMuted,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: AppColors.border),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.info_outline,
+                                            size: 20,
+                                            color: AppColors.info,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Quick Fix:',
+                                            style: AppTextStyles.titleMedium,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      _buildStepItem('1', 'Look for the Firebase Console link in your terminal/debug console'),
+                                      _buildStepItem('2', 'Click the link to create the index'),
+                                      _buildStepItem('3', 'Wait 2-3 minutes for index to build'),
+                                      _buildStepItem('4', 'Refresh this page'),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    ref.invalidate(propertiesStreamProvider);
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Refresh'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryCyan,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                ),
+                              ] else ...[
+                                Text(
+                                  errorMessage,
+                                  style: AppTextStyles.bodySmall.copyWith(
+                                    color: AppColors.error,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    ref.invalidate(propertiesStreamProvider);
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.error,
+                                  ),
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
           ),
+
+          // Add Property FAB
+          Positioned(
+            bottom: 24,
+            right: 24,
+            child: FloatingActionButton.extended(
+              onPressed: _showAddPropertyDialog,
+              backgroundColor: AppColors.primaryCyan,
+              heroTag: 'add_property_fab',
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: Text(
+                'Add Property',
+                style: AppTextStyles.labelLarge.copyWith(
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
-      floatingActionButton: _buildAddPropertyButton(),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildStepItem(String number, String text) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            height: 40,
-            width: 40,
+            width: 24,
+            height: 24,
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.3),
-              ),
+              color: AppColors.primaryCyan.withOpacity(0.2),
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.primaryCyan),
             ),
-            child: Icon(
-              Icons.business,
-              color: AppColors.primary,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Asset Portfolio',
-                  style: AppTextStyles.heading2.copyWith(
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                Text(
-                  'PROPERTY MANAGEMENT',
-                  style: AppTextStyles.label.copyWith(
-                    color: AppColors.primary.withOpacity(0.8),
-                    letterSpacing: 2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Tenant Directory button
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const TenantListScreen(),
-                ),
-              );
-            },
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.success.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppColors.success.withOpacity(0.3),
-                ),
-              ),
-              child: Icon(
-                Icons.people_outline,
-                color: AppColors.success,
-                size: 20,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatsGrid(PortfolioStats stats) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: 1.2,
-      children: [
-        StatCard(
-          title: 'Total Units',
-          value: '${stats.totalProperties}',
-          badge: 'Properties',
-          badgeIcon: Icons.apartment,
-          gradientColor: AppColors.primary,
-        ),
-        StatCard(
-          title: 'Occupied',
-          value: '${stats.occupiedUnits}',
-          badge: '${stats.occupancyRate.toStringAsFixed(0)}%',
-          badgeIcon: Icons.check_circle,
-          gradientColor: AppColors.success,
-        ),
-        StatCard(
-          title: 'Vacant',
-          value: '${stats.vacantUnits}',
-          badge: 'Available',
-          badgeIcon: Icons.home_outlined,
-          gradientColor: AppColors.slate700,
-        ),
-        StatCard(
-          title: 'Revenue',
-          value: 'RM ${(stats.totalMonthlyRevenue / 1000).toStringAsFixed(1)}k',
-          badge: 'Monthly',
-          badgeIcon: Icons.attach_money,
-          gradientColor: AppColors.primaryCyan,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFilterBar(int propertyCount) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        // Section title with count
-        Row(
-          children: [
-            Text(
-              'PROPERTIES',
-              style: AppTextStyles.label.copyWith(
-                color: AppColors.textDisabled,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
+            child: Center(
               child: Text(
-                '$propertyCount',
-                style: AppTextStyles.label.copyWith(
-                  color: AppColors.primary,
+                number,
+                style: AppTextStyles.labelSmall.copyWith(
+                  color: AppColors.primaryCyan,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: AppTextStyles.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-        // Filter chips
-        Row(
-          children: [
-            _buildFilterChip('All', PropertyFilter.all),
-            const SizedBox(width: 8),
-            _buildFilterChip('Occupied', PropertyFilter.occupied),
-            const SizedBox(width: 8),
-            _buildFilterChip('Vacant', PropertyFilter.vacant),
-          ],
+  Widget _buildStatsCards(PortfolioStats stats) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.maps_home_work_outlined,
+            label: 'TOTAL UNITS',
+            value: stats.totalUnits.toString(),
+            subtitle: '${stats.occupiedUnits} occupied',
+            gradient: LinearGradient(
+              colors: [
+                AppColors.primaryCyan.withOpacity(0.2),
+                AppColors.primaryBlue.withOpacity(0.1),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.trending_up,
+            label: 'OCCUPANCY',
+            value: '${stats.averageOccupancyRate.toStringAsFixed(0)}%',
+            subtitle: stats.fullyOccupiedProperties > 0
+                ? '${stats.fullyOccupiedProperties} full'
+                : '${stats.vacantProperties} vacant',
+            gradient: LinearGradient(
+              colors: [
+                AppColors.success.withOpacity(0.2),
+                AppColors.emerald.withOpacity(0.1),
+              ],
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildFilterChip(String label, PropertyFilter filter) {
-    final isActive = _currentFilter == filter;
+  Widget _buildStatCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String subtitle,
+    required Gradient gradient,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.textPrimary, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: AppTextStyles.labelSmall.copyWith(
+              color: AppColors.textMuted,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: AppTextStyles.displayMedium.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: AppTextStyles.bodySmall.copyWith(
+              color: AppColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildFilterChip(
+    String label,
+    PropertyFilter filter,
+    PropertyFilter currentFilter,
+  ) {
+    final isSelected = filter == currentFilter;
     return GestureDetector(
       onTap: () {
+        ref.read(propertyFilterProvider.notifier).setFilter(filter);
         setState(() {
-          _currentFilter = filter;
+          _isFilterExpanded = false;
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive
-              ? AppColors.primary.withOpacity(0.2)
-              : Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(12),
+          color: isSelected
+              ? AppColors.primaryCyan.withOpacity(0.2)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isActive
-                ? AppColors.primary.withOpacity(0.3)
-                : Colors.white.withOpacity(0.1),
+            color: isSelected
+                ? AppColors.primaryCyan
+                : AppColors.border,
           ),
         ),
         child: Text(
           label,
-          style: AppTextStyles.label.copyWith(
-            fontSize: 10,
-            color: isActive ? AppColors.primary : AppColors.textMuted,
-            fontWeight: FontWeight.bold,
+          style: AppTextStyles.labelSmall.copyWith(
+            color: isSelected ? AppColors.primaryCyan : AppColors.textMuted,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),
       ),
@@ -311,187 +592,55 @@ class _LandlordPortfolioScreenState extends ConsumerState<LandlordPortfolioScree
   }
 
   Widget _buildEmptyState() {
-    return Container(
-      padding: const EdgeInsets.all(48),
+    return Center(
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.home_work_outlined,
-            size: 64,
-            color: AppColors.textMuted.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No Properties Found',
-            style: AppTextStyles.titleLarge.copyWith(
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.border,
+              ),
+            ),
+            child: Icon(
+              Icons.business_outlined,
+              size: 64,
               color: AppColors.textMuted,
             ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'No Properties Yet',
+            style: AppTextStyles.headlineMedium,
           ),
           const SizedBox(height: 8),
           Text(
             'Add your first property to get started',
-            style: AppTextStyles.bodySmall.copyWith(
-              color: AppColors.textMuted.withOpacity(0.7),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAddPropertyButton() {
-    return FloatingActionButton.extended(
-      onPressed: () {
-        // TODO: Navigate to add property form
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Add Property - Coming Soon')),
-        );
-      },
-      backgroundColor: AppColors.primary,
-      icon: const Icon(Icons.add, size: 20),
-      label: Text(
-        'Add Unit',
-        style: AppTextStyles.label.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w900,
-          fontSize: 11,
-          letterSpacing: 1,
-        ),
-      ),
-    );
-  }
-
-  void _showPropertyDetails(BuildContext context, Property property) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(32),
-          ),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.1),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle bar
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textMuted.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Property name
-            Text(
-              property.name,
-              style: AppTextStyles.heading2,
-            ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              '${property.unitNumber} • ${property.address}',
-              style: AppTextStyles.bodyMedium.copyWith(
-                color: AppColors.textMuted,
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Property details
-            _buildDetailRow('Monthly Rent', 'RM ${property.monthlyRent.toStringAsFixed(2)}'),
-            if (property.tenantName != null)
-              _buildDetailRow('Current Tenant', property.tenantName!),
-            if (property.rentStatus != null)
-              _buildDetailRow(
-                'Payment Status',
-                property.rentStatus == RentStatus.paid ? 'Paid' : 'Pending',
-              ),
-
-            const SizedBox(height: 24),
-
-            // Action buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      // TODO: Navigate to property edit
-                    },
-                    icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Edit'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                      side: BorderSide(color: AppColors.primary.withOpacity(0.3)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      // TODO: Navigate to property details
-                    },
-                    icon: const Icon(Icons.arrow_forward, size: 16),
-                    label: const Text('View Full'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: AppTextStyles.bodySmall.copyWith(
+            style: AppTextStyles.bodyMedium.copyWith(
               color: AppColors.textMuted,
             ),
           ),
-          Text(
-            value,
-            style: AppTextStyles.bodyMedium.copyWith(
-              fontWeight: FontWeight.bold,
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _showAddPropertyDialog,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Property'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryCyan,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32,
+                vertical: 16,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
       ),
     );
   }
-}
-
-/// Property filter options
-enum PropertyFilter {
-  all,
-  occupied,
-  vacant,
 }

@@ -1,36 +1,99 @@
 // lib/features/landlord/domain/entities/property.dart
 
-/// Property occupancy status
-enum PropertyStatus {
-  occupied,
-  vacant,
-  maintenance,
-  renovation,
-}
-
 /// Property type classification
 enum PropertyType {
   apartment,
   house,
   condo,
-  commercial,
-  studio,
+  commercial;
+
+  String toJson() => name;
+  
+  static PropertyType fromJson(String json) {
+    return PropertyType.values.firstWhere(
+      (type) => type.name == json,
+      orElse: () => PropertyType.apartment,
+    );
+  }
+  
+  String get displayName {
+    switch (this) {
+      case PropertyType.apartment:
+        return 'Apartment';
+      case PropertyType.house:
+        return 'House';
+      case PropertyType.condo:
+        return 'Condo';
+      case PropertyType.commercial:
+        return 'Commercial';
+    }
+  }
+}
+
+/// Address value object
+class PropertyAddress {
+  final String street;
+  final String city;
+  final String state;
+  final String zipCode;
+  final String country;
+
+  const PropertyAddress({
+    required this.street,
+    required this.city,
+    required this.state,
+    required this.zipCode,
+    required this.country,
+  });
+
+  String get fullAddress => '$street, $city, $state $zipCode, $country';
+  
+  PropertyAddress copyWith({
+    String? street,
+    String? city,
+    String? state,
+    String? zipCode,
+    String? country,
+  }) {
+    return PropertyAddress(
+      street: street ?? this.street,
+      city: city ?? this.city,
+      state: state ?? this.state,
+      zipCode: zipCode ?? this.zipCode,
+      country: country ?? this.country,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PropertyAddress &&
+          street == other.street &&
+          city == other.city &&
+          state == other.state &&
+          zipCode == other.zipCode &&
+          country == other.country;
+
+  @override
+  int get hashCode => Object.hash(street, city, state, zipCode, country);
 }
 
 /// Pure business object - Property entity
 /// 
 /// Represents a real estate property with rental potential
+/// Matches Firebase schema: properties/{propertyId}
 class Property {
   final String id;
   final String landlordId;
   final String name;
-  final String address;
-  final String unitNumber;
+  final PropertyAddress address;
   final PropertyType type;
-  final PropertyStatus status;
+  final double purchasePrice;
+  final double currentValue;
   final int totalUnits;
   final int occupiedUnits;
   final double monthlyRent;
+  final List<String> photos;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -39,12 +102,13 @@ class Property {
     required this.landlordId,
     required this.name,
     required this.address,
-    required this.unitNumber,
     required this.type,
-    required this.status,
+    required this.purchasePrice,
+    required this.currentValue,
     required this.totalUnits,
     required this.occupiedUnits,
     required this.monthlyRent,
+    this.photos = const [],
     required this.createdAt,
     this.updatedAt,
   });
@@ -57,14 +121,8 @@ class Property {
     return (occupiedUnits / totalUnits) * 100;
   }
 
-  /// Calculate maximum potential revenue
-  double get potentialRevenue => monthlyRent * totalUnits;
-
-  /// Calculate actual revenue from occupied units
-  double get actualRevenue => monthlyRent * occupiedUnits;
-
-  /// Calculate revenue loss from vacant units
-  double get revenueLoss => potentialRevenue - actualRevenue;
+  /// Calculate vacant units
+  int get vacantUnits => totalUnits - occupiedUnits;
 
   /// Check if property is fully occupied
   bool get isFullyOccupied => occupiedUnits == totalUnits;
@@ -72,23 +130,38 @@ class Property {
   /// Check if property has vacancies
   bool get hasVacancy => occupiedUnits < totalUnits;
 
-  /// Check if property needs attention (vacant or maintenance)
-  bool get needsAttention =>
-      status == PropertyStatus.vacant ||
-      status == PropertyStatus.maintenance;
+  double get potentialRevenue => monthlyRent * totalUnits;
+
+  double get actualRevenue => monthlyRent * occupiedUnits;
+
+  /// Calculate property appreciation
+  double get appreciation => currentValue - purchasePrice;
+  
+  /// Calculate appreciation percentage
+  double get appreciationPercentage {
+    if (purchasePrice == 0) return 0;
+    return ((currentValue - purchasePrice) / purchasePrice) * 100;
+  }
+
+  /// Calculate return on investment (simplified, actual ROI needs rental income data)
+  double get roi {
+    if (purchasePrice == 0) return 0;
+    return (appreciation / purchasePrice) * 100;
+  }
 
   /// Copy with method for immutability
   Property copyWith({
     String? id,
     String? landlordId,
     String? name,
-    String? address,
-    String? unitNumber,
+    PropertyAddress? address,
     PropertyType? type,
-    PropertyStatus? status,
+    double? purchasePrice,
+    double? currentValue,
     int? totalUnits,
     int? occupiedUnits,
     double? monthlyRent,
+    List<String>? photos,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -97,12 +170,13 @@ class Property {
       landlordId: landlordId ?? this.landlordId,
       name: name ?? this.name,
       address: address ?? this.address,
-      unitNumber: unitNumber ?? this.unitNumber,
       type: type ?? this.type,
-      status: status ?? this.status,
+      purchasePrice: purchasePrice ?? this.purchasePrice,
+      currentValue: currentValue ?? this.currentValue,
       totalUnits: totalUnits ?? this.totalUnits,
       occupiedUnits: occupiedUnits ?? this.occupiedUnits,
       monthlyRent: monthlyRent ?? this.monthlyRent,
+      photos: photos ?? this.photos,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
