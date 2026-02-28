@@ -56,6 +56,12 @@ backend/
 │   ├── auth.py              # Firebase authentication
 │   ├── pdf_helpers.py       # PDF generation
 │   └── firestore_helpers.py # Firestore operations
+├── vectorstores/  # FAISS indexes (property-scoped)
+│   ├── landlord_{id}_property_{id}.faiss
+│   └── ...
+├── metadata/      # Document metadata (JSON files)
+│   ├── landlord_{id}_property_{id}.json
+│   └── ...
 └── main.py        # FastAPI app entry point
 ```
 
@@ -159,11 +165,73 @@ backend/
 
 ---
 
-## Data Flow
+### 📁 `vectorstores/` - FAISS Vector Databases
 
-### Lease Generator Flow (LangGraph Multi-Step)
+**Purpose**: Store document embeddings for semantic search (property-scoped)
 
-**Step 1: Information Collection (Flutter)**
+**Structure**:
+- `{landlord_id}_{property_id}.faiss` - FAISS index file (binary)
+- One vectorstore per property (privacy isolation, faster retrieval)
+
+**Why property-scoped?**
+- **Privacy**: Documents isolated by property (multi-tenancy)
+- **Performance**: Smaller indexes = faster search
+- **Accuracy**: Questions scoped to specific property context
+- **UX**: Matches landlord's mental model
+
+**Example**:
+```
+vectorstores/
+├── landlord_123_property_1.faiss  # Verdi Eco-Dominium documents
+├── landlord_123_property_2.faiss  # The Grand Subang documents
+└── landlord_456_property_3.faiss  # Different landlord's property
+```
+
+---
+
+### 📁 `metadata/` - Document Metadata (JSON)
+
+**Purpose**: Track document information without querying vector database
+
+**Structure**:
+- `{landlord_id}_{property_id}.json` - Document list with metadata
+
+**JSON Schema**:
+```json
+{
+  "property_id": "property_1",
+  "property_name": "Verdi Eco-Dominium",
+  "documents": [
+    {
+      "doc_id": "uuid-1",
+      "landlord_id": "landlord_123",
+      "property_id": "property_1",
+      "category": "warranty",
+      "filename": "AC_Warranty_Daikin.pdf",
+      "uploaded_at": "2026-02-27T10:00:00Z",
+      "chunks_indexed": 42
+    }
+  ]
+}
+```
+
+**Why separate from vectorstore?**
+- **Fast listing**: No need to load FAISS index
+- **Filtering**: Query by category, date, filename
+- **Display**: Show documents in UI without embeddings
+- **Lightweight**: JSON parsing faster than FAISS operations
+
+---
+
+# LEASE GENERATOR
+
+Complete documentation for automated lease agreement generation with LangGraph multi-step workflow.
+
+---
+
+## Lease Generator - Data Flow
+
+### Step 1: Information Collection (Flutter)
 ```
 Landlord clicks "Generate Lease"
     ↓
@@ -220,50 +288,11 @@ Landlord reviews draft
     Return {lease_id, status: "DRAFT", markdown (revised)}
 ```
 
-### DocuMind RAG Flow
-
-**Document Ingestion**:
-```
-Flutter App
-    ↓ (POST /api/rex/documind/upload + PDF file)
-rex_routes.py
-    ↓ (save file, call documind_service)
-documind_service.py
-    ↓ (PyPDFLoader → extract text)
-    ↓ (RecursiveCharacterTextSplitter → chunks)
-    ↓ (VertexAIEmbeddings → vectors)
-    ↓ (FAISS → save vectorstore)
-Firestore (save metadata: doc_id, filename, chunks_indexed)
-    ↓
-Flutter App (confirmation: "Document indexed successfully")
-```
-
-**Q&A Flow**:
-```
-Flutter App
-    ↓ (POST /api/rex/documind/ask + question)
-rex_routes.py
-    ↓ (validate request with AskRequest)
-documind_service.py
-    ↓ (load FAISS vectorstore)
-    ↓ (retrieve top-k relevant chunks)
-    ↓ (send chunks + question to Gemini)
-Gemini 1.5 Flash
-    ↓ (synthesize answer from chunks)
-documind_service.py
-    ↓ (extract citations: doc_id, page, snippet, score)
-rex_routes.py
-    ↓ (return AskResponse with answer + citations)
-Flutter App (display answer with reference links)
-```
-
 ---
 
-## API Endpoints
+## Lease Generator - API Endpoints
 
-### Lease Generator Endpoints (LangGraph Workflow)
-
-#### 1. Create Draft Lease
+### 1. Create Draft Lease
 ```
 POST /api/rex/lease/draft
 ```
@@ -353,9 +382,17 @@ POST /api/rex/lease/{lease_id}/revise
 
 ---
 
-### DocuMind Endpoints
+---
 
-#### 5. Upload Document
+# DOCUMIND
+
+Complete documentation for Document Q&A using property-scoped RAG (Retrieval-Augmented Generation).
+
+---
+
+## DocuMind - API Endpoints
+
+### 1. Upload Document
 ```
 POST /api/rex/documind/upload
 ```
@@ -363,66 +400,78 @@ POST /api/rex/documind/upload
 **Request**: Multipart form data
 - `file`: PDF file
 - `landlord_id`: string
-- `property_id`: string (optional)
+- `property_id`: string
+- `category`: string (e.g., "lease", "warranty", "insurance", "utility", "receipt", "other")
 
 **Response** (`DocUploadResponse`):
 - `doc_id`: string
 - `landlord_id`: string
-- `property_id`: string | null
+- `property_id`: string
+- `category`: string
 - `filename`: string
 - `status`: "indexed"
 - `chunks_indexed`: int
 
 ---
 
-#### 6. Ask DocuMind Question
+### 2. Ask DocuMind Question
 ```
 POST /api/rex/documind/ask
 ```
 
 **Request Body** (`AskRequest`):
 - `landlord_id`: string
+- `property_id`: string (scopes search to specific property)
 - `question`: string
-- `property_id`: string (optional, filters to specific property)
-- `doc_ids`: string[] (optional, filters to specific documents)
 - `top_k`: int (default: 4, max chunks to retrieve)
 
 **Response** (`AskResponse`):
-- `answer`: string
+- `answer`: string (Gemini-synthesized answer)
 - `confidence`: float (0.0 - 1.0)
+- `property_name`: string (for display)
 - `citations`: Citation[]
   - `doc_id`: string
+  - `filename`: string (e.g., "AC_Warranty_Daikin.pdf")
+  - `category`: string (e.g., "warranty")
   - `page`: int
-  - `snippet`: string (first 200 chars)
-  - `score`: float (relevance score)
+  - `snippet`: string (first 200 chars of relevant chunk)
+  - `score`: float (relevance score 0.0 - 1.0)
 
 ---
 
-#### 7. List Documents
+### 3. List Documents
 ```
 GET /api/rex/documind/documents?landlordId={id}&propertyId={id}
 ```
 
-**Response**:
+**Query Parameters**:
+- `landlordId`: string (required) - Filter documents by landlord
+- `propertyId`: string (optional) - Filter documents by specific property
+
+**Response** (`DocListResponse`):
 ```json
 {
   "documents": [
     {
       "doc_id": "...",
-      "filename": "Lease Agreement.pdf",
+      "landlord_id": "...",
       "property_id": "...",
+      "category": "warranty",
+      "filename": "AC_Warranty_Daikin.pdf",
       "uploaded_at": "2026-02-27T10:00:00Z",
       "chunks_indexed": 42
     }
-  ]
+  ],
+  "total_count": 15,
+  "filtered_by_property": "property_1"
 }
 ```
 
 ---
 
-## Architecture Decisions
+## Lease Generator - Architecture Decisions
 
-### ✅ LangGraph for Lease Generator (PRIMARY IMPLEMENTATION)
+### ✅ LangGraph-First Approach
 **Decision**: Use LangGraph from Day 1 for multi-step lease workflow with human-in-the-loop
 
 **Why LangGraph?**
@@ -507,20 +556,9 @@ workflow.add_conditional_edges(
 
 ---
 
-### ✅ LangChain for DocuMind RAG
-**Why?**
-- Built-in document loaders (PyPDFLoader, CSVLoader, etc.)
-- Text splitting optimized for RAG (RecursiveCharacterTextSplitter)
-- Vector store abstractions (FAISS, Pinecone, Firestore)
-- Retrieval chains with citation support
-- Active community and documentation
+## Lease Generator - Information Collection Strategy
 
-**Alternative Considered**: Build from scratch
-- **Rejected**: Reinventing the wheel, LangChain handles 90% of boilerplate
-
----
-
-### ✅ Hybrid Information Collection Strategy
+### ✅ Hybrid Approach
 **Decision**: Auto-retrieve property data + flexible tenant input (existing or manual)
 
 **Property Selection**:
@@ -612,7 +650,8 @@ workflow.add_conditional_edges(
 │
 └── documind_docs/{docId}
     ├── landlordId
-    ├── propertyId (string | null)
+    ├── propertyId (string)
+    ├── category (string)                # "lease", "warranty", "insurance", etc.
     ├── filename
     ├── uploadedAt
     ├── chunksIndexed
@@ -630,7 +669,84 @@ DRAFT → (compliance check) → REVIEW → (landlord action) → FINALIZED
 
 ---
 
-## RAG Pipeline Details
+---
+
+# DOCUMIND (CONTINUED)
+
+Documentation for DocuMind AI system architecture, data flow, and RAG implementation.
+
+---
+
+## DocuMind - Data Flow
+
+### Document Ingestion Flow
+
+```
+Flutter App
+    ↓ (POST /api/rex/documind/upload + PDF file)
+    ↓ {landlord_id, property_id, category, file}
+rex_routes.py
+    ↓ (save file, call documind_service)
+documind_service.py
+    ↓ (PyPDFLoader → extract text)
+    ↓ (RecursiveCharacterTextSplitter → chunks)
+    ↓ (VertexAIEmbeddings → vectors)
+    ↓ (FAISS → save to vectorstores/{landlord_id}_{property_id}.faiss)
+    ↓ (save metadata to metadata/{landlord_id}_{property_id}.json)
+Firestore (save doc metadata: doc_id, landlord_id, property_id, category, filename)
+    ↓
+Flutter App (confirmation: "Document indexed successfully")
+```
+
+### Q&A Flow
+
+```
+Flutter App
+    ↓ (POST /api/rex/documind/ask + question)
+    ↓ {landlord_id, property_id, question}
+rex_routes.py
+    ↓ (validate request with AskRequest)
+documind_service.py
+    ↓ (load FAISS vectorstore for property: landlord_id_property_id.faiss)
+    ↓ (retrieve top-k relevant chunks with category metadata)
+    ↓ (send chunks + question to Gemini)
+Gemini 1.5 Flash
+    ↓ (synthesize answer from chunks)
+documind_service.py
+    ↓ (extract citations: doc_id, page, snippet, score)
+rex_routes.py
+    ↓ (return AskResponse with answer + citations)
+Flutter App (display answer with reference links)
+```
+
+---
+
+## DocuMind - Architecture Decisions
+
+### ✅ LangChain for RAG Pipeline
+
+**Why LangChain?**
+- Built-in document loaders (PyPDFLoader, CSVLoader, etc.)
+- Text splitting optimized for RAG (RecursiveCharacterTextSplitter)
+- Vector store abstractions (FAISS, Pinecone, Firestore)
+- Retrieval chains with citation support
+- Active community and documentation
+
+**Alternative Considered**: Build from scratch
+- **Rejected**: Reinventing the wheel, LangChain handles 90% of boilerplate
+
+### ✅ Property-Scoped RAG
+
+**Why property-scoped instead of global search?**
+- **Privacy**: Documents isolated by property (multi-tenancy)
+- **Performance**: Smaller indexes = faster retrieval
+- **Accuracy**: Questions scoped to specific property context
+- **UX**: Matches landlord's mental model (organize by property)
+- **Demo Clarity**: "Upload warranty → Ask about warranty" shows immediate value
+
+---
+
+## DocuMind - RAG Pipeline Details
 
 ### Chunking Strategy
 - **Chunk size**: 1000 characters
@@ -644,7 +760,8 @@ Each chunk stores:
   "doc_id": "uuid",
   "landlord_id": "firebase_uid",
   "property_id": "property_uuid",
-  "filename": "Lease.pdf",
+  "category": "warranty",  # Document category
+  "filename": "AC_Warranty_Daikin.pdf",
   "chunk_index": 0,
   "page": 3
 }
@@ -653,7 +770,8 @@ Each chunk stores:
 **Benefits**:
 - Filter by landlord (multi-tenancy)
 - Filter by property (property-specific Q&A)
-- Provide accurate citations (page numbers)
+- Filter by category (e.g., only search warranties)
+- Provide accurate citations (page numbers, filename)
 
 ### Vector Database Choice
 **MVP**: FAISS (local file storage)
@@ -666,7 +784,366 @@ Each chunk stores:
 
 ---
 
-## Compliance Validation (Lease Generator)
+### Document Organization Model (Property-Scoped RAG)
+
+**Architecture Choice**: Property-scoped RAG with category organization
+
+**Conceptual Structure** (User's Mental Model):
+```
+landlord_123/
+├── Verdi Eco-Dominium (property_1)/
+│   ├── Leases/
+│   │   └── Lease_Unit4-2_AliRahman.pdf
+│   ├── Warranties/
+│   │   └── AC_Warranty_Daikin.pdf
+│   ├── Insurance/
+│   │   └── Fire_Insurance_2026.pdf
+│   └── Utilities/
+│       └── TNB_Bill_Jan2026.pdf
+├── The Grand Subang (property_2)/
+│   ├── Leases/
+│   ├── Warranties/
+│   └── Insurance/
+```
+
+**Backend Storage Structure**:
+```
+backend/
+├── vectorstores/                    # FAISS indexes
+│   ├── landlord_123_property_1.faiss
+│   ├── landlord_123_property_2.faiss
+│   └── ...
+└── metadata/                        # Document metadata (JSON)
+    ├── landlord_123_property_1.json
+    ├── landlord_123_property_2.json
+    └── ...
+```
+
+**Metadata JSON Structure**:
+```json
+{
+  "property_id": "property_1",
+  "property_name": "Verdi Eco-Dominium",
+  "documents": [
+    {
+      "doc_id": "uuid-1",
+      "landlord_id": "landlord_123",
+      "property_id": "property_1",
+      "category": "warranty",
+      "filename": "AC_Warranty_Daikin.pdf",
+      "uploaded_at": "2026-02-27T10:00:00Z",
+      "chunks_indexed": 42
+    },
+    {
+      "doc_id": "uuid-2",
+      "landlord_id": "landlord_123",
+      "property_id": "property_1",
+      "category": "insurance",
+      "filename": "Fire_Insurance_2026.pdf",
+      "uploaded_at": "2026-02-26T14:30:00Z",
+      "chunks_indexed": 28
+    }
+  ]
+}
+```
+
+**Route-to-Organization Mapping**:
+
+| **User Action** | **Route** | **Storage** |
+|----------------|-----------|-------------|
+| Upload AC warranty for Verdi | `POST /documind/upload`<br>`landlord_id=123`<br>`property_id=property_1`<br>`category=warranty` | `vectorstores/landlord_123_property_1.faiss`<br>`metadata/landlord_123_property_1.json` |
+| List all docs for Verdi | `GET /documind/documents?landlordId=123&propertyId=property_1` | Read `metadata/landlord_123_property_1.json` |
+| Ask "When does AC warranty expire?" | `POST /documind/ask`<br>`landlord_id=123`<br>`property_id=property_1` | Load `vectorstores/landlord_123_property_1.faiss` → Retrieve → Gemini |
+
+**Benefits of Property-Scoped RAG**:
+- **Privacy**: Documents isolated by property (multi-tenancy)
+- **Performance**: Smaller vector stores = faster retrieval
+- **Accuracy**: Questions scoped to specific property context
+- **UX**: Matches landlord's mental model (organize by property)
+- **Demo Clarity**: "Upload warranty → Ask about warranty" shows immediate value
+
+**Supported Document Categories**:
+- `lease` - Tenancy agreements
+- `warranty` - Appliance/equipment warranties
+- `insurance` - Property insurance policies
+- `utility` - Electricity, water, internet bills
+- `receipt` - Purchase receipts, invoices
+- `other` - Miscellaneous documents
+
+---
+
+## Complete Usage Flow Example
+
+### Scenario: Landlord Manages Verdi Eco-Dominium Documents
+
+This example demonstrates the complete workflow of uploading documents, listing them, and asking questions using the property-scoped RAG system.
+
+#### Step 1: Upload Documents
+
+**Action 1a: Upload AC Warranty**
+```http
+POST /api/rex/documind/upload
+Content-Type: multipart/form-data
+
+landlord_id: "landlord_123"
+property_id: "property_1"
+category: "warranty"
+file: AC_Warranty_Daikin.pdf
+```
+
+**Response**:
+```json
+{
+  "doc_id": "uuid-abc-123",
+  "landlord_id": "landlord_123",
+  "property_id": "property_1",
+  "category": "warranty",
+  "filename": "AC_Warranty_Daikin.pdf",
+  "status": "indexed",
+  "chunks_indexed": 42
+}
+```
+
+**Backend Processing**:
+1. Save PDF to `/tmp/uuid-abc-123_AC_Warranty_Daikin.pdf`
+2. Extract text using PyPDFLoader
+3. Split into 42 chunks (1000 chars each, 200 overlap)
+4. Generate embeddings using Vertex AI
+5. Save to `vectorstores/landlord_123_property_1.faiss`
+6. Update `metadata/landlord_123_property_1.json`:
+```json
+{
+  "property_id": "property_1",
+  "property_name": "Verdi Eco-Dominium",
+  "documents": [
+    {
+      "doc_id": "uuid-abc-123",
+      "landlord_id": "landlord_123",
+      "property_id": "property_1",
+      "category": "warranty",
+      "filename": "AC_Warranty_Daikin.pdf",
+      "uploaded_at": "2026-02-27T10:00:00Z",
+      "chunks_indexed": 42,
+      "file_size": 245678
+    }
+  ]
+}
+```
+
+---
+
+**Action 1b: Upload Fire Insurance**
+```http
+POST /api/rex/documind/upload
+Content-Type: multipart/form-data
+
+landlord_id: "landlord_123"
+property_id: "property_1"
+category: "insurance"
+file: Fire_Insurance_2026.pdf
+```
+
+**Response**:
+```json
+{
+  "doc_id": "uuid-def-456",
+  "landlord_id": "landlord_123",
+  "property_id": "property_1",
+  "category": "insurance",
+  "filename": "Fire_Insurance_2026.pdf",
+  "status": "indexed",
+  "chunks_indexed": 28
+}
+```
+
+**Backend Processing**:
+1. Load existing FAISS vectorstore: `landlord_123_property_1.faiss`
+2. Add 28 new chunks to existing index (now has 42 + 28 = 70 chunks)
+3. Save updated vectorstore
+4. Append to metadata JSON (now has 2 documents)
+
+---
+
+#### Step 2: List All Documents for Property
+
+**Action 2: List Documents**
+```http
+GET /api/rex/documind/documents?landlordId=landlord_123&propertyId=property_1
+```
+
+**Response**:
+```json
+{
+  "documents": [
+    {
+      "doc_id": "uuid-abc-123",
+      "landlord_id": "landlord_123",
+      "property_id": "property_1",
+      "category": "warranty",
+      "filename": "AC_Warranty_Daikin.pdf",
+      "uploaded_at": "2026-02-27T10:00:00Z",
+      "chunks_indexed": 42,
+      "file_size": 245678
+    },
+    {
+      "doc_id": "uuid-def-456",
+      "landlord_id": "landlord_123",
+      "property_id": "property_1",
+      "category": "insurance",
+      "filename": "Fire_Insurance_2026.pdf",
+      "uploaded_at": "2026-02-27T11:30:00Z",
+      "chunks_indexed": 28,
+      "file_size": 189234
+    }
+  ],
+  "total_count": 2,
+  "filtered_by_property": "property_1"
+}
+```
+
+**Backend Processing**:
+1. Read `metadata/landlord_123_property_1.json`
+2. Return all documents for property_1
+3. No vectorstore loading required (fast listing!)
+
+---
+
+#### Step 3: Ask Questions
+
+**Action 3a: Ask About AC Warranty**
+```http
+POST /api/rex/documind/ask
+Content-Type: application/json
+
+{
+  "landlord_id": "landlord_123",
+  "property_id": "property_1",
+  "question": "When does the AC warranty expire?",
+  "top_k": 4
+}
+```
+
+**Backend Processing**:
+1. Load FAISS vectorstore: `vectorstores/landlord_123_property_1.faiss`
+2. Generate embedding for question
+3. Retrieve top 4 most similar chunks:
+   - Chunk 1: "...warranty period is valid until December 31, 2028..." (score: 0.95)
+   - Chunk 2: "...Daikin air conditioning unit serial number AC-2024-5678..." (score: 0.85)
+   - Chunk 3: "...coverage includes compressor and refrigerant leaks..." (score: 0.75)
+   - Chunk 4: "...contact customer service at 1-800-DAIKIN..." (score: 0.65)
+4. Send chunks + question to Gemini 1.5 Flash
+5. Gemini synthesizes answer from context
+
+**Response**:
+```json
+{
+  "answer": "The AC warranty for the Daikin unit expires on December 31, 2028, as stated in the warranty document.",
+  "confidence": 0.95,
+  "property_name": "Verdi Eco-Dominium",
+  "citations": [
+    {
+      "doc_id": "uuid-abc-123",
+      "filename": "AC_Warranty_Daikin.pdf",
+      "category": "warranty",
+      "page": 2,
+      "snippet": "...warranty period is valid until December 31, 2028. This coverage includes parts and labor for the Daikin air conditioning unit serial number AC-2024-5678...",
+      "score": 0.95
+    },
+    {
+      "doc_id": "uuid-abc-123",
+      "filename": "AC_Warranty_Daikin.pdf",
+      "category": "warranty",
+      "page": 3,
+      "snippet": "...coverage includes compressor and refrigerant leaks, electrical components, and thermostat calibration...",
+      "score": 0.75
+    }
+  ]
+}
+```
+
+---
+
+**Action 3b: Ask About Insurance Coverage**
+```http
+POST /api/rex/documind/ask
+Content-Type: application/json
+
+{
+  "landlord_id": "landlord_123",
+  "property_id": "property_1",
+  "question": "What is the fire insurance coverage amount?",
+  "top_k": 4
+}
+```
+
+**Response**:
+```json
+{
+  "answer": "The fire insurance coverage for Verdi Eco-Dominium is RM 2,500,000, covering structural damage, contents, and liability claims.",
+  "confidence": 0.95,
+  "property_name": "Verdi Eco-Dominium",
+  "citations": [
+    {
+      "doc_id": "uuid-def-456",
+      "filename": "Fire_Insurance_2026.pdf",
+      "category": "insurance",
+      "page": 1,
+      "snippet": "...total coverage amount of RM 2,500,000 effective from January 1, 2026 to December 31, 2026. This policy covers structural damage, contents replacement, and third-party liability claims...",
+      "score": 0.95
+    }
+  ]
+}
+```
+
+---
+
+#### File System State After Complete Flow
+
+**Vectorstores**:
+```
+vectorstores/
+└── landlord_123_property_1.faiss  # 70 chunks (42 warranty + 28 insurance)
+```
+
+**Metadata**:
+```
+metadata/
+└── landlord_123_property_1.json   # 2 documents (AC warranty + fire insurance)
+```
+
+**Firestore** (optional, for persistence):
+```
+documind_docs/
+├── uuid-abc-123/
+│   ├── doc_id: "uuid-abc-123"
+│   ├── landlord_id: "landlord_123"
+│   ├── property_id: "property_1"
+│   ├── category: "warranty"
+│   ├── filename: "AC_Warranty_Daikin.pdf"
+│   └── chunks_indexed: 42
+└── uuid-def-456/
+    ├── doc_id: "uuid-def-456"
+    ├── landlord_id: "landlord_123"
+    ├── property_id: "property_1"
+    ├── category: "insurance"
+    ├── filename: "Fire_Insurance_2026.pdf"
+    └── chunks_indexed: 28
+```
+
+---
+
+### Key Observations
+
+1. **Property Scoping**: All documents isolated to `property_1` vectorstore
+2. **Category Organization**: Documents tagged with semantic categories (warranty, insurance)
+3. **Fast Listing**: Metadata JSON enables quick document browsing without loading FAISS
+4. **Accurate Retrieval**: Questions retrieve relevant chunks from correct documents
+5. **Citation Support**: Gemini answers include source references (filename, page, snippet)
+6. **Scalability**: Each property has its own vectorstore (privacy + performance)
+
+---
+
+## Lease Generator - Compliance Validation
 
 ### Required Clauses (Malaysia RTA 2024)
 - Landlord/tenant identification
@@ -691,9 +1168,17 @@ Each chunk stores:
 
 ---
 
-## Implementation Checklist
+---
 
-### Backend - LangGraph Lease Workflow (Week 1-2)
+# IMPLEMENTATION ROADMAP
+
+Backend and frontend implementation checklists organized by feature.
+
+---
+
+## Lease Generator - Implementation Checklist
+
+### Backend (Week 1-2)
 - [ ] Setup Vertex AI project and credentials
 - [ ] Install dependencies: `langgraph`, `langchain-google-vertexai`
 - [ ] Create `agents/lease_workflow.py`
@@ -723,12 +1208,59 @@ Each chunk stores:
   - [ ] `POST /api/rex/lease/{id}/revise`
 - [ ] Test LangGraph workflow locally
 
-### Backend - DocuMind RAG (Week 2)
-- [ ] Implement `rag/documind_service.py` with LangChain
-- [ ] Setup FAISS vector database
+---
+
+### Frontend (Week 3)
+- [ ] Create domain entities
+  - [ ] `lib/features/landlord/domain/entities/lease.dart`
+  - [ ] Update `lib/features/landlord/domain/entities/tenant.dart`
+- [ ] Create Freezed models
+  - [ ] `lib/features/landlord/data/models/lease_models.dart`
+  - [ ] Run `flutter pub run build_runner build`
+- [ ] Create HTTP client
+  - [ ] `lib/features/landlord/data/datasources/lease_remote_datasource.dart`
+- [ ] Create Riverpod providers
+  - [ ] `lib/features/landlord/presentation/providers/lease_providers.dart`
+- [ ] Build UI screens
+  - [ ] Step 1: Property selection (dropdown with auto-fill)
+  - [ ] Step 2: Tenant selection (existing OR manual input)
+  - [ ] Step 3: Lease terms (dates, optional clauses)
+  - [ ] Step 4: Review screen (markdown preview, approve/revise)
+  - [ ] Step 5: Finalized screen (PDF viewer, download)
+- [ ] Add loading states, error handling
+- [ ] Add form validation
+
+---
+
+---
+
+## DocuMind - Implementation Checklist
+
+### Backend (Week 2)
 - [ ] Create `models/documind_models.py`
+  - [ ] `DocUploadRequest` (landlord_id, property_id, category)
+  - [ ] `DocUploadResponse` (doc_id, category, chunks_indexed, status)
+  - [ ] `AskRequest` (landlord_id, property_id, question, top_k)
+  - [ ] `Citation` (doc_id, filename, category, page, snippet, score)
+  - [ ] `AskResponse` (answer, confidence, citations, property_name)
+  - [ ] `DocumentInfo` (doc metadata for listing)
+  - [ ] `DocListResponse` (documents list, total_count)
+- [ ] Implement `rag/documind_service.py` with LangChain
+  - [ ] `ingest_document()` - PDF → chunks → embeddings → FAISS
+  - [ ] `ask_documind()` - load FAISS → retrieve → Gemini → answer + citations
+  - [ ] `list_documents()` - read metadata files → filter by property
+  - [ ] Setup metadata storage in JSON files (metadata/{landlord_id}_{property_id}.json)
+  - [ ] Setup FAISS vectorstore paths (vectorstores/{landlord_id}_{property_id}.faiss)
 - [ ] Update `api/rex_routes.py` with DocuMind endpoints
+  - [ ] `POST /api/rex/documind/upload` (with category parameter)
+  - [ ] `POST /api/rex/documind/ask`
+  - [ ] `GET /api/rex/documind/documents`
 - [ ] Test document upload + Q&A flow
+  - [ ] Upload test PDF with category
+  - [ ] Verify FAISS vectorstore created
+  - [ ] Verify metadata JSON created
+  - [ ] Test list_documents endpoint
+  - [ ] Test Q&A with property scoping
 
 ### Frontend - Lease Generator UI (Week 3)
 - [ ] Create domain entities
@@ -750,13 +1282,40 @@ Each chunk stores:
 - [ ] Add loading states, error handling
 - [ ] Add form validation
 
-### Frontend - DocuMind UI (Week 4)
-- [ ] Build document upload UI
-- [ ] Build chat interface for Q&A
-- [ ] Add file picker for PDFs
-- [ ] Display citations with page references
+---
 
-### Infrastructure & Deployment (Week 4-5)
+---
+
+## DocuMind - Implementation Checklist
+
+### Frontend (Week 4)
+- [ ] Create `lib/features/landlord/presentation/screens/3-REX/sub/documind_screen.dart`
+- [ ] Build property selector dropdown (fetch from property_providers)
+- [ ] Build category selector (lease, warranty, insurance, utility, receipt, other)
+- [ ] Build document upload UI with file picker for PDFs
+- [ ] Build chat interface for Q&A
+  - [ ] Message list (user questions + Rex answers)
+  - [ ] Question input field with send button
+  - [ ] Loading states (thinking indicator)
+- [ ] Display citations with references
+  - [ ] Show document filename
+  - [ ] Show category badge
+  - [ ] Show page number
+  - [ ] Show relevance score
+- [ ] Add error handling (upload failed, Q&A timeout)
+- [ ] Test E2E flow (select property → upload → ask → view answer)
+
+---
+
+---
+
+# SHARED INFRASTRUCTURE
+
+Infrastructure, deployment, testing, and future enhancements applicable to both systems.
+
+---
+
+## Infrastructure & Deployment (Week 4-5)
 - [ ] Configure Vertex AI API access in GCP
 - [ ] Setup Firebase Admin SDK service account
 - [ ] Create Firestore collections (`leases`, `documind_docs`)

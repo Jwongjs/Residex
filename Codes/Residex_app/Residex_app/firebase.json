@@ -1,1 +1,14 @@
-{"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"residex-2ebd8","configurations":{"macos":"1:472430821939:ios:fbd52848eece786e139946","web":"1:472430821939:web:c3acad4651872b59139946","windows":"1:472430821939:web:45005404890d5999139946"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

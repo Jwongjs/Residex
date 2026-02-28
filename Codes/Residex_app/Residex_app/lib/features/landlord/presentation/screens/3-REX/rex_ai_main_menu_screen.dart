@@ -2,6 +2,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../../core/theme/app_theme.dart';
+import 'sub/documind_screen.dart';
+import 'sub/lease_generator_screen.dart';
+import 'sub/maintenance_ai_screen.dart';
+import 'sub/revenue_analytics_screen.dart';
+import 'landlord_rex_ai_screen.dart'; 
 
 /// Rex AI Main Menu - "Sync Hub" inspired interface
 /// Shows animated core with function panels
@@ -122,14 +127,12 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                     height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppColors.primary.withOpacity(0.2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withOpacity(0.4 + (_controller.value * 0.2)),
-                          blurRadius: 60,
-                          spreadRadius: 10,
-                        ),
-                      ],
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.primaryCyan.withOpacity(0.4),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -141,15 +144,11 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                 builder: (context, child) {
                   return Transform.rotate(
                     angle: _controller.value * 2 * math.pi,
-                    child: Container(
-                      width: 240,
-                      height: 240,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.primary.withOpacity(0.3),
-                          width: 1,
-                        ),
+                    child: SizedBox(
+                      width: 180,
+                      height: 180,
+                      child: DashPathCircle(
+                        color: AppColors.primaryCyan.withOpacity(0.3),
                       ),
                     ),
                   );
@@ -160,22 +159,12 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                 animation: _controller,
                 builder: (context, child) {
                   return Transform.rotate(
-                    angle: -_controller.value * 1.5 * math.pi,
-                    child: Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.accent.withOpacity(0.4),
-                          width: 1,
-                          strokeAlign: BorderSide.strokeAlignOutside,
-                        ),
-                      ),
+                    angle: -_controller.value * 2 * math.pi,
+                    child: SizedBox(
+                      width: 220,
+                      height: 220,
                       child: DashPathCircle(
-                        color: AppColors.accent.withOpacity(0.4),
-                        dashWidth: 4,
-                        dashSpace: 8,
+                        color: AppColors.primaryBlue.withOpacity(0.2),
                       ),
                     ),
                   );
@@ -190,15 +179,15 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.primary,
-                      AppColors.accent,
+                      AppColors.primaryCyan,
+                      AppColors.primaryBlue,
                     ],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withOpacity(0.5),
+                      color: AppColors.primaryCyan.withOpacity(0.5),
                       blurRadius: 30,
-                      spreadRadius: 5,
+                      spreadRadius: 10,
                     ),
                   ],
                 ),
@@ -225,8 +214,8 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                   color: AppColors.primary,
                   shadows: [
                     Shadow(
-                      color: AppColors.primary.withOpacity(0.5),
-                      blurRadius: 20,
+                      color: AppColors.primaryCyan.withOpacity(0.3),
+                      blurRadius: 12,
                     ),
                   ],
                 ),
@@ -247,7 +236,7 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                   gradient: LinearGradient(
                     colors: [
                       Colors.transparent,
-                      Colors.white.withOpacity(0.4),
+                      AppColors.primary,
                     ],
                   ),
                 ),
@@ -257,8 +246,6 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                 child: Text(
                   'A.I. NEURAL CORE',
                   style: AppTextStyles.label.copyWith(
-                    fontSize: 9,
-                    color: Colors.white.withOpacity(0.4),
                     letterSpacing: 5,
                   ),
                 ),
@@ -269,7 +256,7 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.white.withOpacity(0.4),
+                      AppColors.primary,
                       Colors.transparent,
                     ],
                   ),
@@ -299,27 +286,29 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
           accentColor: AppColors.success,
           progress: 0.85,
           onTap: () {
-            // Navigate to Rex AI Financial Officer context
-            Navigator.pushReplacementNamed(
+            // Navigate to Revenue Analytics screen
+            Navigator.push(
               context,
-              '/landlord/rex-ai',
-              arguments: 'Financial Officer',
+              MaterialPageRoute(
+                builder: (context) => const RevenueAnalyticsScreen(),
+              ),
             );
           },
         ),
         _buildGlassCard(
           label: 'Maintenance',
           value: '3 Alerts',
-          subValue: 'Action Required',
-          icon: Icons.build,
+          subValue: 'AI Predictions',
+          icon: Icons.engineering,
           accentColor: AppColors.warning,
           progress: 0.45,
           onTap: () {
-            // Navigate to Rex AI Maintenance Chief context
-            Navigator.pushReplacementNamed(
+            // Navigate to Maintenance AI screen
+            Navigator.push(
               context,
-              '/landlord/rex-ai',
-              arguments: 'Maintenance Chief',
+              MaterialPageRoute(
+                builder: (context) => const MaintenanceAIScreen(),
+              ),
             );
           },
         ),
@@ -327,29 +316,33 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
           label: 'Lease Generator',
           value: 'Contract',
           subValue: 'AI Draft Tool',
-          icon: Icons.file_copy_outlined,
+          icon: Icons.description_outlined,
           accentColor: AppColors.purple,
           progress: 1.0,
           onTap: () {
-            // Navigate to Rex AI Lease Generator context
-            Navigator.pushReplacementNamed(
+            // Navigate to Lease Generator screen
+            Navigator.push(
               context,
-              '/landlord/rex-ai',
-              arguments: 'Contract Guardian',
+              MaterialPageRoute(
+                builder: (context) => const LeaseGeneratorScreen(),
+              ),
             );
           },
         ),
+        // ✅ FIXED: Navigate to DocuMind screen
         _buildGlassCard(
-          label: 'Lazy Logger',
-          value: 'Indexer',
-          subValue: 'AI Document Scan',
+          label: 'DocuMind',
+          value: 'Q&A',
+          subValue: 'AI Document Search',
           icon: Icons.document_scanner_outlined,
-          accentColor: AppColors.accent,
+          accentColor: AppColors.primaryCyan,
           progress: 1.0,
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Lazy Logger - Coming Soon'),
+            // ✅ Navigate to DocuMind screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const DocuMindScreen(),
               ),
             );
           },
@@ -404,19 +397,19 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                 children: [
                   Icon(
                     icon,
-                    size: 28,
+                    size: 32,
                     color: accentColor,
                   ),
                   Container(
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
                       color: accentColor,
+                      shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: accentColor,
-                          blurRadius: 10,
+                          color: accentColor.withOpacity(0.5),
+                          blurRadius: 8,
                           spreadRadius: 2,
                         ),
                       ],
@@ -431,50 +424,39 @@ class _RexAIMainMenuScreenState extends ConsumerState<RexAIMainMenuScreen>
                 children: [
                   Text(
                     value,
-                    style: AppTextStyles.displayLarge.copyWith(
-                      fontSize: 28,
+                    style: AppTextStyles.displayMedium.copyWith(
                       fontWeight: FontWeight.w900,
-                      height: 1.0,
-                      letterSpacing: -1,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black.withOpacity(0.5),
-                          blurRadius: 8,
-                        ),
-                      ],
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    label,
-                    style: AppTextStyles.label.copyWith(
-                      fontSize: 11,
+                    subValue,
+                    style: AppTextStyles.bodySmall.copyWith(
                       color: AppColors.textMuted,
-                      letterSpacing: 1.5,
                     ),
                   ),
                 ],
               ),
 
-              // Progress and subvalue
+              // Progress and label
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    subValue,
-                    style: AppTextStyles.label.copyWith(
-                      fontSize: 9,
-                      color: AppColors.textMuted,
+                    label.toUpperCase(),
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: accentColor.withOpacity(0.8),
+                      letterSpacing: 1.5,
                     ),
                   ),
                   const SizedBox(height: 6),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(2),
                     child: LinearProgressIndicator(
                       value: progress,
-                      backgroundColor: AppColors.slate800.withOpacity(0.5),
+                      backgroundColor: AppColors.border,
                       valueColor: AlwaysStoppedAnimation<Color>(accentColor),
-                      minHeight: 6,
+                      minHeight: 4,
                     ),
                   ),
                 ],
