@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(dir:*)",
+      "Bash(xargs:*)",
+      "Bash(flutter build:*)",
+      "Bash(flutter run:*)",
+      "Bash(npm i:*)",
+      "Bash(taskkill:*)",
+      "Bash(nul)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter clean:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

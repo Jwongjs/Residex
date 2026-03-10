@@ -1,0 +1,107 @@
+Phase 1 — Survival / Core Revenue (Non-Negotiable)
+
+These keep the app alive. If these aren’t working, nothing else matters.
+
+Recurring group bills
+
+Fully automated creation, splitting, and tracking
+
+Must handle variable members, amounts, and dates
+
+Payment initiation (multi-wallet)
+
+DuitNow, GrabPay, TnG, MAE deep-links
+
+One-tap or copy-paste payment request
+
+Must never hold money (avoid BNM/legal headaches)
+
+Auto-settlement / “Pay All”
+
+One action clears multiple debts
+
+Reduces payment fatigue
+
+Optional convenience fee for revenue
+
+Proof-of-payment / confirmation
+
+Supports payments outside app (cash, bank, e-wallet screenshots)
+
+Dual confirmation updates trust scores
+
+Prevents disputes
+
+Immutable history / archived groups
+
+Prevent loss of data when someone leaves
+
+Allows exports if you plan Pro tier
+
+🟢 Phase 2 — Habit & Retention (High Value)
+
+These make users come back repeatedly. They don’t generate revenue by themselves, but they amplify it.
+
+Debt simplification / netting
+
+Minimize the number of transfers per group
+
+Must be clear, visually simple
+
+Pre-saved groups / templates
+
+Quick setup for recurring groups (roommates, clubs)
+
+Soft late-payment reminders / trust score
+
+Gentle escalation: Friendly → Neutral → Visible pending → Trust impact
+
+Optional toggle per group
+
+Monthly statements / expense snapshots
+
+“You paid RM432 this month, owes RM120”
+
+Helps people see real value
+
+Can be Pro tier feature
+
+Non-user pay flow
+
+Let people pay even if they haven’t installed the app
+
+Increases adoption / reduces friction
+
+🟡 Phase 3 — Gamification / Engagement
+
+These are your fun, viral features. They amplify retention but don’t solve survival.
+
+Ranks / badges / titles
+
+Optional display per group
+
+Must be culturally relevant / humorous
+
+Trust score + leaderboard
+
+Only visible within group or opt-in globally
+
+Social pressure without shaming
+
+Cosmetics / animations / seasonal flair
+
+Free for engagement, optional paid bundle
+
+Should never be core revenue
+
+Funny roasts / lore / local references
+
+Shareable, meme-able
+
+Keeps app culturally sticky
+
+Global ranking / “Master Splitter” badges
+
+Optional for viral screenshots / social sharing
+
+Reinforces identity & fun

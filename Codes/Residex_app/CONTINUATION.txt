@@ -1,0 +1,112 @@
+Task 1: Add Friends Section to Dashboard Screen
+
+  File: lib/features/bills/presentation/screens/dashboard_screen.dart
+
+  Step 1.1: Add Import
+
+  Add this import at the top of the file (around line 20-30, with other widget imports):
+  import '../widgets/friends_list_widget.dart';
+
+  Step 1.2: Add FriendsListWidget to Dashboard Body
+
+  Locate the dashboard body structure around line 48-53. Currently it looks like:
+  const _SummaryCards(),
+  const SizedBox(height: 24),
+  const _PaymentHistoryCard(),
+  const SizedBox(height: 24),
+  const _MyGroupsSection(),
+
+  Insert the FriendsListWidget between PaymentHistoryCard and MyGroupsSection:
+  const _SummaryCards(),
+  const SizedBox(height: 24),
+  const _PaymentHistoryCard(),
+  const SizedBox(height: 24),
+  const FriendsListWidget(),              // ← ADD THIS
+  const SizedBox(height: 24),             // ← ADD THIS
+  const _MyGroupsSection(),
+
+  ---
+  Task 2: Update Select Members Screen to Use Friends
+
+  File: lib/features/bills/presentation/screens/bill_creation/select_members_screen.dart
+
+  Step 2.1: Add friendsProvider Import
+
+  Around line 9-11, add the import:
+  import '../../../../../features/users/presentation/providers/friends_provider.dart';
+
+  Step 2.2: Update Provider Watch
+
+  Locate line 115 which currently reads:
+  final usersAsync = ref.watch(usersProvider);
+
+  Change it to:
+  final usersAsync = ref.watch(friendsProvider);
+
+  Step 2.3: Update Provider Read in _continue Method
+
+  Locate line 89 which currently reads:
+  final allUsers = await ref.read(usersProvider.future);
+
+  Change it to:
+  final allUsers = await ref.read(friendsProvider.future);
+
+  Explanation: This ensures that when selecting members for a new bill, only saved friends appear in the list (excluding guest users).
+
+  ---
+  Task 3: Update Group Editor to Use Friends List
+
+  File: lib/features/bills/presentation/screens/dashboard_screen.dart
+
+  Step 3.1: Add friendsProvider Import
+
+  Around line 15-20, add the import if not already present:
+  import '../../users/presentation/providers/friends_provider.dart';
+
+  Step 3.2: Update User Fetching When Editing Groups
+
+  Locate line 609 (in the group card tap handler) which currently reads:
+  final allUsers = await ref.read(usersProvider.future);
+
+  Change it to:
+  final allUsers = await ref.read(friendsProvider.future);
+
+  Explanation: When editing an existing group, this ensures only saved friends are available to add/remove from the group, not all users including guests.
+
+  ---
+  Expected Results After Implementation:
+
+  1. ✅ Dashboard: Friends section appears between Payment History and My Groups
+  2. ✅ Add Friend Flow: Tap "Add" or "New" → Enter name/phone → Friend saved with random gradient
+  3. ✅ Friends Display: Horizontal scrollable cards showing avatar, name, trust score (700), and rank (SILVER)
+  4. ✅ Select Members: When creating a bill, only saved friends appear (no guest users)
+  5. ✅ Group Editor: When editing groups, only saved friends can be added as members
+
+  ---
+  Testing Checklist:
+
+  After making these changes, test the complete flow:
+
+  1. Add a Friend:
+    - Open dashboard
+    - Find Friends section
+    - Tap "Add" button
+    - Enter friend name (e.g., "Raj Kumar")
+    - Enter phone (e.g., "123456789")
+    - Tap "Save Friend"
+    - Verify: Friend appears in Friends list with avatar and trust score badge
+  2. Use Friend in Bill:
+    - Tap "New Bill"
+    - Verify: Your saved friend appears in the members list
+    - Select friend and continue
+    - Verify: Friend is included in bill
+  3. Use Friend in Group:
+    - Navigate to My Groups
+    - Tap "New" to create group
+    - Verify: Saved friend appears in member selection
+    - Create group with friend
+    - Edit group by tapping card
+    - Verify: Can add/remove saved friends
+
+  ---
+  All three files need these changes to complete the Friends Management feature. The implementation follows the reference React app structure and maintains consistency with the existing Flutter architecture.

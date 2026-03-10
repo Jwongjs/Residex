@@ -1,0 +1,118 @@
+This document integrates the standard operational cards (Rent, Maintenance) with the new behavioral cards (Nudges, Votes, Strikes), sorted by the Rex Decision Engine logic.
+________________________________________
+FEATURE: REX PREDICTIVE GLASSCARDS (The "Brain")
+Internal Code: REX_DASHBOARD_ENGINE
+Logic: Cards are dynamically generated and ranked by urgency (Critical $\rightarrow$ Routine $\rightarrow$ Social).
+________________________________________
+LAYER 1: CRITICAL ALERTS (Red/Amber Glow) 🔴
+Triggers: Time-sensitive deadlines, financial risks, legal votes, or safety issues. These always take top priority.
+1. THE "TRIBUNAL VOTE" CARD (New)
+•	Trigger: A housemate initiates a formal complaint (e.g., Smoking) requiring consensus.
+•	Card Title: [TRIBUNAL VOTE]
+•	Rex Insight: "Urgent: A motion for 'Lease Violation: Smoking' has been raised against Tenant B. Your testimony is required to verify this."
+•	Visual: Crimson Red gavel icon.
+•	Action: Cast Vote (Verify/Deny)
+2. THE "VIOLATION STRIKE" CARD (New)
+•	Trigger: A Tribunal Vote passes against the user (Unanimous decision).
+•	Card Title: [STRIKE ISSUED]
+•	Rex Insight: "Consensus reached. You have been flagged for 'Unauthorized Guest'. This is your 1st strike on your Stewardship Record."
+•	Visual: Dark Red warning triangle.
+•	Action: View Incident Report
+3. THE "RENT CYCLE" CARD
+•	Trigger: Date is 3 days before due date OR rent is overdue.
+•	Card Title: [RENT CYCLE]
+•	Rex Insight: "Rent is due in 72 hours. You are the last one to pay. Settling now protects your Fiscal Score." 1
+•	Visual: Pulsing Red ring.
+•	Action: Tap to Pay (RM 600)
+4. THE "URGENT NOTICE" CARD
+•	Trigger: Building management posts a "High Priority" notice (e.g., Water Cut).
+•	Card Title: [BUILDING ALERT]
+•	Rex Insight: "Urgent: Water disruption scheduled for tomorrow (8 AM - 8 PM). Fill your buckets tonight." 2
+•	Visual: Amber hazard stripes.
+•	Action: View Details
+5. THE "LEASE DECISION" CARD
+•	Trigger: 60 days before lease end date.
+•	Card Title: [DECISION TIME]
+•	Rex Insight: "Your lease ends in 2 months. Legally, you must give notice by Friday if you plan to move out." 3
+•	Visual: Yellow document icon.
+•	Action: Draft Notice / Request Renewal
+UPDATED GLASSCARD: THE "DISPUTE ALERT"
+Add this to your Rex Dashboard list. This appears only for the person who was "caught."
+
+14. THE "CALL-OUT" CARD (New)
+
+Trigger: A housemate anonymously disputes a completed task with evidence.
+
+Card Title: [TASK DISPUTED]
+
+Rex Insight: "Your task 'Kitchen Duty' was flagged as incomplete by a housemate. Evidence has been uploaded."
+
+Visual: Orange camera shutter icon.
+
+Action: View Evidence / Re-do Task
+________________________________________
+LAYER 2: ROUTINE & PREDICTIVE (Blue/Purple/Teal Glow) 🔵
+Triggers: Daily habits, chores, behavioral nudges, and AI anomalies.
+6. THE "INCOMING NUDGE" CARD (New)
+•	Trigger: A housemate sends an anonymous "Soft Nudge."
+•	Card Title: [HOUSE NUDGE]
+•	Rex Insight: "Gentle request: A housemate is asking for the volume to be lowered. Please check your noise levels."
+•	Visual: Soft Blue speaker icon.
+•	Action: Got it (Dismiss)
+7. THE "AMNESTY OFFER" CARD (New)
+•	Trigger: User opens camera to photograph damage (AI detection).
+•	Card Title: [HONESTY SHIELD]
+•	Rex Insight: "I see accidental damage. If you report this now, you pay for the repair, but your Stewardship Record stays 100% Clean. No Red Flag."
+•	Visual: Violet shield icon.
+•	Action: Report & Protect Record
+8. THE "USAGE SPIKE" CARD
+•	Trigger: AI detects high electricity usage + Heatwave weather data.
+•	Card Title: [BILL SHOCK]
+•	Rex Insight: "Heatwave detected (34°C). Your AC usage is trending 40% higher than last month. Projected bill: RM 180." 4
+•	Visual: Purple AI waveform.
+•	Action: View Breakdown
+9. THE "CHORE TURN" CARD
+•	Trigger: User is assigned a chore due today.
+•	Card Title: [YOUR TURN]
+•	Rex Insight: "It's your shift for 'Trash Duty'. Clear it before 8 PM to keep your Reputation Badge." 5
+•	Visual: Teal recycling icon.
+•	Action: Mark Done / Swap
+10. THE "DEBT WATCH" CARD
+•	Trigger: User owes money to a housemate for >5 days.
+•	Card Title: [BALANCE UPDATE]
+•	Rex Insight: "You still owe Sarah RM 35 for the Internet bill. Settle it now to avoid a Fiscal friction penalty." 6
+•	Visual: Cool Blue wallet icon.
+•	Action: Settle Now
+________________________________________
+LAYER 3: SOCIAL & GAMIFICATION (Green/Gold Glow) 🟢
+Triggers: Milestones, positive reinforcement, and community events.
+11. THE "BADGE UNLOCK" CARD (New)
+•	Trigger: User completes a specific milestone (e.g., 6 months no strikes).
+•	Card Title: [NEW BADGE]
+•	Rex Insight: "Impressive! You just earned the '🛡️ Asset Guardian' badge for 6 months of proactive maintenance reporting."
+•	Visual: Gold shimmering trophy.
+•	Action: View Passport
+12. THE "EVENT INVITE" CARD
+•	Trigger: New event posted with high RSVP count.
+•	Card Title: [HAPPENING SOON]
+•	Rex Insight: "Movie Night at the Sky Deck is starting in 1 hour. 12 of your neighbors are going." 7
+•	Visual: Neon Green ticket stub.
+•	Action: RSVP Now
+13. THE "GHOST MODE" CARD
+•	Trigger: 14 days before move-out date.
+•	Card Title: [GHOST MODE]
+•	Rex Insight: "Time for the final walk-through. Let's match the condition photos to ensure you get your full deposit back." 8
+•	Visual: Translucent White ghost icon.
+•	Action: Start Camera
+________________________________________
+TECHNICAL IMPLEMENTATION: THE REX ENGINE
+How the system decides what to show.
+The Sorting Algorithm:
+The dashboard creates a Priority Queue based on a weighted score for each active card.
+1.	Safety & Legal (Weight: 100): Tribunal Votes, Water Cuts, Fire Alarms.
+2.	Financial Deadlines (Weight: 80): Rent Due, Overdue Bills.
+3.	Behavioral Friction (Weight: 60): Incoming Nudges, Chore Deadlines.
+4.	Routine Maintenance (Weight: 40): Usage Alerts, Ticket Updates.
+5.	Social/Positive (Weight: 20): Badges, Events.
+Example: If "Rent is Overdue" (Score 80) and a "Nudge" arrives (Score 60), the Rent Card stays big (Hero), and the Nudge Card slides underneath (Deck).
+

@@ -1,0 +1,28 @@
+# FastAPI
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Pydantic
+pydantic
+pydantic-settings
+
+# Firestore & Firebase
+google-cloud-firestore
+firebase-admin
+
+# Gemini AI & Vertex AI
+google-generativeai
+langchain-google-genai
+langchain-google-vertexai
+
+# LangChain
+langchain
+langchain-community
+langchain-text-splitters
+
+# Document Processing
+pypdf
+
+# Utilities
+python-dotenv
