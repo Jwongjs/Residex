@@ -1,0 +1,69 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "documind_chunks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "landlord_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "property_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 768,
+            "flat": {}
+          }
+        }
+      ]
+    },
+    {
+      "collectionGroup": "documind_chunks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "landlord_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "property_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 768,
+            "flat": {}
+          }
+        }
+      ]
+    },
+    {
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "landlordId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
