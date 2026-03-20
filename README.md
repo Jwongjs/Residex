@@ -17,10 +17,11 @@
    - [Firebase Integration](#24-firebase-integration)
    - [State Management](#25-state-management)
    - [Routing System](#26-routing-system)
+  - [DocuMind RAG Architecture (Flagship)](#27-documind-rag-architecture-flagship)
 3. [Implementation Details](#3-implementation-details)
    - [Tech Stack](#31-tech-stack)
    - [Feature Modules](#32-feature-modules)
-   - [AI Integration — Gemini 2.5 Flash](#33-ai-integration--gemini-25-flash)
+  - [AI Integration — Gemini 2.5 Flash + DocuMind RAG](#33-ai-integration--gemini-25-flash--documind-rag)
    - [Design System](#34-design-system)
    - [Animation System](#35-animation-system)
 4. [Challenges Faced](#4-challenges-faced)
@@ -43,6 +44,8 @@ Residex solves three root problems of the Malaysian shared-living market:
 **Status:** ~96% complete — 59 screens · 62+ widgets · 50+ routes
 **Roles:** Tenant · Landlord (separate UI, shared codebase)
 
+**Flagship intelligence layer:** **DocuMind RAG** (FastAPI + Firestore Vector Search + Gemini + LangGraph orchestration) for landlord document Q&A with citations, category-aware retrieval, and multi-turn clarification.
+
 ---
 
 ## 2. Technical Architecture
@@ -50,6 +53,14 @@ Residex solves three root problems of the Malaysian shared-living market:
 ### 2.1 Repository Structure
 
 ```
+backend/
+├── main.py                        # FastAPI app entrypoint
+├── api/rex_routes.py              # /api/rex/documind/* endpoints
+├── rag/documind_service.py        # Firestore Vector Search RAG pipeline
+├── rag/graph_orchestrator.py      # Conversational + retrieval orchestration
+├── models/documind_models.py      # AskRequest/AskResponse contracts
+└── tests/                          # DocuMind orchestration/API tests
+
 residex_app/
 ├── lib/
 │   ├── core/                      # Shared infrastructure
@@ -335,6 +346,38 @@ class BillsNotifier extends AsyncNotifier<List<Bill>> {
 **Dual navigation architecture:**
 
 ```
+
+### 2.7 DocuMind RAG Architecture (Flagship)
+
+DocuMind is now a first-class backend service in this repo (`backend/`) and is not a mock placeholder.
+
+**Core stack:**
+- FastAPI service layer (`/api/rex/documind/*`)
+- Firestore as both metadata store and vector index (`documind_docs`, `documind_chunks`)
+- Gemini embeddings (`models/gemini-embedding-001`) + Gemini answer synthesis (`models/gemini-2.5-flash`)
+- LangGraph-style orchestrator for intent routing + category clarification checkpoints
+
+**Document lifecycle:**
+1. Upload PDF to `/api/rex/documind/upload` with `(landlord_id, property_id, category)`.
+2. Parse + chunk document text (`PyPDFLoader`, `RecursiveCharacterTextSplitter`).
+3. Create embeddings and persist chunk vectors in Firestore.
+4. Save per-document metadata for listing/deletion and citation traceability.
+
+**Question-answer lifecycle:**
+1. Receive `AskRequest` with optional `categories`, `session_id`, `user_action`.
+2. Orchestrator classifies intent (conversation vs retrieval vs confirmation checkpoint).
+3. Build scoped query (`landlord_id`, `property_id`, optional categories).
+4. Run Firestore `find_nearest` vector search (COSINE distance).
+5. Synthesize answer with citations and confidence.
+6. Return structured `AskResponse` including follow-up action requirements.
+
+**Supported categories:** `lease`, `warranty`, `insurance`, `utility`, `receipt`, `other`
+
+**What makes this robust in practice:**
+- Property-scoped retrieval prevents cross-property leakage.
+- Category clarification flow reduces ambiguous retrieval.
+- Session-aware follow-ups (`confirm`, `cancel`, `override:<category>`) improve multi-turn UX.
+- Citation payload (`filename`, `page`, `snippet`, `score`) keeps answers auditable.
 GoRouter
 ├── /                       → NewSplashScreen
 ├── /login                  → LoginScreen
@@ -543,7 +586,7 @@ CustomTransitionPage(
 - Maintenance: `CreateTicketScreen`, `MaintenanceListScreen`, `TicketDetailScreen`
 - User: `ProfileScreen`, `ProfileEditorScreen`
 
-### 3.3 AI Integration — Gemini 2.5 Flash
+### 3.3 AI Integration — Gemini 2.5 Flash + DocuMind RAG
 
 **3 distinct model instances** in `GeminiService`:
 
@@ -614,6 +657,19 @@ Future<Map<String, dynamic>> analyzePropertyCondition(
   return jsonDecode(response.text ?? '{"valid": true}');
 }
 ```
+
+**DocuMind RAG API surface (live):**
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/rex/documind/upload` | Upload + index landlord property document |
+| `POST` | `/api/rex/documind/ask` | RAG Q&A with citations and orchestration |
+| `GET` | `/api/rex/documind/documents` | List indexed docs (landlord/property-scoped) |
+| `DELETE` | `/api/rex/documind/documents/{doc_id}` | Delete doc + associated chunks |
+
+**DocuMind ask contract highlights:**
+- Request: `landlord_id`, `property_id`, `question`, optional `categories`, `session_id`, `user_action`
+- Response: `answer`, `confidence`, `citations`, `searched_categories`, `user_action_required`, `predicted_categories`
 
 ### 3.4 Design System
 
@@ -825,7 +881,7 @@ Security rules (Firestore + Storage) need review before production.
 
 ### Phase 2 — AI Deepening
 
-- **DocuMind real backend:** Connect `DocuMindScreen` to a Cloud Function that uses Gemini's document understanding to actually parse uploaded PDFs and answer questions with citations
+- **DocuMind productionization:** Harden existing FastAPI + Firestore vector pipeline (auth, quotas, retry strategy, monitoring) and complete full frontend wiring from `DocuMindScreen` to `/api/rex/documind/*`
 - **FairFix Auditor accuracy:** Fine-tune the vision prompt to distinguish tenant damage from normal wear using Malaysian property standards
 - **REX voice routing:** Complete `speech_to_text` integration in SyncHub — route transcribed intent to the appropriate screen (bill summary, maintenance form, chore scheduler)
 - **Lease Sentinel legal database:** Train on Malaysian Residential Tenancy Act clauses for clause-level flagging
@@ -898,7 +954,15 @@ Firebase project (residex-2ebd8)
 ```bash
 # Clone
 git clone https://github.com/your-org/residex.git
-cd residex/residex_app
+cd residex
+
+# Backend setup (DocuMind RAG)
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Frontend setup (new terminal)
+cd ../residex_app
 
 # Install dependencies
 flutter pub get
@@ -921,7 +985,9 @@ The project uses Firebase project `residex-2ebd8`. Configuration files are alrea
 
 ### Environment
 
-No `.env` file required — Gemini API key is currently stored in `lib/core/services/gemini_api_key.dart`. Rotate before production.
+Backend requires `.env` in `backend/` for `GOOGLE_API_KEY` (Gemini). Keep `serviceAccountKey.json` secure and never expose production credentials in public repos.
+
+Frontend currently uses `lib/core/services/gemini_api_key.dart` for app-side Gemini usage. Move to a backend proxy before production.
 
 ---
 
@@ -936,6 +1002,7 @@ No `.env` file required — Gemini API key is currently stored in `lib/core/serv
 | Drift tables | 4 |
 | Drift DAOs | 3 |
 | Gemini AI models | 3 |
+| DocuMind RAG endpoints | 4 |
 | Color tokens | 70+ |
 | Lines of Dart code | ~25,000 |
 | Supported platforms | Android · iOS · Web |
