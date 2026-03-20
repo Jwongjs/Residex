@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze:*)",
+      "Bash(flutter doctor:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter build:*)",
+      "Bash(xargs -I {} bash -c \"echo ''=== {} ===''; ls -1 ''{}'' | grep -E ''\\.dart$'' | wc -l\")",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(flutter clean:*)",
+      "Bash(flutter run:*)",
+      "Bash(test -f:*)",
+      "Bash(test -d \"D:\\Projects\\Bill_Splitter_App\\bill_splitter_app\\lib\\data\")",
+      "Bash(dir:*)",
+      "Bash(tree:*)",
+      "WebSearch",
+      "Bash(test:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(cat:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell -Command \"\\(Get-Content lib/**/*.dart -Raw | Measure-Object -Line\\).Lines\")",
+      "Bash(flutter devices:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cd:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(xargs:*)",
+      "WebFetch(domain:)",
+      "WebFetch(domain:pub.dev)",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(cmd:*)",
+      "Bash(wscript:*)",
+      "Bash(unzip:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

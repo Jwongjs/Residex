@@ -1,0 +1,39 @@
+core/widgets/
+├── layouts/          # Scaffolds, page structures
+├── navigation/       # Nav bars, app bars
+├── common/           # Buttons, cards, inputs
+└── animations/       # Animated wrappers
+
+Example:
+core/widgets/
+├── layouts/                    # Scaffolding & screen structures
+│   ├── app_scaffold.dart      # Base scaffold with common structure
+│   ├── auth_layout.dart       # Layout for login/signup screens
+│   └── empty_state.dart       # Empty state layout
+│
+├── navigation/                 # Navigation components
+│   ├── custom_bottom_nav_bar.dart  # (Move here from root)
+│   └── custom_app_bar.dart    # Reusable app bar
+│
+├── common/                     # Independent reusable components
+│   ├── buttons/
+│   │   ├── primary_button.dart
+│   │   ├── secondary_button.dart
+│   │   └── icon_button_custom.dart
+│   ├── cards/
+│   │   ├── info_card.dart
+│   │   ├── stat_card.dart
+│   │   └── property_card.dart
+│   ├── inputs/
+│   │   ├── custom_text_field.dart
+│   │   ├── search_bar_custom.dart
+│   │   └── dropdown_custom.dart
+│   └── feedback/
+│       ├── loading_overlay.dart
+│       ├── error_message.dart
+│       ├── success_snackbar.dart
+│       └── shimmer_loading.dart
+│
+└── animations/                 # Animated components
+    ├── fade_in_widget.dart
+    └── slide_transition_widget.dart
