@@ -36,9 +36,9 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   int _docuMindConversationTurn = 1;
   bool _awaitingUserAction = false;
 
-  // Document categories (6 total)
+  // Document categories (backend-supported)
   final List<String> _categories = [
-    'lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'
+    'lease', 'warranty', 'insurance', 'utility', 'receipt'
   ];
 
   // Quick questions for chat
@@ -910,11 +910,26 @@ Widget _buildAddMoreButton(String category) {
     }
     
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf'],
+      // Use any-file picker for better cloud provider compatibility (e.g., Google Drive),
+      // then enforce extension checks locally.
+      type: FileType.any,
     );
 
     if (result != null) {
+      final selectedFile = result.files.single;
+      final selectedName = selectedFile.name.toLowerCase();
+      final isAllowed = selectedName.endsWith('.pdf') || selectedName.endsWith('.docx');
+
+      if (!isAllowed) {
+        _showSnackBar('Only PDF and DOCX files are supported.', isError: true);
+        return;
+      }
+
+      if (selectedFile.path == null) {
+        _showSnackBar('Unable to access selected file path.', isError: true);
+        return;
+      }
+
       // ✅ Show loading state
       setState(() {
         _isUploading = true;
@@ -930,7 +945,7 @@ Widget _buildAddMoreButton(String category) {
         await uploadAction(
           propertyId: _selectedPropertyId!,
           category: category,
-          file: File(result.files.single.path!),
+          file: File(selectedFile.path!),
         );
 
         // ✅ Complete progress

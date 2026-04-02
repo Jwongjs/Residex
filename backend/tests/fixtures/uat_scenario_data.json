@@ -1,0 +1,169 @@
+{
+  "meta": {
+    "version": "1.0",
+    "owner": "documind-eval",
+    "categories": ["lease", "warranty", "insurance", "utility", "receipt"]
+  },
+  "properties": [
+    {
+      "property_id": "prop-pine",
+      "property_name": "Pine Residence",
+      "landlord_id": "landlord-1"
+    },
+    {
+      "property_id": "prop-maple",
+      "property_name": "Maple Residency",
+      "landlord_id": "landlord-1"
+    },
+    {
+      "property_id": "prop-oak",
+      "property_name": "Oak Terrace",
+      "landlord_id": "landlord-1"
+    },
+    {
+      "property_id": "prop-birch",
+      "property_name": "Birch Manor",
+      "landlord_id": "landlord-1"
+    },
+    {
+      "property_id": "prop-cedar",
+      "property_name": "Cedar Heights",
+      "landlord_id": "landlord-1"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S01",
+      "name": "Pet policy lookup",
+      "property_id": "prop-pine",
+      "query": "Are pets allowed in my lease?",
+      "documents": ["lease.txt"],
+      "expected_categories": ["lease"],
+      "expected_keywords": ["pet", "approval", "RM 200"],
+      "max_latency_ms": 2000,
+      "requires_citation": true
+    },
+    {
+      "id": "S02",
+      "name": "Late payment dispute",
+      "property_id": "prop-maple",
+      "query": "What does the lease say about late rent payment fees?",
+      "documents": ["lease.txt"],
+      "expected_categories": ["lease"],
+      "expected_keywords": ["late fee", "RM 120", "day 8"],
+      "max_latency_ms": 2000,
+      "requires_citation": true
+    },
+    {
+      "id": "S03",
+      "name": "Warranty claim HVAC",
+      "property_id": "prop-oak",
+      "query": "Is HVAC covered under warranty?",
+      "documents": ["warranty.txt"],
+      "expected_categories": ["warranty"],
+      "expected_keywords": ["HVAC", "covered", "24 months"],
+      "max_latency_ms": 2000,
+      "requires_citation": true
+    },
+    {
+      "id": "S04",
+      "name": "Insurance deductible",
+      "property_id": "prop-birch",
+      "query": "What is my deductible for property damage claims?",
+      "documents": ["insurance.txt"],
+      "expected_categories": ["insurance"],
+      "expected_keywords": ["deductible", "RM 1,500", "property damage"],
+      "max_latency_ms": 2000,
+      "requires_citation": true
+    },
+    {
+      "id": "S05",
+      "name": "Utility billing rate",
+      "property_id": "prop-cedar",
+      "query": "What is the monthly utility rate and meter process?",
+      "documents": ["utility.txt"],
+      "expected_categories": ["utility"],
+      "expected_keywords": ["RM 0.52", "kWh", "meter reading"],
+      "max_latency_ms": 2000,
+      "requires_citation": true
+    },
+    {
+      "id": "S06",
+      "name": "Multi-property consistency",
+      "property_id": "prop-pine",
+      "query": "Are pets allowed?",
+      "documents": ["lease.txt"],
+      "expected_categories": ["lease"],
+      "expected_keywords": ["approval", "pet fee"],
+      "max_latency_ms": 2000,
+      "requires_citation": true
+    },
+    {
+      "id": "S07",
+      "name": "Ambiguous query checkpoint",
+      "property_id": "prop-pine",
+      "query": "What is covered?",
+      "documents": ["lease.txt", "warranty.txt", "insurance.txt"],
+      "expected_categories": ["warranty", "insurance", "lease"],
+      "expected_keywords": ["confirm", "category", "clarify"],
+      "max_latency_ms": 2500,
+      "requires_citation": false
+    },
+    {
+      "id": "S08",
+      "name": "No relevant docs",
+      "property_id": "prop-pine",
+      "query": "What is my HOA agreement?",
+      "documents": ["lease.txt", "warranty.txt"],
+      "expected_categories": [],
+      "expected_keywords": ["did not find", "uploaded documents"],
+      "max_latency_ms": 1500,
+      "requires_citation": false
+    },
+    {
+      "id": "S09",
+      "name": "Receipt vendor and amount lookup",
+      "property_id": "prop-oak",
+      "query": "How much did we pay for HVAC repair and who was the vendor?",
+      "documents": ["receipt.txt"],
+      "expected_categories": ["receipt"],
+      "expected_keywords": ["CoolAir Engineering", "RM 922.20", "HVAC"],
+      "max_latency_ms": 2000,
+      "requires_citation": true
+    },
+    {
+      "id": "S10",
+      "name": "Multi-turn utilities context",
+      "property_id": "prop-pine",
+      "query": "Who pays for water?",
+      "documents": ["lease.txt", "utility.txt"],
+      "expected_categories": ["utility", "lease"],
+      "expected_keywords": ["Tenant", "water", "charges"],
+      "max_latency_ms": 3000,
+      "requires_citation": true
+    },
+    {
+      "id": "S11",
+      "name": "Conflicting clause handling",
+      "property_id": "prop-pine",
+      "query": "Are pets allowed?",
+      "documents": ["lease.txt"],
+      "expected_categories": ["lease"],
+      "expected_keywords": ["pets", "approval"],
+      "max_latency_ms": 2500,
+      "requires_citation": true,
+      "expected_status": "partial"
+    },
+    {
+      "id": "S12",
+      "name": "Deposit return timeline",
+      "property_id": "prop-pine",
+      "query": "When should I return the security deposit and what can be deducted?",
+      "documents": ["lease.txt"],
+      "expected_categories": ["lease"],
+      "expected_keywords": ["30 days", "deductions", "itemized"],
+      "max_latency_ms": 2000,
+      "requires_citation": true
+    }
+  ]
+}

@@ -70,7 +70,6 @@ categories=<comma separated categories>;confidence=<0.0-1.0>;reason=<short reaso
                 "insurance": ["insurance", "policy", "premium", "liability"],
                 "utility": ["utility", "electric", "water", "gas", "bill"],
                 "receipt": ["receipt", "invoice", "payment", "repair", "maintenance"],
-                "other": ["other", "general"],
             }
 
             scored = []

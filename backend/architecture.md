@@ -446,7 +446,7 @@ POST /api/rex/documind/upload
 - `file`: PDF file
 - `landlord_id`: string
 - `property_id`: string
-- `category`: string (e.g., "lease", "warranty", "insurance", "utility", "receipt", "other")
+- `category`: string (e.g., "lease", "warranty", "insurance", "utility", "receipt")
 
 **Response** (`DocUploadResponse`):
 - `doc_id`: string

@@ -46,15 +46,6 @@ This reference lists the supported document categories in DocuMind and common fi
 - Scanned physical receipts (PDF)
 - Excel expense logs with invoice references
 
-## 6) Other Documents (`other`)
-**Purpose**: General property records not fitting the other five categories.
-
-**Common uploaded file forms**:
-- PDF inspection reports, notices, certificates
-- DOCX letters and correspondence
-- Image evidence/photos (JPG/PNG)
-- Spreadsheets/logs (CSV/XLSX)
-
 ---
 
 ## Notes

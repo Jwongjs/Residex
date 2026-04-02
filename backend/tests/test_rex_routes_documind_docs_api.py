@@ -55,6 +55,40 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
 
+    def test_documind_upload_accepts_docx(self):
+        mocked_upload_response = DocUploadResponse(
+            doc_id="doc-456",
+            landlord_id="landlord-1",
+            property_id="property-1",
+            category="lease",
+            filename="lease.docx",
+            status="indexed",
+            chunks_indexed=8,
+        )
+
+        with patch("api.rex_routes.documind_service.ingest_document", new=AsyncMock(return_value=mocked_upload_response)) as mocked_ingest:
+            response = self.client.post(
+                "/api/rex/documind/upload",
+                data={
+                    "landlord_id": "landlord-1",
+                    "property_id": "property-1",
+                    "category": "lease",
+                },
+                files={
+                    "file": (
+                        "lease.docx",
+                        b"PK\x03\x04fake-docx-content",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                },
+            )
+
+            call_kwargs = mocked_ingest.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["doc_id"], "doc-456")
+        self.assertEqual(call_kwargs["file"].filename, "lease.docx")
+
     def test_list_documents_returns_200_and_forwards_filters(self):
         mocked_list_response = DocListResponse(
             documents=[

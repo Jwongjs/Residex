@@ -1,5 +1,110 @@
 # DocuMind — Complete Technical Documentation (Residex)
 
+## 0) Residex Context: The Broader Picture
+
+### What is Residex?
+
+**Residex** is a comprehensive digital operating system for shared living in Malaysia. It's a mobile app (Flutter-based for iOS, Android, and web) that solves three core problems in the shared-living market:
+
+1. **Opaque bill splitting** — Tenants spend hours calculating who owes whom after shared expenses.
+2. **No portable tenant reputation** — There's no record of a tenant's payment history or conduct when moving between properties.
+3. **Landlords juggling multiple tools** — Landlords manage documents, maintenance requests, finances, tenant relationships, and portfolios across disconnected systems.
+
+### The Two User Roles
+
+Residex serves **two distinct personas** with separate but integrated UIs:
+
+- **Tenants**: Manage bills (split/pay), track roommate relationships, gamified "honor scores," maintenance requests, and personal financial dashboards.
+- **Landlords**: Manage property portfolios, tenant relationships, document archives, AI-powered document Q&A (DocuMind), AI-powered lease generation, maintenance oversight, financial reporting, and community engagement.
+
+### The Residex Ecosystem at a Glance
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    RESIDEX APP (Flutter)                    │
+├─────────────────────────────────┬───────────────────────────┤
+│   TENANT INTERFACE              │   LANDLORD INTERFACE      │
+├─────────────────────────────────┼───────────────────────────┤
+│ • Bill Dashboard & Splitter     │ • Property Portfolio      │
+│ • Bill Payments                 │ • Finance Reporting       │
+│ • Fiscal & Honor Scores         │ • Maintenance Tickets     │
+│ • Maintenance Requests          │ • REX AI Hub              │
+│ • Community & Gamification      │ • Community Management    │
+│ • Chores & Schedules            │ • Tenant Insights         │
+└─────────────────────────────────┴───────────────────────────┘
+                            ↓
+        ┌───────────────────────────────────────┐
+        │   BACKEND (Python FastAPI)            │
+        │   ┌─────────────────────────────────┐ │
+        │   │  DocuMind RAG Service           │ │ ← **YOU ARE HERE**
+        │   │  - PDF ingestion & vectorization
+        │   │  - Multi-turn Q&A orchestration │ │
+        │   │  - Category-aware retrieval     │ │
+        │   │  - Session memory              │ │
+        │   └─────────────────────────────────┘ │
+        │   ┌─────────────────────────────────┐ │
+        │   │  Other Services                 │ │
+        │   │  - Auth & User Management       │ │
+        │   │  - Bill Calculations            │ │
+        │   │  - Lease Generation             │ │
+        │   │  - Maintenance AI               │ │
+        │   └─────────────────────────────────┘ │
+        └───────────────────────────────────────┘
+                            ↓
+        ┌───────────────────────────────────────┐
+        │   DATA LAYER                          │
+        │   - Firestore (sessions, metadata)    │
+        │   - Firestore Vector Search (chunks)  │
+        │   - Gemini Embeddings & LLM           │
+        └───────────────────────────────────────┘
+```
+
+### Where Does DocuMind Fit?
+
+**DocuMind is the landlord's AI-powered document intelligence layer.** Landlords in Malaysia deal with dense, multi-document workflows:
+
+- **Tenancy agreements** with varying expiry dates and clauses across multiple properties.
+- **Warranty documents** covering appliances, each with different claim procedures.
+- **Insurance policies** with buried coverage clauses and deductible terms.
+- **Utility contracts and bills** scattered across months and properties.
+- **Maintenance receipts and invoices** that need to be aggregated for tax/financial reporting.
+
+**Without DocuMind:** A landlord looking up "Does my lease allow pets?" or "Is the washing machine still under warranty?" has to manually hunt through PDFs using Ctrl+F, often at time-critical moments (tenancy disputes, maintenance emergencies).
+
+**With DocuMind:** A landlord uploads their documents once (categorized), then queries them conversationally:
+- *"What does the lease say about pet policies?"* → DocuMind retrieves the exact clause with citation.
+- *"Is the washing machine covered?"* → DocuMind checks the warranty document and summarizes coverage.
+- *"How much have I spent on repairs this year?"* → DocuMind aggregates receipts and provides a summary.
+
+### DocuMind's Role in the REX Hub
+
+DocuMind is housed in the **REX AI Hub** — the landlord's dedicated AI assistant module in Residex. REX extends beyond documents to include:
+
+- **DocuMind**: Document Q&A with RAG retrieval (this system).
+- **Lease Generator**: AI-assisted lease agreement creation.
+- **Maintenance AI**: Intelligent maintenance ticket routing and prediction.
+- **Revenue Analytics**: AI-driven financial insights and trend detection.
+
+### Technical Position
+
+DocuMind is the **backend RAG service** that processes:
+1. **Landlord uploads** → PDF ingestion, chunking, embedding, and Firestore storage.
+2. **Landlord questions** → Intent routing, category prediction, vector retrieval, and LLM synthesis.
+3. **Multi-turn sessions** → Stateful conversation memory with checkpoint confirmations.
+
+It integrates with the Flutter landlord UI through a **structured REST API** that handles document management (upload/list/delete) and conversational Q&A.
+
+### Key Differentiator: Orchestration + Safety
+
+Unlike generic document chatbots, DocuMind adds **orchestration layer** safeguards:
+- When a question is ambiguous (e.g., spans multiple document categories), DocuMind asks the landlord to clarify before retrieving, avoiding wrong answers.
+- Landlords can explicitly confirm category selections or override predictions.
+- Session memory tracks conversation history so multi-turn workflows feel natural.
+
+This is production-grade RAG, not a quick LLM wrapper.
+
+---
+
 ## 1) Executive Summary
 
 DocuMind is an AI-powered, landlord-facing document intelligence system for property operations. It supports:
@@ -14,7 +119,67 @@ DocuMind is implemented as an applied AI system (not just a single LLM call): it
 
 ---
 
-## 2) Product Purpose and Scope
+## 1.5) Architectural Update — Q1 2026 (LangGraph + Firestore Sessions)
+
+### Major Structural Changes
+
+As of March 2026, DocuMind transitioned to a **LangGraph-orchestrated, multi-turn flow** with **Firestore-backed conversation memory**, replacing the previous in-memory state management.
+
+#### Four-Stage Architecture
+
+1. **Intent Gate**
+   - Uses `conversation_router` (LangChain-based) instead of hardcoded keyword matching.
+   - Handles open-ended conversational chat until document intent is detected.
+   - Triggers RAG flow only when `rag_needed=true`.
+   - Provides safe fallback for non-document queries without exposing document corpus.
+
+2. **Category Prediction + Confirmation Checkpoint**
+   - For valid document questions without explicit categories, `category_predictor` infers 1–2 likely categories.
+   - Returns `user_action_required=true` with predicted options.
+   - Requires explicit user confirmation, override, or cancellation before retrieval.
+   - Prevents wrong-category mismatches from producing incorrect answers.
+
+3. **Session Memory Layer**
+   - `documind_sessions` collection in Firestore stores:
+     - Conversation turn history (append-only log)
+     - Pending confirmation state (checkpoint checkouts)
+     - Session TTL + last activity tracking
+   - Supports continuation using `session_id` and `user_action` in follow-up requests.
+   - Isolated per landlord + property scope for data safety.
+
+4. **LangGraph State Machine Orchestration**
+   - `graph_orchestrator.py` defines unified routing and decision nodes.
+   - Transitions: `route_conversation` → `respond_conversation` / `predict_categories` → `decide_action` → `prepare_confirmation/cancel/retrieve`.
+   - Supports explicit checkpoints (`confirm`, `cancel`, `override:<category>`) as first-class state transitions.
+
+#### Backward Compatibility
+
+- Existing API endpoints remain unchanged (`POST /api/rex/documind/ask`, etc.).
+- `AskRequest`/`AskResponse` models include optional orchestration fields:
+  - `session_id` (optional request/response)
+  - `user_action` (optional request: `confirm`, `cancel`, `override:<category>`)
+  - `user_action_required` (optional response: signals checkpoint)
+  - `predicted_categories`, `clarification_prompt`, `clarification_options` (response fields)
+- Clients that don't use session management or multi-turn flows continue to work unchanged.
+
+#### New Backend Components
+
+| File | Purpose |
+|------|---------|
+| `rag/graph_orchestrator.py` | LangGraph state machine for intent classification, prediction, confirmation routing, and retrieval branching. |
+| `rag/conversation_router.py` | LangChain-based conversational router that detects document intent vs. open chat; provides `rag_needed` signal. |
+| `rag/category_predictor.py` | LangChain-based category inference from question + available categories; outputs structured prediction with confidence. |
+| `rag/conversation_store.py` | Firestore session persistence layer: `get_or_create_session`, `append_turn`, `set_pending_confirmation`, etc. |
+| `rag/documind_service.py` (updated) | Replaced in-memory confirmation flow with orchestrated graph flow; now calls `graph_orchestrator` for routing. |
+| `models/documind_models.py` (updated) | Added optional fields for `AskRequest`/`AskResponse` to support session IDs, user actions, and predicted categories. |
+
+#### Updated Dependencies
+
+- `requirements.txt` now includes `langgraph` for state machine orchestration.
+
+---
+
+## 2) Product Purpose and Scope (DocuMind Specifics)
 
 ### Primary users
 - Landlords managing documents for one or more properties.
@@ -39,7 +204,7 @@ DocuMind is implemented as an applied AI system (not just a single LLM call): it
 
 ---
 
-## 3) Tech Stack
+## 3) Tech Stack (DocuMind)
 
 ## Backend
 - **FastAPI**: HTTP API framework
@@ -520,7 +685,71 @@ When discussing DocuMind in interviews:
 
 ---
 
-## 24) Final Assessment
+## 24) Justification 
+
+This is one of the most important parts to explain clearly, because a RAG system is only as strong as the problem it solves. The use case is strong; it just needs to be framed precisely.
+
+### Framing to Avoid
+
+Do not present this as "a chatbot that answers questions about documents." That sounds like a glorified search bar.
+
+The real value is removing a high-friction workflow that landlords repeatedly face under time pressure.
+
+### Core Justification
+
+A landlord managing even 2-3 properties accumulates many documents across categories:
+
+- Tenancy agreements with different expiry dates and clauses
+- Appliance warranties with different claim procedures
+- Insurance policies with different limits and exclusions
+- Utility bills across months
+- Maintenance receipts and invoices
+
+When something urgent happens at 11pm on a Sunday, the landlord does not want to open 6 PDFs and run Ctrl+F repeatedly. They want one grounded answer immediately.
+
+### Concrete Interview Scenarios
+
+- Tenancy disputes:
+"My tenant says the agreement allows pets. Does it?"
+The landlord needs the exact clause fast, not a 20-minute document hunt. DocuMind retrieves and cites the relevant section.
+
+- Warranty claims:
+"The washing machine broke. Is it still under warranty, and what is the claim procedure?"
+Without DocuMind, the landlord manually checks expiry details and claim terms. With DocuMind, the answer is retrieved in one query.
+
+- Insurance queries:
+"Does my policy cover water damage from a burst pipe?"
+Insurance documents are dense. The landlord should not need to read 40 pages for a yes/no with conditions.
+
+- Financial tracking:
+"How much have I spent on repairs for this property this year?"
+Costs are spread across receipts and invoices. DocuMind helps summarize across the receipts category.
+
+- Tenant onboarding:
+"What is the notice period if I need to terminate early?"
+New landlords often do not memorize all lease clauses across properties.
+
+### Strong One-Liner
+
+"The problem is not that landlords do not have their documents. The problem is that documents are not useful when you cannot query them under time pressure. A tenancy dispute or maintenance emergency does not wait for manual PDF search."
+
+### If Interviewers Ask "Why not Ctrl+F or ChatGPT with one PDF?"
+
+- Ctrl+F assumes you already know which document to open and what exact keyword to search.
+- It breaks down across multiple documents and categories.
+- Generic chat with a single uploaded PDF has no persistent portfolio context, no category-aware routing, and often no structured citation trace.
+
+DocuMind maintains property-scoped context, routes queries to likely categories, and returns grounded answers with citations.
+
+### Honest Limitation and Forward Path
+
+One real friction point is that landlords currently need to upload and categorize documents first.
+
+A strong roadmap statement is:
+"The next evolution is automatic document classification on upload, so landlords can drop a file and let the system categorize it."
+
+
+## 25) Final Assessment
 
 DocuMind is a credible applied AI engineering project with meaningful architectural depth:
 
