@@ -368,3 +368,70 @@ Your proposed stack is **production-ready and superior** to alternatives. Here's
 - r/LocalLLaMA (RAG discussions)
 - Google Cloud Community Slack
 - LangChain Discord
+
+
+
+┌─────────────────┐
+│  Flutter Screen │ (ConsumerStatefulWidget)
+└────────┬────────┘
+         │ ref.watch(
+         │ askDocuMindQuestionActionProvider)
+         ↓
+┌─────────────────────────┐
+│   Riverpod Providers    │ (dependency injection)
+│ (documind_provider.dart)│
+└─────────┬───────────────┘
+          │ loads providers chain
+          ↓
+┌──────────────────────────────┐
+│  UseCase Layer (Domain)      │ (AskDocuMindQuestion)
+│ - Validates inputs           │
+│ - Calls repository method    │
+└─────────┬────────────────────┘
+          │ delegates to
+          ↓
+┌──────────────────────────────┐
+│  Repository (Domain)         │ (DocuMindRepository interface)
+│ - Abstract contract          │
+└──┬──────────────────────────┬┘
+   │ implemented by           │
+   ↓                          
+┌──────────────────────────────┐
+│ RepositoryImpl (Data Layer)   │ (DocuMindRepositoryImpl)
+│ - Delegates to datasource    │
+└─────────┬────────────────────┘
+          │
+          ↓
+┌──────────────────────────────┐
+│ RemoteDataSource (Data)      │ (DocuMindRemoteDataSource)
+│ - HTTP POST to backend       │
+└─────────┬────────────────────┘
+          │
+          ↓
+┌──────────────────────────────┐
+│  FastAPI Backend             │ (documind_service.py)
+│  /documind/ask               │
+│  - Orchestrates LangGraph    │
+│  - Retrieves documents       │
+│  - Returns AskResponse (JSON)│
+└─────────┬────────────────────┘
+          │ JSON response
+          ↓
+┌──────────────────────────────┐
+│ DTO Model (Data Layer)       │ (DocuMindAnswerModel.fromJson)
+│ - Deserializes JSON          │
+└─────────┬────────────────────┘
+          │ toEntity()
+          ↓
+┌──────────────────────────────┐
+│ Domain Entity (Domain)       │ (DocuMindAnswer)
+│ - Pure Dart object           │
+└─────────┬────────────────────┘
+          │ returned to useCase
+          ↓
+┌──────────────────────────────┐
+│ Riverpod Notifies Widget     │
+│ - Rebuild triggered          │
+│ - Chat renders answer        │
+│ - Citations displayed        │
+└──────────────────────────────┘

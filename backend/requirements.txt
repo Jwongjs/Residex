@@ -24,6 +24,7 @@ langgraph
 
 # Document Processing
 pypdf
+docx2txt
 
 # Utilities
 python-dotenv
