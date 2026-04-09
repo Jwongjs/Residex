@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()  
 
 # LangChain core
-from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Gemini embeddings & LLM
@@ -28,7 +28,6 @@ from rag.graph_orchestrator import DocuMindGraphOrchestrator
 
 EMBED_DIM = 768 # Default to 768 if not set
 ALLOWED_CATEGORIES = {"lease", "warranty", "insurance", "utility", "receipt"}
-ALLOWED_DOC_EXTENSIONS = {".pdf", ".docx"}
 CATEGORY_KEYWORDS = {
     "lease": [
         "lease", "tenancy", "tenant", "rent", "rental", "deposit", "landlord", "agreement", "renewal", "termination"
@@ -213,21 +212,14 @@ class DocuMindService:
         temp_dir = tempfile.gettempdir()
         temp_path = os.path.join(temp_dir, f"{doc_id}_{file.filename}")
         try:
-            _, extension = os.path.splitext((file.filename or "").lower())
-            if extension not in ALLOWED_DOC_EXTENSIONS:
-                raise ValueError("Unsupported document format. Only .pdf and .docx are allowed.")
-
             with open(temp_path, "wb") as f:
                 content = await file.read()
                 f.write(content)
             
             print(f"📄 Saved temp file: {temp_path}")
             
-            # Step 2: Load document and extract text
-            if extension == ".pdf":
-                loader = PyPDFLoader(temp_path)
-            else:
-                loader = Docx2txtLoader(temp_path)
+            # Step 2: Load PDF and extract text
+            loader = PyPDFLoader(temp_path)
             pages = loader.load()
             
             # Step 3: Chunk text
@@ -254,6 +246,7 @@ class DocuMindService:
                         'chunk_index': i,
                         'text': chunk.page_content,
                         'embedding': Vector(embedding),
+                        # ✅ FIXED: Ensure page is always an integer (never None)
                         'page': chunk.metadata.get('page', 0) if chunk.metadata.get('page') is not None else 0,
                         'created_at': firestore.SERVER_TIMESTAMP,
                     }

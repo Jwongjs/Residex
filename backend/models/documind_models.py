@@ -22,7 +22,7 @@ class AskRequest(BaseModel):
     top_k: int = Field(default=4, ge=1, le=10, description="Number of chunks to retrieve")
     categories: Optional[List[str]] = Field(
         default=None,
-        description="Optional category filters: lease, warranty, insurance, utility, receipt"
+        description="Optional category filters: lease, warranty, insurance, utility, receipt, other"
     )
     session_id: Optional[str] = Field(
         default=None,
@@ -100,7 +100,7 @@ class DocumentInfo(BaseModel):
     doc_id: str
     landlord_id: str
     property_id: str
-    category: str  # 'lease', 'warranty', 'insurance', 'utility', 'receipt'
+    category: str  # 'lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'
     filename: str
     uploaded_at: datetime
     chunks_indexed: int

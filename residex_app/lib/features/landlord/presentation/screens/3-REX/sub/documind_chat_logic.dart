@@ -1,5 +1,15 @@
 import '../../../../domain/entities/documind_document.dart';
 
+bool _hasSourcesSection(String text) {
+  final normalized = text.trim();
+  if (normalized.isEmpty) {
+    return false;
+  }
+
+  return RegExp(r'(^|\n)\s*(📚\s*)?sources\s*:', caseSensitive: false)
+      .hasMatch(normalized);
+}
+
 String? mapDocuMindUserAction({
   required bool awaitingUserAction,
   required String messageText,
@@ -70,7 +80,7 @@ String buildDocuMindAssistantText({
     responseText += '\n\n🏷️ Categories: $displayCategories ($modeLabel)';
   }
 
-  if (answer.citations.isNotEmpty) {
+  if (answer.citations.isNotEmpty && !_hasSourcesSection(responseText)) {
     responseText += '\n\n📚 Sources:\n';
     for (final cite in answer.citations.take(3)) {
       responseText += '• [${cite.category.toUpperCase()}] ${cite.filename} (page ${cite.page ?? 'N/A'})\n';

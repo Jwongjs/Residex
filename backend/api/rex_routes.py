@@ -23,10 +23,9 @@ async def documind_upload(
     file: UploadFile = File(...)
 ):
     """
-    Upload a document for a property.
+    Upload a PDF document for a property.
     
-    Allowed file formats: .pdf, .docx
-    Category options: 'lease', 'warranty', 'insurance', 'utility', 'receipt'
+    Category options: 'lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'
     """
     return await documind_service.ingest_document(
         landlord_id=landlord_id,
