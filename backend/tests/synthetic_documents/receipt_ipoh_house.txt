@@ -1,0 +1,43 @@
+TAX INVOICE / PAYMENT RECEIPT
+Vendor: Chemor Home Services Sdn Bhd
+SSM No: 202101998877
+Invoice No: CHS-INV-2026-0521
+Receipt ID: RCPT-IPH-2026-0521
+Service Date: 2026-05-21
+Property: 1 Curve, Jalan Chemor, Bandar Baru Sri Klebang, 31200 Ipoh, Perak, Malaysia (Type: House)
+Purchase Price Reference: RM 350,000
+
+BILL TO
+Landlord One Sdn Bhd
+Finance Department
+
+WORK ORDER SUMMARY
+Service Request No: MNT-IPH-2026-0019
+Issue Reported: Roof seepage near upstairs corridor and ceiling stain
+Technician: Hafiz Jamal
+
+LINE ITEMS
+1) Roof waterproofing treatment and sealant repair
+	Quantity: 1
+	Parts Cost: RM 640.00
+	Labor Cost: RM 320.00
+
+2) Ceiling patch and repaint (affected section)
+	Quantity: 1
+	Parts Cost: RM 180.00
+	Labor Cost: RM 140.00
+
+FINANCIAL SUMMARY
+Subtotal: RM 1,280.00
+SST (6%): RM 76.80
+Grand Total: RM 1,356.80
+
+PAYMENT DETAILS
+Payment Method: Bank Transfer
+Payment Date: 2026-05-24
+Reference: IBG-99271863
+Payment Status: Paid in Full
+
+WARRANTY ON WORKMANSHIP
+Labor workmanship warranty: 30 days from service date.
+Parts warranty subject to manufacturer terms and exclusions.

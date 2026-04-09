@@ -1,0 +1,42 @@
+TAX INVOICE / PAYMENT RECEIPT
+Vendor: BuildRight Construction & Repairs
+SSM No: 201902567890
+Invoice No: BR-INV-2026-0418
+Receipt ID: RCPT-2026-0418
+Service Date: 2026-04-18
+Property: Damai Residence, Unit 1 (Apartment), Jalan Damai, Keramat, W.P. Kuala Lumpur, Malaysia
+
+BILL TO
+Landlord One Sdn Bhd
+Finance Department
+
+WORK ORDER SUMMARY
+Service Request No: MNT-OAK-2026-0052
+Issue Reported: Ceiling seepage and water stain damage from roof leak
+Technician: Rahman Zakaria
+
+LINE ITEMS
+1) Ceiling patch and plaster repair
+	Area: 2.5 sqm
+	Materials: RM 35.00
+	Labor: RM 85.00
+
+2) Surface primer and finishing paint
+	Area: 2.5 sqm
+	Paint & Materials: RM 28.80
+	Labor: RM 8.00
+
+FINANCIAL SUMMARY
+Subtotal: RM 156.80
+SST (6%): RM 9.41
+Grand Total: RM 166.21
+
+PAYMENT DETAILS
+Payment Method: Bank Transfer
+Payment Date: 2026-04-22
+Reference: IBG-88503294
+Payment Status: Paid in Full
+
+WARRANTY ON WORKMANSHIP
+Labor workmanship warranty: 6 months from service date.
+Paint warranty subject to manufacturer terms and exclusions.
