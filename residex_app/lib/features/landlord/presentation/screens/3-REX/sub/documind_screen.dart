@@ -1153,7 +1153,6 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
                             borderSide: BorderSide.none,
                           ),
                         ),
-                        // ✅ IMPROVED: Better contrast for send button
                         sendButtonBuilder: (send) => GestureDetector(
                           onTap: send,
                           child: Container(
@@ -1181,8 +1180,6 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
             ),
           ],
         ),
-
-        // ✅ Centered quick questions (empty state)
         if (showEmptyPrompt)
           _buildCenteredQuickQuestions(),
       ],

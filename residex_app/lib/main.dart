@@ -2,19 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'core/di/injection.dart';
 import 'data/database/app_database.dart';
-import 'features/shared/data/repositories/users/user_repository_impl.dart';
-import 'features/shared/data/repositories/groups/group_repository_impl.dart';
-import 'features/tenant/data/repositories/bills/bill_repository_impl.dart';
-import 'features/shared/data/repositories/users/user_local_datasource.dart';
-import 'features/shared/data/datasources/groups/group_local_datasource.dart';
-import 'features/tenant/data/datasources/bills/bill_local_datasource.dart';
-import 'features/tenant/data/datasources/bills/mock_bills_data.dart';
-import 'features/shared/domain/entities/users/app_user.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'firebase_options.dart';
@@ -73,29 +64,7 @@ import 'firebase_options.dart';
     // Initialize database
     final database = AppDatabase();
 
-    // Seed demo data on first launch
-    final prefs = await SharedPreferences.getInstance();
-    final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
-
-    if (isFirstLaunch) {
-      debugPrint('First launch detected - seeding demo data...');
-
-      final seeder = DemoDataSeeder(
-        userRepository: UserRepositoryImpl(
-          localDataSource: UserLocalDataSource(database),
-        ),
-        groupRepository: GroupRepositoryImpl(
-          localDataSource: GroupLocalDataSource(database),
-        ),
-        billRepository: BillRepositoryImpl(
-          localDataSource: BillLocalDataSource(database),
-        ),
-      );
-
-      await seeder.seedAll();
-      await prefs.setBool('is_first_launch', false);
-      debugPrint('Demo data seeded successfully!');
-    }
+    // Demo data seeding disabled after tenant feature removal
 
     runApp(
       ProviderScope(
@@ -122,81 +91,3 @@ import 'firebase_options.dart';
     }
   }
 
-  class DemoDataSeeder {
-    final UserRepositoryImpl userRepository;
-    final GroupRepositoryImpl groupRepository;
-    final BillRepositoryImpl billRepository;
-
-    DemoDataSeeder({
-      required this.userRepository,
-      required this.groupRepository,
-      required this.billRepository,
-    });
-
-    Future<void> seedAll() async {
-      try {
-        // 1. Seed Users
-        await _seedUsers();
-
-        // 2. Seed Bills from MockBillsData
-        await _seedBills();
-
-        debugPrint('✅ All demo data seeded successfully');
-      } catch (e, stack) {
-        debugPrint('❌ Error seeding demo data: $e');
-        debugPrint('Stack trace: $stack');
-      }
-    }
-
-    Future<void> _seedUsers() async {
-      final users = [
-        AppUser(
-          id: MockBillsData.currentUserId,
-          name: 'You',
-          email: 'you@residex.com',
-          avatarInitials: 'Y',
-          role: UserRole.tenant,
-          fiscalScore: 850,
-        
-        ),
-        AppUser(
-          id: MockBillsData.roommateId1,
-          name: 'Sarah Lee',
-          email: 'sarah@residex.com',
-          avatarInitials: 'S',
-          role: UserRole.tenant,
-          fiscalScore: 720,
-          
-        ),
-        AppUser(
-          id: MockBillsData.roommateId2,
-          name: 'Ahmad Rahman',
-          email: 'ahmad@residex.com',
-          avatarInitials: 'A',
-          role: UserRole.tenant,
-          fiscalScore: 680,
-          
-        ),
-      ];
-
-      for (final user in users) {
-        final result = await userRepository.addUser(user);
-        result.fold(
-          (failure) => debugPrint('Failed to create user ${user.name}: $failure'),
-          (success) => debugPrint('✅ Created user: ${user.name}'),
-        );
-      }
-    }
-
-    Future<void> _seedBills() async {
-      final mockBills = MockBillsData.getMockBills();
-
-      for (final bill in mockBills) {
-        final result = await billRepository.saveBill(bill);
-        result.fold(
-          (failure) => debugPrint('Failed to create bill ${bill.title}: $failure'),
-          (createdBill) => debugPrint('✅ Created bill: ${bill.title}'),
-        );
-      }
-    }
-  }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../widgets/common/stat_card.dart';
 import '../../widgets/common/progress_bar.dart';
 import '../../providers/landlord_command_provider.dart';
+import '../../../../shared/presentation/providers/auth_providers.dart';
 import 'sub/landlord_system_health_screen.dart';
 import 'sub/landlord_maintenance_screen.dart';
 
@@ -52,7 +54,7 @@ class LandlordCommandScreen extends ConsumerWidget {
               slivers: [
                 // Header
                 SliverToBoxAdapter(
-                  child: _buildHeader(context),
+                  child: _buildHeader(context, ref),
                 ),
 
                 // Content
@@ -167,7 +169,7 @@ class LandlordCommandScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
       child: Column(
@@ -294,6 +296,60 @@ class LandlordCommandScreen extends ConsumerWidget {
                   Icons.notifications_outlined,
                   color: AppColors.textSecondary,
                   size: 18,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: AppColors.surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      title: Text(
+                        'Sign Out',
+                        style: TextStyle(color: AppColors.textPrimary),
+                      ),
+                      content: Text(
+                        'Are you sure you want to sign out?',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: Text('Cancel',
+                              style: TextStyle(color: AppColors.textSecondary)),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Sign Out',
+                              style: TextStyle(color: Colors.redAccent)),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true && context.mounted) {
+                    await ref.read(authControllerProvider).signOut();
+                    if (context.mounted) context.go('/login');
+                  }
+                },
+                child: Container(
+                  height: 40,
+                  width: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.red.withOpacity(0.2),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.logout,
+                    color: Colors.redAccent,
+                    size: 18,
+                  ),
                 ),
               ),
             ],
