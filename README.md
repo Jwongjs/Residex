@@ -1,9 +1,17 @@
-# Residex — The Shared Living Operating System
+# Residex — Landlord Property Management OS
 # Link for questionnaire responses collected: https://docs.google.com/spreadsheets/d/10jeovxl1__syRfBeqFp_1-RYJFhZuR7U/edit?usp=sharing&ouid=114163723031397476054&rtpof=true&sd=true
 #Link for PowerPoint Presentation File: https://docs.google.com/presentation/d/1r5MoE1Z7d-xt2aSQY3yknFRID-aDd5Mr/edit?usp=sharing&ouid=114163723031397476054&rtpof=true&sd=true
 
-> **KitaHack 2026** · SDG 11: Sustainable Cities and Communities
-> A full-stack Flutter app that digitises, gamifies, and AI-powers the entire shared-living lifecycle for tenants and landlords in Malaysia.
+> **Landlord-Only Scope** — Property Management Operating System
+> A full-stack Flutter app for landlords to manage properties, authenticate securely, and use AI-powered document Q&A.
+
+---
+
+## Features
+
+- **DocuMind RAG** — AI-powered document Q&A for leases, warranties, insurance, utilities, receipts
+- **Property Management** — View, create, update properties; track documents per property
+- **Authentication** — Secure login/registration for landlords
 
 ---
 
@@ -32,19 +40,19 @@
 
 ## 1. Project Overview
 
-Residex solves three root problems of the Malaysian shared-living market:
+Residex (landlord scope) is a property management operating system that enables landlords to:
 
-| Problem | Who it Affects | Residex Solution |
+| Feature | Capability | Implementation |
 |---|---|---|
-| Opaque, manual bill splitting | Tenants | AI-powered bill splitter with receipt scanning |
-| No portable tenant reputation | Tenants & Landlords | Dual Score System (Fiscal + Honor) |
-| Landlords juggling multiple tools | Landlords | Unified portfolio command centre |
+| **DocuMind RAG** | AI-powered Q&A over property documents (leases, warranties, insurance, utilities, receipts) | FastAPI + Firestore Vector Search + Gemini |
+| **Property Management** | Create, view, update rental properties and manage associated documents | Firebase Firestore + Flutter UI |
+| **Authentication** | Secure landlord login and registration | Firebase Auth |
 
 **Platform:** Flutter (iOS + Android + Web)
-**Status:** ~96% complete — 59 screens · 62+ widgets · 50+ routes
-**Roles:** Tenant · Landlord (separate UI, shared codebase)
+**Status:** Active development — Core landlord features
+**Architecture:** Clean Architecture (Domain-Driven) with Riverpod state management
 
-**Flagship intelligence layer:** **DocuMind RAG** (FastAPI + Firestore Vector Search + Gemini + LangGraph orchestration) for landlord document Q&A with citations, category-aware retrieval, and multi-turn clarification.
+**Flagship intelligence layer:** **DocuMind RAG** (FastAPI + Firestore Vector Search + Gemini + LangGraph orchestration) provides landlords with AI-powered document Q&A including citations, category-aware retrieval, and multi-turn conversation support.
 
 ---
 
@@ -492,140 +500,50 @@ CustomTransitionPage(
 
 ### 3.2 Feature Modules
 
-#### Tenant Features (26 screens)
+#### Landlord Features
 
-**Bill Splitter**
-- `BillDashboardScreen` — Ledger view: You Owe / Owed To You / All Bills
-- `BillSummaryScreen` — Per-bill breakdown with animated donut chart, participant payment rings
-- `YouOweScreen / OwedToYouScreen / GroupBillsScreen` — Filtered bill views
-- Receipt scanning via `camera` → Gemini Vision extracts line items
-- Split algorithms: equal · proportional · per-item assignment
-- Payment status tracking: pending → paid → overdue
+**DocuMind RAG**
+- `DocuMindScreen` — Document management + AI Q&A with citations
+  - Upload PDFs (leases, warranties, insurance, utilities, receipts)
+  - Category-aware document retrieval (6 categories)
+  - Multi-turn conversation with session memory
+  - Citation panel with source documents and page numbers
+  - File picker integration
 
-**Chore Scheduler**
-- `ChoreSchedulerScreen` — `table_calendar` weekly view with rotation assignments
-- Per-chore completion tracking, automated rotation logic
-- Honor score integration (completing chores earns Honor XP)
+**Property Management**
+- `LandlordPortfolioScreen` — Property listings with CRUD
+  - Create, view, update, delete properties
+  - Property editor modal (712 lines)
+  - Track documents per property
+  - Property metadata (location, units, documents)
 
-**AI Tools (4 screens)**
-
-| Screen | AI Model | Function |
-|---|---|---|
-| `RexInterfaceScreen` | Gemini Chat | Tenant assistant — lease rights, bill disputes, maintenance advice |
-| `LeaseSentinelScreen` | Gemini Chat | Lease agreement clause analyser — flags unfair terms |
-| `LazyLoggerScreen` | Gemini Vision | Document evidence logger — auto-tags and categorises uploads |
-| `FairFixAuditorScreen` | Gemini Vision | Move-in/out property comparison — baseline vs current photo diff |
-
-**Move-In Session (3-layer sensor protocol)**
-- `MoveInSessionScreen` — 3-layer onboarding:
-  - Layer 1: Magnetometer sweep (anomaly detection via `sensors_plus`)
-  - Layer 2: Baseline photo capture per room area (7 areas)
-  - Layer 3: Wi-Fi environment fingerprint (`network_info_plus`)
-- `GhostOverlayScreen` — Transparent AR-style overlay for move-out comparison
-- `StewardshipProtocolScreen` — K-OS conflict engine (4-phase: nudge → cooldown → 3-strike → tribunal)
-
-**Reputation & Gamification**
-- `ScoreDetailScreen` — Fiscal Score breakdown (payment punctuality 40% · consistency 25% · fairness 20% · method 10% · trend 5%)
-- `HonorHistoryScreen` — 5-tier honor progression with badge milestones
-- `GamificationHubScreen` — Achievements, trophies, confetti unlock animations
-- `RentalResumeScreen` — Portable reputation card (shareable PDF)
-
-**Sync Hub (Jarvis-style AI Interface)**
-- `SyncHubScreen` — Central animated hub featuring:
-  - `ResidexLogo` (110px, animated, `SyncState.synced` glow)
-  - 3 rotating rings: 260px/20s CW · 200px/15s CCW · 140px pulsing
-  - 200-particle orbital field (60s AnimationController)
-  - Voice activation via `speech_to_text`
-  - REX AI quick-launch
-
-**Toolkit**
-- `LiquidityScreen` — Cash flow projection tool
-- `HarmonyHubScreen` — Conflict resolution framework
-- `CreditBridgeScreen` — Rent advance options
-- `PropertyPulseDetailScreen` — Property health metrics (tenant view)
-- `RulebookScreen` — House rules digital copy
-- `SupportCenterScreen` — FAQ, direct landlord contact, escalation
-
----
-
-#### Landlord Features (21 screens)
-
-**Command (Dashboard)**
-- `LandlordCommandScreen` (1,140 lines) — Stat cards, maintenance backlog, system health summary with `flutter_animate` entrance sequences
-- `LandlordSystemHealthScreen` — Occupancy %, maintenance SLA compliance, tenant satisfaction index
-- `LandlordMaintenanceScreen` — Maintenance request queue by urgency
-- `MaintenanceTicketDetailScreen` — Per-ticket SLA tracking, status updates
-
-**Finance**
-- `LandlordFinanceScreen` (918 lines) — Revenue dashboard: hero financial card, custom revenue chart (CustomPainter), expense breakdown with progress bars
-
-**REX AI (5 screens)**
-- `RexAIMainMenuScreen` — Sync hub aesthetic: ResidexLogo centre + animated rings + 4 function cards
-- `LandlordRexAIScreen` — Chat interface (streaming, landlord system prompt: lease drafting, screening, conflict resolution)
-- `RevenueAnalyticsScreen` — Financial projections, AI predictions, property revenue breakdown (custom line chart replacing `fl_chart`)
-- `MaintenanceAIScreen` — Predictive maintenance: health score arc (CustomPainter pulse), failure probability bars
-- `LeaseGeneratorScreen` — AI-assisted tenancy agreement generation (Malaysian law)
-- `DocuMindScreen` — Document management + AI Q&A (custom chat UI, 6 categories, `file_picker`)
-
-**Portfolio**
-- `LandlordPortfolioScreen` (796 lines) — Property listings, CRUD modals
-- Property editor/action/delete/duplicate modals (712-line editor)
-- `TenantListScreen` — Tenant roster with honor scores
-- `TenantScoreDetailScreen` — Individual tenant reputation
-
-**Community**
-- `LandlordCommunityScreen` — Announcement board, FEED/EVENTS/MARKET tabs, engagement summary
-
----
-
-#### Shared Features (11 screens)
-
-- Auth: `NewSplashScreen` (spring diamond animation), `LoginScreen`, `RegisterScreen`
-- `CommunityBoardScreen` — Social board with post reactions, comments, FEED/EVENTS/MARKET tabs
-- `GamificationHubScreen` — Achievement system
-- Maintenance: `CreateTicketScreen`, `MaintenanceListScreen`, `TicketDetailScreen`
-- User: `ProfileScreen`, `ProfileEditorScreen`
+**Authentication & User**
+- `NewSplashScreen` — Animated splash with spring diamond animation
+- `LoginScreen` — Email/password + Google Sign-In
+- `RegisterScreen` — Landlord registration
+- `ProfileScreen` — User profile management
 
 ### 3.3 AI Integration — Gemini 2.5 Flash + DocuMind RAG
 
-**3 distinct model instances** in `GeminiService`:
+**DocuMind uses Gemini 2.5 Flash for synthesis:**
 
 ```dart
-// Tenant assistant — conversational
-final _model = GenerativeModel(
-  model: 'gemini-2.5-flash',
-  systemInstruction: Content.system('''
-    You are REX, Residex's AI for Malaysian shared-living tenants.
-    Help with: lease rights, bill disputes, maintenance issues,
-    chore conflicts, rental law, and housemate communication.
-    Be concise, empathetic, and cite Malaysian law where relevant.
-  '''),
-  generationConfig: GenerationConfig(temperature: 0.7, maxOutputTokens: 512),
-);
-
-// Landlord assistant — authoritative
 final _landlordModel = GenerativeModel(
   model: 'gemini-2.5-flash',
   systemInstruction: Content.system('''
-    You are REX, Residex's AI for Malaysian property managers.
-    Help with: lease drafting, tenant screening, rent tracking,
-    maintenance coordination, and dispute resolution.
-    Be authoritative, precise, and reference Malaysian Housing Act.
+    You are DocuMind, an AI document assistant for property managers.
+    Help landlords with: lease terms, warranty coverage, insurance details,
+    utility agreements, and receipt analysis.
+    Be authoritative, precise, and cite document pages where relevant.
   '''),
-  generationConfig: GenerationConfig(temperature: 0.7, maxOutputTokens: 512),
-);
-
-// Vision model — property analysis
-final _visionModel = GenerativeModel(
-  model: 'gemini-2.5-flash',  // No system instruction — flexible
-  generationConfig: GenerationConfig(temperature: 0.2, maxOutputTokens: 4096),
+  generationConfig: GenerationConfig(temperature: 0.7, maxOutputTokens: 1024),
 );
 ```
 
-**Streaming response pattern:**
+**Streaming response pattern (for multi-turn conversations):**
 ```dart
 Stream<String> sendMessage(String userMessage) async* {
-  _chatSession ??= _model.startChat();
+  _chatSession ??= _landlordModel.startChat();
   final response = _chatSession!.sendMessageStream(
     Content.text(userMessage),
   );
@@ -634,27 +552,6 @@ Stream<String> sendMessage(String userMessage) async* {
       yield chunk.text!; // Stream each word as it arrives
     }
   }
-}
-```
-
-**Vision analysis (FairFix Auditor):**
-```dart
-Future<Map<String, dynamic>> analyzePropertyCondition(
-  Uint8List moveInBytes,
-  Uint8List currentBytes,
-) async {
-  final response = await _visionModel.generateContent([
-    Content.multi([
-      TextPart('''Compare these two property photos.
-        Photo 1: Move-in baseline condition.
-        Photo 2: Current condition.
-        Return JSON: { "changedAreas": [], "severity": "minor|moderate|severe",
-        "estimatedCost": 0, "tenantFault": true/false, "details": "" }'''),
-      DataPart('image/jpeg', moveInBytes),
-      DataPart('image/jpeg', currentBytes),
-    ]),
-  ]);
-  return jsonDecode(response.text ?? '{"valid": true}');
 }
 ```
 
@@ -775,15 +672,7 @@ GestureDetector(
 
 ## 4. Challenges Faced
 
-### Challenge 1 — Dual-Role Architecture Without Code Duplication
-
-**Problem:** Tenant and landlord have fundamentally different workflows but share entities (users, maintenance tickets, community posts). Naïve duplication would produce an unmaintainable codebase.
-
-**Solution:** Three-layer feature organisation (`shared/`, `tenant/`, `landlord/`). Shared entities (AppUser, MaintenanceTicket) live in `shared/domain/entities/` and are imported by both roles. Role-specific entities (Bill, Property) live in their own module. This eliminated ~30% of code that would have been duplicated.
-
----
-
-### Challenge 2 — Riverpod 3.x Migration Mid-Project
+### Challenge 1 — Riverpod 3.x Migration Mid-Project
 
 **Problem:** The project was initially built on Riverpod 2.x. Upgrading to 3.1.0 (required for `riverpod_annotation 4.0.0`) broke `StateNotifier`, `.valueOrNull`, and all family providers.
 
@@ -791,7 +680,7 @@ GestureDetector(
 
 ---
 
-### Challenge 3 — GoRouter + Riverpod Auth Guard
+### Challenge 2 — GoRouter + Riverpod Auth Guard
 
 **Problem:** `GoRouter`'s `redirect` callback runs outside Riverpod context. Making it reactive to `authStateProvider` (a `StreamProvider`) required bridging two reactive systems.
 
@@ -810,28 +699,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
 ---
 
-### Challenge 4 — `fl_chart` Dependency Conflict
+### Challenge 3 — `fl_chart` Dependency Conflict
 
-**Problem:** Justin's `RevenueAnalyticsScreen` used `fl_chart` which was not in the project's `pubspec.yaml`. Adding it conflicted with existing dependency constraints.
+**Problem:** The `RevenueAnalyticsScreen` used `fl_chart` which was not in the project's `pubspec.yaml`. Adding it conflicted with existing dependency constraints.
 
 **Solution:** Replaced `fl_chart` entirely with a custom `_RevenueTrendPainter` (`CustomPainter`). Implemented the actual + dashed-predicted line chart, fill area, grid lines, and dot nodes manually using Canvas API. This reduced the dependency count and gave full visual control.
 
 ---
 
-### Challenge 5 — `dash_chat_2` Replacement (DocuMind)
+### Challenge 4 — `dash_chat_2` Replacement (DocuMind)
 
-**Problem:** Justin's `DocuMindScreen` depended on `dash_chat_2` for the Q&A chat interface, which was not available in the project.
+**Problem:** The `DocuMindScreen` depended on `dash_chat_2` for the Q&A chat interface, which was not available in the project.
 
 **Solution:** Built a self-contained chat UI from scratch:
 - Custom `_ChatMessage` model class
 - `ListView.builder` for the message thread
 - `_ThinkingDot` widget with staggered `AnimationController` for typing indicator
 - `TextField` + send button input dock with `MediaQuery.viewInsets.bottom` keyboard handling
-- Mock AI responses with keyword matching (production: wire to Gemini)
+- Integration with FastAPI backend for DocuMind RAG responses
 
 ---
 
-### Challenge 6 — Firebase Project Compatibility (Branch Merge)
+### Challenge 5 — Firebase Project Compatibility (Branch Merge)
 
 **Problem:** Pravin's branch had its own Firebase project. Justin's branch had a different `google-services.json` pointing to `residex-2ebd8`. Merging required ensuring both Firestore schemas were compatible.
 
@@ -839,15 +728,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
 ---
 
-### Challenge 7 — Animation Performance on Older Android
+### Challenge 6 — Animation Performance on Older Android
 
-**Problem:** The SyncHub particle field (200 particles, 60s AnimationController, `CustomPaint`) caused jank on mid-range devices during the initial render.
+**Problem:** UI animations on mid-range devices caused jank during initial render.
 
-**Solution:** Moved particle generation to `initState()` (pre-computed, no per-frame allocation). Used `shouldRepaint` returning `true` only when `animationValue` changed. The `_Particle` class is `const`-constructable (value semantics), eliminating GC pressure. Particles use a single shared `Paint` object rather than creating one per particle.
+**Solution:** Optimized animation rendering by moving particle generation to `initState()` (pre-computed, no per-frame allocation). Used `shouldRepaint` returning `true` only when `animationValue` changed. Eliminated GC pressure through value semantics and shared `Paint` objects.
 
 ---
 
-### Challenge 8 — Deprecated `withOpacity()` API
+### Challenge 7 — Deprecated `withOpacity()` API
 
 **Problem:** Every inherited file from Justin's branch used `.withOpacity(x)` which Flutter 3.33+ deprecated, generating hundreds of analyzer warnings.
 
@@ -860,65 +749,42 @@ Applied across all 4 ported screens (revenue analytics, maintenance AI, lease ge
 
 ## 5. Future Roadmap
 
-### Phase 1 — Firebase Full Integration (Priority: Critical)
+### Phase 1 — DocuMind Enhancement (Priority: Critical)
 
-Replace all mock data with live Firestore streams:
+Expand DocuMind capabilities:
 
-| Collection | Status | Priority |
+| Feature | Status | Priority |
 |---|---|---|
-| `users` | ✅ Auth connected | Done |
-| `properties` | 🔄 Local only | High |
-| `groups` | 🔄 Drift only | High |
-| `bills` | 🔄 Drift only | High |
-| `maintenance_tickets` | 🔄 Local only | High |
-| `community_posts` | 🔄 Mock only | Medium |
-| `scores` | 🔄 Computed only | Medium |
-| `move_in_sessions` | 🔄 Local only | Medium |
-
-Security rules (Firestore + Storage) need review before production.
+| Multi-document search | 🔄 In progress | High |
+| Document summarization | ⏳ Planned | High |
+| Lease clause highlighting | ⏳ Planned | High |
+| Receipt OCR + parsing | ⏳ Planned | Medium |
+| Document comparison | ⏳ Planned | Medium |
+| Audit trail logging | ⏳ Planned | Medium |
 
 ---
 
-### Phase 2 — AI Deepening
+### Phase 2 — Property Management Expansion
 
-- **DocuMind productionization:** Harden existing FastAPI + Firestore vector pipeline (auth, quotas, retry strategy, monitoring) and complete full frontend wiring from `DocuMindScreen` to `/api/rex/documind/*`
-- **FairFix Auditor accuracy:** Fine-tune the vision prompt to distinguish tenant damage from normal wear using Malaysian property standards
-- **REX voice routing:** Complete `speech_to_text` integration in SyncHub — route transcribed intent to the appropriate screen (bill summary, maintenance form, chore scheduler)
-- **Lease Sentinel legal database:** Train on Malaysian Residential Tenancy Act clauses for clause-level flagging
-
----
-
-### Phase 3 — Score System Completion
-
-- **Fiscal Score live computation:** Wire `ScoreDetailScreen` to real payment history from Firestore (currently computed from local mock data)
-- **Honor Score automation:** Auto-award honor XP when chores are marked complete, maintenance tickets resolved, or community posts are praised
-- **Landlord rating of tenants:** Implement `LandlordRatingModal` to submit structured ratings that affect tenant Honor Score
-- **Leaderboard:** Activate the leaderboard with real-time Firestore score ranking
-- **Rental Resume PDF export:** Generate a shareable PDF from `RentalResumeScreen` using a Cloud Function
+- **Tenant management:** Add tenant roster per property with contact tracking
+- **Lease tracking:** Store and manage active leases per property
+- **Document organization:** Folder structure and tagging for better document management
+- **Expiry reminders:** Alert landlords about upcoming lease renewals, insurance expiry, warranty coverage end
 
 ---
 
-### Phase 4 — Move-In Protocol Completion
-
-- **Ghost Overlay Layer 3 (Wi-Fi):** Complete the Wi-Fi fingerprint scan in `MoveInSessionScreen` using `network_info_plus` — compare SSID environment at move-in vs move-out to detect property changes
-- **Sentinel Sweeper:** Persist anomaly detection results from the magnetometer sweep to Firestore as a tamper-proof baseline
-- **Photo baseline sync:** Upload move-in baseline photos to Firebase Storage during the session, not just local state
-
----
-
-### Phase 5 — Notification System
+### Phase 3 — Notification System
 
 - **Firebase Cloud Messaging (FCM):** Push notifications for:
-  - Bill due date reminders (3 days, 1 day, overdue)
-  - Maintenance ticket status updates
-  - Chore assignment reminders
-  - Community post reactions/comments
+  - Document upload confirmations
+  - Document expiry reminders (leases, insurance, warranties)
+  - Property updates
   - Landlord announcements
 - **In-app toast system:** Extend `ToastNotification` widget to show real-time Firestore change events
 
 ---
 
-### Phase 6 — Production Hardening
+### Phase 4 — Production Hardening
 
 - **App Check:** Already enabled in `debug` mode — switch to `deviceCheck` (iOS) + `playIntegrity` (Android) for production
 - **Gemini API key security:** Rotate to Cloud Functions proxy so the API key is never embedded in the app binary
@@ -928,13 +794,12 @@ Security rules (Firestore + Storage) need review before production.
 
 ---
 
-### Phase 7 — Platform Expansion
+### Phase 5 — Platform Expansion
 
-- **Web:** Landlord portal optimised for desktop (dashboard analytics, bulk tenant management)
-- **Notifications:** WhatsApp Business API integration for Malaysian landlords who prefer WhatsApp
-- **Payment gateway:** FPX/DuitNow integration for in-app rent payment (linked to Fiscal Score)
-- **Property marketplace:** Connect `LandlordPortfolioScreen` to a real listing API (PropertyGuru / IPropertyMY)
-- **Multi-language:** Bahasa Malaysia localisation (target: 30M Malay-speaking users)
+- **Web:** Landlord portal optimised for desktop (dashboard analytics, bulk document management)
+- **Notifications:** WhatsApp Business API integration for Malaysian landlords
+- **Document APIs:** Integration with property marketplace APIs (PropertyGuru / IPropertyMY)
+- **Multi-language:** Bahasa Malaysia localisation
 
 ---
 
@@ -995,21 +860,20 @@ Frontend currently uses `lib/core/services/gemini_api_key.dart` for app-side Gem
 
 | Metric | Value |
 |---|---|
-| Total screens | 59 |
-| Total widgets | 62+ |
-| GoRouter routes | 50+ |
-| Riverpod providers | 24 |
-| Drift tables | 4 |
-| Drift DAOs | 3 |
-| Gemini AI models | 3 |
+| Landlord screens | 8+ |
+| Total widgets | 40+ |
+| GoRouter routes | 25+ |
+| Riverpod providers | 12+ |
+| Drift tables | 1 (for local caching) |
+| Gemini AI models | 1 (DocuMind) |
 | DocuMind RAG endpoints | 4 |
 | Color tokens | 70+ |
-| Lines of Dart code | ~25,000 |
+| Lines of Dart code | ~12,000 (landlord scope) |
+| Backend code | FastAPI + LangGraph |
 | Supported platforms | Android · iOS · Web |
 | Architecture | Clean Architecture (Domain-Driven) |
-| Test coverage | Unit tests for use cases (planned) |
 
 ---
 
-*Built for KitaHack 2026 · SDG 11: Sustainable Cities and Communities*
-*Malaysia's first AI-powered shared-living operating system*
+*Residex Landlord Scope — Property Management Operating System*
+*Focused on landlord productivity, document management, and AI-powered insights.*
