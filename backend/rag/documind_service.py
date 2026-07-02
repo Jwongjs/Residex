@@ -73,7 +73,7 @@ class DocuMindService:
         self._db = db
         self._embeddings = embeddings
         self._llm = llm
-        self._hybrid_retriever = HybridRetriever(db=self._db, embeddings=self._embeddings)
+        self._hybrid_retriever = HybridRetriever(db=self._db, embeddings=self.embeddings)
         self._conversation_store = ConversationStore(self._db)
         self._conversation_router = ConversationRouter(self._llm)
         self._category_predictor = CategoryPredictor(
