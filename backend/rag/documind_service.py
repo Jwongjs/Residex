@@ -25,6 +25,7 @@ from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
+from rag.retriever import HybridRetriever
 
 EMBED_DIM = 768 # Default to 768 if not set
 ALLOWED_CATEGORIES = {"lease", "warranty", "insurance", "utility", "receipt"}
@@ -72,6 +73,7 @@ class DocuMindService:
         self._db = db
         self._embeddings = embeddings
         self._llm = llm
+        self._hybrid_retriever = HybridRetriever(db=self._db, embeddings=self._embeddings)
         self._conversation_store = ConversationStore(self._db)
         self._conversation_router = ConversationRouter(self._llm)
         self._category_predictor = CategoryPredictor(
@@ -510,46 +512,16 @@ class DocuMindService:
                     category_filter_mode = "auto"
 
         try:
-            query_vector = self.embeddings.embed_query(working_question)
-        except Exception as e:
-            print(f"❌ Query embedding failed: {e}")
-            return AskResponse(
-                answer="I encountered an error processing your question. Please try again.",
-                confidence=0.0,
-                citations=[],
-                property_name=property_name,
-                searched_categories=[],
-                category_filter_mode=category_filter_mode,
-                session_id=session_id,
-                conversation_turn=turn_number,
-                user_action_required=False,
-                predicted_categories=predicted_categories,
-                action_reason="Embedding failure",
+            retrieved_chunks = await self._hybrid_retriever.retrieve(
+                question=working_question,
+                landlord_id=payload.landlord_id,
+                property_id=payload.property_id,
+                top_k=payload.top_k,
+                categories=selected_categories or None,
             )
-
-        chunks_ref = self.db.collection('documind_chunks')
-        query = chunks_ref.where(filter=FieldFilter('landlord_id', '==', payload.landlord_id)) \
-                  .where(filter=FieldFilter('property_id', '==', payload.property_id))
-
-        if selected_categories:
-            if len(selected_categories) == 1:
-                query = query.where(filter=FieldFilter('category', '==', selected_categories[0]))
-            else:
-                query = query.where(filter=FieldFilter('category', 'in', selected_categories[:10]))
-            print(f"🔎 Category filter applied: {selected_categories[:10]}")
-
-        try:
-            vector_query = query.find_nearest(
-                vector_field='embedding',
-                query_vector=Vector(query_vector),
-                distance_measure=DistanceMeasure.COSINE,
-                limit=payload.top_k,
-            )
-            docs = vector_query.stream()
-            retrieved_chunks = [doc.to_dict() for doc in docs]
-            print(f"✅ Retrieved {len(retrieved_chunks)} chunks from Firestore")
+            print(f"✅ Retrieved {len(retrieved_chunks)} chunks (hybrid dense+rerank)")
         except Exception as e:
-            print(f"❌ Vector search failed: {e}")
+            print(f"❌ Hybrid retrieval failed: {e}")
             return AskResponse(
                 answer="I couldn't search your documents. Please check your Firestore vector index.",
                 confidence=0.0,
@@ -604,7 +576,7 @@ class DocuMindService:
                 category=chunk['category'],
                 page=chunk.get('page'),
                 snippet=chunk['text'][:200],
-                score=max(0.0, 0.95 - (i * 0.1)),
+                score=chunk.get('rerank_score', chunk.get('dense_score', 0.0)),
             ))
             context_text += f"\n\n[Document {i+1}: {chunk['filename']}, Page {chunk.get('page', 'N/A')}]\n{chunk['text']}"
 
