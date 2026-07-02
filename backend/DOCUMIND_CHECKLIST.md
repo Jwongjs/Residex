@@ -1,9 +1,9 @@
 # DocuMind RAG Project — AI Engineering Field Guide Checklist
 
-**Overall Status:** 72% Complete (58/81 items)
-- ✅ Implemented: 58 items
-- ⚠️ Partial: 10 items  
-- ❌ Missing: 13 items
+**Overall Status:** 73% Complete (59/81 items)
+- ✅ Implemented: 59 items
+- ⚠️ Partial: 10 items
+- ❌ Missing: 12 items
 
 ---
 
@@ -161,9 +161,10 @@
   - Used in all 12 tests (100% passage)
 
 - ⚠️ **Hybrid Search** (Optional but strong signal)
-  - Missing: BM25 keyword matching
-  - Missing: semantic + lexical combination
-  - Pure vector-only approach
+  - Current: Dense vector search + cross-encoder reranking (semantic matching)
+  - Missing: BM25 keyword matching (lexical search — explicitly deferred in Task 5, no existing corpus index)
+  - Missing: semantic + lexical combination (requires BM25 baseline + aggregation strategy)
+  - Note: Dense + cross-encoder improves semantic relevance; full hybrid (dense+BM25) remains future work
 
 - ❌ **Metadata Filters**
   - Basic: Property ID + category filtering
@@ -174,12 +175,15 @@
 **Score: 2/3 items**
 
 ### 2.5 Reranking (Optional but strong signal)
-- ❌ **Reranking Not Implemented**
-  - No: heuristic reranking (order by date, length, etc.)
-  - No: model-based reranking (cross-encoder)
-  - Risk: Lower-ranked documents may be just as relevant
+- ✅ **Cross-Encoder Reranking Implemented**
+  - Model: `cross-encoder/ms-marco-MiniLM-L-6-v2` (semantic relevance scoring)
+  - Implementation: `HybridRetriever` in `backend/rag/retriever.py`
+  - Flow: Dense Firestore vector search → cross-encoder rerank of top-k candidates → citations with real rerank scores
+  - Previous: Fake rank-based citation score heuristic (order by position)
+  - Now: Citations carry real relevance scores from cross-encoder model
+  - Benefit: More accurate ranking of retrieval results, better semantic matching
 
-**Score: 0/1 item**
+**Score: 1/1 item ✅**
 
 ### 2.6 Context Construction
 - ✅ **Packing Strategy**
@@ -216,7 +220,7 @@
 
 **Score: 0/3 items (basic logging only)**
 
-**RAG Total: 21/26 items = 81% ✅**
+**RAG Total: 22/26 items = 85% ✅**
 
 ---
 
@@ -312,14 +316,16 @@
 - ✅ **Batch Testing**
   - Manual: 12 test scenarios run systematically
   - Reproducible: Documented test cases in RAG_EVALUATION_REPORT.md
-  - Missing: Automated test harness (pytest, unittest extensions)
+  - Automated (Partial): `backend/tests/test_documind_evaluation.py` now exists as structural smoke-test harness
+  - Scope: Verifies API response shape/contract via mocked responses (not a golden-dataset answer-correctness suite)
+  - Clarification: This is NOT full golden-dataset evaluation (would require real Firestore fixture data, which doesn't exist yet in this project)
 
 - ⚠️ **Version Comparison**
   - Missing: Ability to compare prompt/model versions
   - Missing: regression detection automation
   - Single run only (no baseline for comparison)
 
-**Score: 1/2 items**
+**Score: 1.5/2 items (structural harness + manual golden dataset, but no full automation)**
 
 ### 4.3 Metrics
 - ✅ **Answer Correctness**
@@ -369,7 +375,7 @@
 
 **Score: 0/2 items**
 
-**Evaluation Total: 9/13 items = 69%**
+**Evaluation Total: 9.5/13 items = 73%**
 
 ---
 
@@ -378,10 +384,10 @@
 | Category | Score | Status |
 |----------|-------|--------|
 | **LLM API Integration** | 5/11 (45%) | ⚠️ Partial |
-| **RAG End-to-End** | 21/26 (81%) | ✅ Strong |
+| **RAG End-to-End** | 22/26 (85%) | ✅ Strong |
 | **Agents + Tool Use** | 6/12 (50%) | ⚠️ Partial |
-| **Evaluation** | 9/13 (69%) | ✅ Good |
-| **TOTAL** | **41/62 (66%)** | ⚠️ Good Foundation |
+| **Evaluation** | 9.5/13 (73%) | ✅ Good |
+| **TOTAL** | **42.5/62 (69%)** | ⚠️ Good Foundation |
 
 ### Top Strengths
 1. **RAG Retrieval (81%)** — Excellent Firestore integration, property scoping, multi-doc discrimination
@@ -392,11 +398,11 @@
 
 ### Top Gaps
 1. **Cost/Latency Instrumentation** — No token counting, cost tracking, or performance dashboards
-2. **Reranking** — Vector-only, no cross-encoder or semantic reranking
-3. **LLM-as-Judge** — Manual evaluation, no automated metrics
-4. **Regression Gates** — No CI/CD integration for evaluation
-5. **Tracing/Observability** — Basic print logging, no structured traces
-6. **Prompt Management** — No centralized templates, versioning, or testing
+2. **LLM-as-Judge** — Manual evaluation, no automated metrics
+3. **Regression Gates** — No CI/CD integration for evaluation
+4. **Tracing/Observability** — Basic print logging, no structured traces
+5. **Prompt Management** — No centralized templates, versioning, or testing
+6. **Hybrid Search (BM25)** — No lexical/keyword matching; dense + cross-encoder only (BM25 explicitly deferred)
 
 ---
 
@@ -455,3 +461,16 @@
 
 **Generated:** April 10, 2026  
 **Assessment Methodology:** Code review + test artifact analysis + architecture documentation
+
+---
+
+## Update: Landlord-Only Scope + RAG Improvements Session
+
+**Date:** 2026-07-02
+
+Changes made in this session:
+- Scope reduced to landlord-only (Documind RAG, Property Management, Auth) — tenant features and lease generation removed from both frontend and backend
+- Added `HybridRetriever` (backend/rag/retriever.py): dense Firestore vector search + cross-encoder reranking (`cross-encoder/ms-marco-MiniLM-L-6-v2`), replacing the previous fake rank-based citation score with real relevance scores
+- Added structural evaluation harness (backend/tests/test_documind_evaluation.py) — mocked-response smoke tests verifying API contract, not a full golden-dataset answer-correctness suite
+- Documented LangSmith tracing configuration (backend/.env.example) — not activated (no API key provided this session)
+- BM25/sparse search and full golden-dataset evaluation remain future work (require corpus persistence layer and real Firestore fixture data respectively, neither of which exists yet in this project)
