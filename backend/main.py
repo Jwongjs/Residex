@@ -9,8 +9,8 @@ load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Rex AI Backend",
-    description="Lease Generator & DocuMind API with Firestore Vector Search",
+    title="Documind RAG Backend",
+    description="Landlord Document RAG + Property Management API",
     version="2.0.0"
 )
 
@@ -29,9 +29,9 @@ app.include_router(rex_router)
 @app.get("/")
 async def root():
     return {
-        "message": "Rex AI Backend API",
+        "message": "Documind RAG Backend",
         "version": "2.0.0",
-        "features": ["Lease Generator", "DocuMind (Firestore Vector Search)"]
+        "features": ["Document RAG (Firestore Vector Search)", "Property Management"]
     }
 
 @app.get("/health")

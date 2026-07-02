@@ -1,17 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query
-from models.lease_models import LeaseGenerateRequest, LeaseGenerateResponse
 from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse
-from agents.lease_generator import generate_lease
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
-
-# ========== LEASE GENERATOR ROUTES ==========
-
-@router.post("/lease/generate", response_model=LeaseGenerateResponse)
-async def lease_generate(payload: LeaseGenerateRequest):
-    return await generate_lease(payload)
-
 
 # ========== DOCUMIND ROUTES ==========
 
