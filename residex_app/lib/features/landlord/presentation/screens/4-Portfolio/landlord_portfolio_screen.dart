@@ -4,7 +4,6 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../providers/property_providers.dart';
 import '../../widgets/common/property_card.dart';
 import '../../widgets/common/add_property_dialog.dart';
-import 'sub/tenant_list_screen.dart';
 
 class LandlordPortfolioScreen extends ConsumerStatefulWidget {
   const LandlordPortfolioScreen({super.key});
@@ -118,35 +117,6 @@ class _LandlordPortfolioScreenState
                       );
                     },
                   ),
-                  actions: [
-                    // View Tenants button
-                    IconButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const TenantListScreen(),
-                          ),
-                        );
-                      },
-                      icon: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryCyan.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.primaryCyan.withOpacity(0.3),
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.people_outline,
-                          color: AppColors.primaryCyan,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
                 ),
 
                 // Portfolio stats cards

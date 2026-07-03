@@ -1,7 +1,7 @@
 /// App-wide constants
 class AppConstants {
   // App info
-  static const String appName = 'Residex';
+  static const String appName = 'ResiDex';
   static const String appVersion = '1.0.0';
   static const String appTagline = 'Smart Property Management';
 
