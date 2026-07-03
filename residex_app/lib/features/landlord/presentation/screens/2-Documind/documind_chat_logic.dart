@@ -89,3 +89,10 @@ String buildDocuMindAssistantText({
 
   return responseText;
 }
+
+/// Whether this answer should render as a certified-extract card
+/// rather than a plain chat bubble — true whenever the model produced
+/// at least one citation to show.
+bool shouldRenderAsCertifiedExtract(DocuMindAnswer answer) {
+  return answer.citations.isNotEmpty;
+}

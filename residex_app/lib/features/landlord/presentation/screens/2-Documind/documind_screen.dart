@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dash_chat_2/dash_chat_2.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:io';
 import '../../../../../core/theme/app_theme.dart';
 import '../../providers/documind_provider.dart';
@@ -35,6 +37,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   String? _docuMindSessionId;
   int _docuMindConversationTurn = 1;
   bool _awaitingUserAction = false;
+  DocuMindAnswer? _lastAnswerForCard;
 
   // Document categories (backend-supported)
   final List<String> _categories = [
@@ -162,6 +165,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                   _docuMindSessionId = null;
                   _docuMindConversationTurn = 1;
                   _awaitingUserAction = false;
+                  _lastAnswerForCard = null;
                   _messages.add(
                     ChatMessage(
                       user: _aiUser,
@@ -1111,6 +1115,92 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
 }
 
   // ══════════════════════════════════════════════════════
+  // CERTIFIED EXTRACT CARD
+  // ══════════════════════════════════════════════════════
+  Widget _buildCertifiedExtractCard(DocuMindAnswer answer) {
+    final card = Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.hairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, size: 14, color: AppColors.brass),
+              const SizedBox(width: 6),
+              Text('DOCUMIND', style: AppTextStyles.labelSmall.copyWith(color: AppColors.brass)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(answer.answer, style: AppTextStyles.bodyLarge),
+          if (answer.citations.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(height: 1, color: AppColors.hairline),
+            const SizedBox(height: 10),
+            ...answer.citations.take(3).map((c) => _buildCitationLine(c)),
+          ],
+        ],
+      ),
+    );
+
+    if (MediaQuery.of(context).disableAnimations) {
+      return card;
+    }
+
+    return card
+        .animate()
+        .fadeIn(duration: 250.ms)
+        .slideY(begin: 0.05, end: 0, duration: 250.ms, curve: Curves.easeOut);
+  }
+
+  Widget _buildCitationLine(Citation citation) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${citation.filename} · p.${citation.page ?? '—'}',
+              style: GoogleFonts.ibmPlexMono(
+                fontSize: 11,
+                color: AppColors.textMuted,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 40,
+            height: 3,
+            decoration: BoxDecoration(
+              color: AppColors.hairline,
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: citation.score.clamp(0.0, 1.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.brass,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════
   // CHAT INTERFACE
   // ══════════════════════════════════════════════════════
   Widget _buildChatInterface() {
@@ -1122,7 +1212,9 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
         Column(
           children: [
             if (hasUserMessages) _buildQuickQuestionsBar(),
-            
+            if (!_isThinking && _lastAnswerForCard != null)
+              _buildCertifiedExtractCard(_lastAnswerForCard!),
+
             Expanded(
               child: _isThinking
                   ? _buildThinkingState()
@@ -1360,6 +1452,7 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
     setState(() {
       _messages.insert(0, message);
       _isThinking = true;
+      _lastAnswerForCard = null;
     });
 
     try {
@@ -1414,6 +1507,7 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
         ),
       );
       _isThinking = false;
+      _lastAnswerForCard = shouldRenderAsCertifiedExtract(answer) ? answer : null;
     });
   }
 
