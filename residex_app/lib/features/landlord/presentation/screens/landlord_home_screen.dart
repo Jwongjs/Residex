@@ -1,21 +1,9 @@
 import 'package:flutter/material.dart';
+import '1-Dashboard/landlord_dashboard_screen.dart';
 import '2-Documind/documind_screen.dart';
 import '4-Portfolio/landlord_portfolio_screen.dart';
 import '../widgets/navigation/custom_bottom_nav_bar.dart';
 import '../../../../core/theme/app_colors.dart';
-
-/// Temporary placeholder — replaced by the real dashboard in Task 4.
-class _DashboardPlaceholder extends StatelessWidget {
-  const _DashboardPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: AppColors.paper,
-      body: Center(child: Text('Dashboard — under construction')),
-    );
-  }
-}
 
 /// Landlord Home Screen with 3-tab bottom navigation.
 ///
@@ -32,12 +20,7 @@ class LandlordHomeScreen extends StatefulWidget {
 
 class _LandlordHomeScreenState extends State<LandlordHomeScreen> {
   int _currentIndex = 0;
-
-  final List<Widget> _screens = const [
-    _DashboardPlaceholder(),
-    DocuMindScreen(),
-    LandlordPortfolioScreen(),
-  ];
+  late final List<Widget> _screens;
 
   final List<NavTab> _navTabs = const [
     NavTab(
@@ -59,6 +42,19 @@ class _LandlordHomeScreenState extends State<LandlordHomeScreen> {
       glowColor: AppColors.brass,
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      LandlordDashboardScreen(
+        onOpenDocumind: () => setState(() => _currentIndex = 1),
+        onOpenPortfolio: () => setState(() => _currentIndex = 2),
+      ),
+      const DocuMindScreen(),
+      const LandlordPortfolioScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
