@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
 
 class AppRadius {
   static const double small = 12.0;       // rounded-xl
@@ -46,19 +45,11 @@ class AppDimensions {
   }
 
 class AppShadows {
-  static List<BoxShadow> blueGlow = [
+  static List<BoxShadow> get cardShadow => [
     BoxShadow(
-      color: AppColors.syncedBlue.withValues(alpha: 0.5),
-      blurRadius: 100,
-      spreadRadius: -10,
-    ),
-  ];
-
-  static List<BoxShadow> purpleGlow = [
-    BoxShadow(
-      color: AppColors.purple500.withValues(alpha: 0.3),
-      blurRadius: 30,
-      spreadRadius: -10,
+      color: Colors.black.withValues(alpha: 0.05),
+      blurRadius: 12,
+      offset: const Offset(0, 2),
     ),
   ];
 }

@@ -85,7 +85,7 @@ import 'firebase_options.dart';
       return MaterialApp.router(
         title: 'Residex',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
+        theme: AppTheme.lightTheme,
         routerConfig: router,
       );
     }
