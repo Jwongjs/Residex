@@ -1,19 +1,28 @@
 import 'package:flutter/material.dart';
-import '1-Command/landlord_command_screen.dart';
-import '2-Finance/landlord_finance_screen.dart';
-import '3-REX/rex_ai_tab_wrapper.dart';
+import '2-Documind/documind_screen.dart';
 import '4-Portfolio/landlord_portfolio_screen.dart';
-import '5-Community/landlord_community_screen.dart';
 import '../widgets/navigation/custom_bottom_nav_bar.dart';
+import '../../../../core/theme/app_colors.dart';
 
-/// Landlord Home Screen with 5-tab bottom navigation
-/// 
+/// Temporary placeholder — replaced by the real dashboard in Task 4.
+class _DashboardPlaceholder extends StatelessWidget {
+  const _DashboardPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: AppColors.paper,
+      body: Center(child: Text('Dashboard — under construction')),
+    );
+  }
+}
+
+/// Landlord Home Screen with 3-tab bottom navigation.
+///
 /// Navigation Tabs:
-/// 1. Command - Dashboard overview and analytics
-/// 2. Finance - Rental income and property expenses
-/// 3. Rex AI - AI assistant (Lease Generator & Lazy Logger) [CENTER/PROTRUDING]
-/// 4. Portfolio - Property management and listings
-/// 5. Community - Tenant communication and announcements
+/// 1. Dashboard - overview, recent Documind activity
+/// 2. Documind - AI document Q&A (flagship feature)
+/// 3. Portfolio - property management
 class LandlordHomeScreen extends StatefulWidget {
   const LandlordHomeScreen({super.key});
 
@@ -24,66 +33,42 @@ class LandlordHomeScreen extends StatefulWidget {
 class _LandlordHomeScreenState extends State<LandlordHomeScreen> {
   int _currentIndex = 0;
 
-  // Landlord-specific screens
   final List<Widget> _screens = const [
-    LandlordCommandScreen(),
-    LandlordFinanceScreen(),
-    RexAITabWrapper(),
+    _DashboardPlaceholder(),
+    DocuMindScreen(),
     LandlordPortfolioScreen(),
-    LandlordCommunityScreen(),
   ];
 
-  // Navigation tab configuration
-  final List<NavTab> _navTabs = [
-    const NavTab(
+  final List<NavTab> _navTabs = const [
+    NavTab(
       icon: Icons.dashboard_outlined,
-      label: 'Command',
-      color: Color(0xFF93C5FD), // blue.shade300
-      glowColor: Color(0xFF3B82F6), // blue.shade500
+      label: 'Dashboard',
+      color: AppColors.brass,
+      glowColor: AppColors.brass,
     ),
-    const NavTab(
-      icon: Icons.trending_up,
-      label: 'Finance',
-      color: Color(0xFF67E8F9), // cyan.shade300
-      glowColor: Color(0xFF06B6D4), // cyan.shade500
+    NavTab(
+      icon: Icons.auto_awesome_outlined,
+      label: 'Documind',
+      color: AppColors.brass,
+      glowColor: AppColors.brass,
     ),
-    const NavTab(
-      icon: Icons.smart_toy_outlined,
-      label: 'Rex AI',
-      color: Color(0xFFA5B4FC), // indigo.shade300
-      glowColor: Color(0xFF6366F1), // indigo.shade500
-    ),
-    const NavTab(
-      icon: Icons.business,
+    NavTab(
+      icon: Icons.business_outlined,
       label: 'Portfolio',
-      color: Color(0xFF93C5FD), // blue.shade300
-      glowColor: Color(0xFF3B82F6), // blue.shade500
-    ),
-    const NavTab(
-      icon: Icons.forum_outlined,
-      label: 'Community',
-      color: Color(0xFFC084FC), // purple.shade300
-      glowColor: Color(0xFFA855F7), // purple.shade500
+      color: AppColors.brass,
+      glowColor: AppColors.brass,
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: _currentIndex,
         tabs: _navTabs,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: (index) => setState(() => _currentIndex = index),
       ),
     );
   }
 }
-

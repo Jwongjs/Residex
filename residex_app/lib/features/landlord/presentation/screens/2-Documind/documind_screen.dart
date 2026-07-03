@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dash_chat_2/dash_chat_2.dart';
 import 'dart:io';
-import '../../../../../../core/theme/app_theme.dart';
-import '../../../providers/documind_provider.dart';
-import '../../../providers/property_providers.dart';
-import '../../../../domain/entities/documind_document.dart';
-import '../../../../domain/entities/property.dart';
+import '../../../../../core/theme/app_theme.dart';
+import '../../providers/documind_provider.dart';
+import '../../providers/property_providers.dart';
+import '../../../domain/entities/documind_document.dart';
+import '../../../domain/entities/property.dart';
 import 'documind_chat_logic.dart';
 
 /// DocuMind Screen - Property Document Management + Q&A

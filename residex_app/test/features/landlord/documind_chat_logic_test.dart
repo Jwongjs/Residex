@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/documind_document.dart';
-import 'package:residex_app/features/landlord/presentation/screens/3-REX/sub/documind_chat_logic.dart';
+import 'package:residex_app/features/landlord/presentation/screens/2-Documind/documind_chat_logic.dart';
 
 void main() {
   group('mapDocuMindUserAction', () {

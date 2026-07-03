@@ -6,7 +6,7 @@ import 'package:residex_app/features/landlord/domain/entities/documind_document.
 import 'package:residex_app/features/landlord/domain/entities/property.dart';
 import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
-import 'package:residex_app/features/landlord/presentation/screens/3-REX/sub/documind_screen.dart';
+import 'package:residex_app/features/landlord/presentation/screens/2-Documind/documind_screen.dart';
 
 void main() {
   testWidgets('DocuMind sends confirm as userAction after checkpoint prompt', (tester) async {

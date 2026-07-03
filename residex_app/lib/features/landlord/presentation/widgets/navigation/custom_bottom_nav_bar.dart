@@ -17,13 +17,13 @@ class NavTab {
 }
 
 /// Reusable custom bottom navigation bar with protruding center button
-/// 
+///
 /// Features:
 /// - Glass morphism effect on center button
 /// - Fading gradient at top
 /// - Glow effects for active tabs
 /// - Animated transitions
-/// - Supports 5 navigation tabs with center tab elevated
+/// - Supports any odd number of navigation tabs, with the middle tab elevated
 class CustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
@@ -34,7 +34,7 @@ class CustomBottomNavBar extends StatelessWidget {
     required this.currentIndex,
     required this.onTap,
     required this.tabs,
-  }) : assert(tabs.length == 5, 'CustomBottomNavBar requires exactly 5 tabs');
+  }) : assert(tabs.length > 0, 'CustomBottomNavBar requires at least 1 tab');
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +92,8 @@ class CustomBottomNavBar extends StatelessWidget {
                     children: List.generate(tabs.length, (index) {
                       final tab = tabs[index];
                       final isActive = currentIndex == index;
-                      final isCenter = index == 2; // Center tab is at index 2
+                      final centerIndex = tabs.length ~/ 2;
+                      final isCenter = index == centerIndex;
 
                       // Skip rendering the center tab here, it's rendered separately
                       if (isCenter) {
@@ -169,7 +170,7 @@ class CustomBottomNavBar extends StatelessWidget {
                   top: -28,
                   child: Center(
                     child: GestureDetector(
-                      onTap: () => onTap(2),
+                      onTap: () => onTap(tabs.length ~/ 2),
                       child: Container(
                         width: 64,
                         height: 64,
@@ -216,9 +217,9 @@ class CustomBottomNavBar extends StatelessWidget {
                                 ),
                               ),
                               child: Icon(
-                                tabs[2].icon,
+                                tabs[tabs.length ~/ 2].icon,
                                 size: 32,
-                                color: currentIndex == 2
+                                color: currentIndex == tabs.length ~/ 2
                                     ? Colors.white
                                     : Colors.white.withOpacity(0.9),
                               ),

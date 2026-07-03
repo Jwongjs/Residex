@@ -1,4 +1,4 @@
-import '../../../../domain/entities/documind_document.dart';
+import '../../../domain/entities/documind_document.dart';
 
 bool _hasSourcesSection(String text) {
   final normalized = text.trim();
