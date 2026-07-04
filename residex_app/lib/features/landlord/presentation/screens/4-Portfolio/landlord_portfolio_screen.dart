@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
+import '../../../../../core/theme/app_dimensions.dart';
 import '../../../domain/entities/property.dart';
 import '../../providers/property_providers.dart';
 import '../../widgets/common/property_card.dart';
@@ -57,23 +58,9 @@ class _LandlordPortfolioScreenState
     };
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.paper,
       body: Stack(
         children: [
-          // Ambient background gradient (FIXED: Now stays in place)
-          Container(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(0, -0.8),
-                radius: 1.2,
-                colors: [
-                  AppColors.primaryCyan.withOpacity(0.15),
-                  AppColors.background,
-                ],
-              ),
-            ),
-          ),
-
           SafeArea(
             child: CustomScrollView(
               slivers: [
@@ -462,12 +449,6 @@ class _LandlordPortfolioScreenState
             label: 'TOTAL UNITS',
             value: stats.totalUnits.toString(),
             subtitle: '${stats.occupiedUnits} occupied',
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primaryCyan.withOpacity(0.2),
-                AppColors.primaryBlue.withOpacity(0.1),
-              ],
-            ),
           ),
         ),
         const SizedBox(width: 12),
@@ -479,12 +460,6 @@ class _LandlordPortfolioScreenState
             subtitle: stats.fullyOccupiedProperties > 0
                 ? '${stats.fullyOccupiedProperties} full'
                 : '${stats.vacantProperties} vacant',
-            gradient: LinearGradient(
-              colors: [
-                AppColors.success.withOpacity(0.2),
-                AppColors.emerald.withOpacity(0.1),
-              ],
-            ),
           ),
         ),
       ],
@@ -496,21 +471,19 @@ class _LandlordPortfolioScreenState
     required String label,
     required String value,
     required String subtitle,
-    required Gradient gradient,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.1),
-        ),
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.hairline),
+        boxShadow: AppShadows.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.textPrimary, size: 24),
+          Icon(icon, color: AppColors.registry, size: 24),
           const SizedBox(height: 8),
           Text(
             label,

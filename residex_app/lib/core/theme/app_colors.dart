@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 
-/// Title Deed color system — "Registry Green" palette.
+/// Title Deed color system — "Slate Teal" palette.
 /// Canonical tokens: paper, ink, registry, slate, deedGreen, sealRed, hairline, card.
 /// All other fields alias to these for backward compatibility with existing call sites
 /// (49+ files reference the legacy names below — do not rename or remove them).
 class AppColors {
   // === CANONICAL TOKENS ===
-  static const Color paper = Color(0xFFF6F7F5);
-  static const Color ink = Color(0xFF101826);
-  static const Color registry = Color(0xFF1D6A4E);
-  static const Color slate = Color(0xFF57606E);
+  static const Color paper = Color(0xFFF5F7F7);
+  static const Color ink = Color(0xFF0E1B1E);
+  /// Primary accent (currently slate teal).
+  static const Color registry = Color(0xFF14595E);
+  static const Color slate = Color(0xFF4F5E60);
   static const Color deedGreen = Color(0xFF2E7D5B);
   static const Color sealRed = Color(0xFFA83A32);
-  static const Color hairline = Color(0xFFD6DAD3);
+  static const Color hairline = Color(0xFFD2DAD9);
   static const Color card = Color(0xFFFFFFFF);
 
   // === DOCUMENT CATEGORY COLORS (muted, documentary hues) ===
@@ -26,17 +27,17 @@ class AppColors {
   // === LEGACY ALIASES (existing call sites across 33+ screen files) ===
   static const Color background = paper;
   static const Color surface = card;
-  static const Color surfaceLight = Color(0xFFEDEFEA); // slightly deeper than paper, for nested surfaces
-  static const Color surfaceVariant = Color(0xFFEDEFEA);
+  static const Color surfaceLight = Color(0xFFEBEFEF); // slightly deeper than paper, for nested surfaces
+  static const Color surfaceVariant = Color(0xFFEBEFEF);
   static const Color textPrimary = ink;
   static const Color textSecondary = slate;
-  static const Color textMuted = Color(0xFF6E7683); // darker slate for tertiary text (contrast fix)
+  static const Color textMuted = Color(0xFF6B7779); // darker slate for tertiary text (contrast fix)
   static const Color textTertiary = textMuted;
-  static const Color textDisabled = Color(0xFFA8ADB5);
+  static const Color textDisabled = Color(0xFFA9B2B3);
   static const Color primaryCyan = registry; // legacy "cyan" accent now maps to registry
   static const Color primaryBlue = registry; // legacy secondary accent also maps to registry (single-accent system)
   static const Color primary = registry;
-  static const Color primaryLight = Color(0xFF3E8A6C); // lighter registry tint
+  static const Color primaryLight = Color(0xFF3D8A8F); // lighter registry tint
   static const Color accent = registry;
   static const Color success = deedGreen;
   static const Color warning = Color(0xFF96690F); // ochre — a green "warning" reads wrong next to registry
@@ -75,11 +76,11 @@ class AppColors {
   static const Color red400 = sealRed;
   static const Color red500 = sealRed;
   static const Color rose500 = sealRed;
-  static const Color slate300 = Color(0xFFC9CDD3);
-  static const Color slate400 = Color(0xFF9BA1AB);
+  static const Color slate300 = Color(0xFFC6CFCF);
+  static const Color slate400 = Color(0xFF97A3A4);
   static const Color slate500 = slate;
-  static const Color slate600 = Color(0xFF454D59);
-  static const Color slate700 = Color(0xFF303743);
+  static const Color slate600 = Color(0xFF3E4B4D);
+  static const Color slate700 = Color(0xFF2C3739);
   static const Color slate800 = ink;
   static const Color slate900 = ink;
 
@@ -93,9 +94,9 @@ class AppColors {
 
   // === AVATAR GRADIENTS ===
   static const List<List<Color>> avatarGradients = [
-    [registry, Color(0xFF14503A)],
+    [registry, Color(0xFF0E4347)],
     [deedGreen, Color(0xFF1D5A42)],
-    [Color(0xFF3E8A6C), registry],
+    [Color(0xFF3D8A8F), registry],
     [deedGreen, registry],
     [sealRed, Color(0xFF7A2A24)],
     [registry, deedGreen],
@@ -109,7 +110,7 @@ class AppColors {
   );
 
   static const LinearGradient buttonGradient = LinearGradient(
-    colors: [registry, Color(0xFF14503A)],
+    colors: [registry, Color(0xFF0E4347)],
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );

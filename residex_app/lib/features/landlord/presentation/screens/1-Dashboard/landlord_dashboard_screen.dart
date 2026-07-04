@@ -6,6 +6,7 @@ import '../../../../../core/router/app_router.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
 import '../../providers/property_providers.dart';
 import '../../../domain/entities/property.dart';
+import '../../../../../core/theme/app_dimensions.dart';
 
 class LandlordDashboardScreen extends ConsumerWidget {
   final VoidCallback onOpenDocumind;
@@ -16,6 +17,13 @@ class LandlordDashboardScreen extends ConsumerWidget {
     required this.onOpenDocumind,
     required this.onOpenPortfolio,
   });
+
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,7 +43,7 @@ class LandlordDashboardScreen extends ConsumerWidget {
         ],
       ),
       body: propertiesAsync.when(
-        data: (properties) => _buildContent(context, properties),
+        data: (properties) => _buildContent(context, ref, properties),
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.registry)),
         error: (error, stack) => Center(
           child: Padding(
@@ -89,28 +97,87 @@ class LandlordDashboardScreen extends ConsumerWidget {
     if (context.mounted) context.go(AppRoutes.login);
   }
 
-  Widget _buildContent(BuildContext context, List<Property> properties) {
+  Widget _buildContent(BuildContext context, WidgetRef ref, List<Property> properties) {
     if (properties.isEmpty) {
       return _buildEmptyState(context);
     }
+
+    final stats = ref.watch(portfolioStatsProvider);
+    final visibleProperties = properties.take(3).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Good day', style: AppTextStyles.displayMedium),
+          Text(_greeting(), style: AppTextStyles.displayMedium),
           const SizedBox(height: 4),
           Text(
             '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} on file',
             style: AppTextStyles.bodyMedium,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
+          _buildStatTileRow(stats),
+          const SizedBox(height: 20),
           _buildDocumindEntryCard(context),
           const SizedBox(height: 24),
-          Text('Your properties', style: AppTextStyles.titleLarge),
-          const SizedBox(height: 12),
-          ...properties.map((p) => _buildPropertyRow(context, p)),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Your properties', style: AppTextStyles.titleLarge),
+              ),
+              TextButton(
+                onPressed: onOpenPortfolio,
+                style: TextButton.styleFrom(foregroundColor: AppColors.registry),
+                child: const Text('View all'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ...visibleProperties.map((p) => _buildPropertyRow(context, p)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatTileRow(PortfolioStats stats) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatTile(
+            label: 'PROPERTIES',
+            value: stats.totalProperties.toString(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatTile(
+            label: 'OCCUPANCY',
+            value: '${stats.averageOccupancyRate.toStringAsFixed(0)}%',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatTile({required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.hairline),
+        boxShadow: AppShadows.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: AppTextStyles.displayMedium),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: AppTextStyles.labelSmall.copyWith(letterSpacing: 1.2),
+          ),
         ],
       ),
     );
@@ -122,25 +189,30 @@ class LandlordDashboardScreen extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: AppColors.registry,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.registry.withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.auto_awesome_outlined, color: AppColors.registry, size: 28),
+            const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Ask Documind', style: AppTextStyles.titleLarge),
+                  Text(
+                    'Ask Documind',
+                    style: AppTextStyles.titleLarge.copyWith(color: Colors.white),
+                  ),
                   const SizedBox(height: 2),
-                  Text('Get answers from your leases, warranties, and bills.', style: AppTextStyles.bodySmall),
+                  Text(
+                    'Get answers from your leases, warranties, and bills.',
+                    style: AppTextStyles.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+                  ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: AppColors.textMuted),
+            const Icon(Icons.chevron_right, color: Colors.white),
           ],
         ),
       ),

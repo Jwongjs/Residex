@@ -27,19 +27,16 @@ class _LandlordHomeScreenState extends State<LandlordHomeScreen> {
       icon: Icons.dashboard_outlined,
       label: 'Dashboard',
       color: AppColors.registry,
-      glowColor: AppColors.registry,
     ),
     NavTab(
       icon: Icons.auto_awesome_outlined,
       label: 'Documind',
       color: AppColors.registry,
-      glowColor: AppColors.registry,
     ),
     NavTab(
       icon: Icons.business_outlined,
       label: 'Portfolio',
       color: AppColors.registry,
-      glowColor: AppColors.registry,
     ),
   ];
 

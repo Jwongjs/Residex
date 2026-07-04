@@ -1118,15 +1118,22 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
   // CERTIFIED EXTRACT CARD
   // ══════════════════════════════════════════════════════
   Widget _buildCertifiedExtractCard(DocuMindAnswer answer) {
+    // Cap the card so a long answer can never squeeze the chat list to zero
+    // height and overflow the Column (the full answer is also in the chat
+    // history below). Header and citations stay pinned; the answer scrolls.
     final card = Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(16),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.35,
+      ),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.hairline),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -1137,7 +1144,11 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
             ],
           ),
           const SizedBox(height: 10),
-          Text(answer.answer, style: AppTextStyles.bodyLarge),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Text(answer.answer, style: AppTextStyles.bodyLarge),
+            ),
+          ),
           if (answer.citations.isNotEmpty) ...[
             const SizedBox(height: 14),
             Container(height: 1, color: AppColors.hairline),
@@ -1218,53 +1229,58 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
             Expanded(
               child: _isThinking
                   ? _buildThinkingState()
-                  : DashChat(
-                      currentUser: _currentUser,
-                      onSend: _onSendMessage,
-                      messages: _messages,
-                      messageOptions: MessageOptions(
-                        showTime: false,
-                        containerColor: AppColors.surfaceLight,
-                        currentUserContainerColor: AppColors.primaryCyan.withValues(alpha: 0.25),
-                        currentUserTextColor: AppColors.textPrimary,
-                        textColor: AppColors.textPrimary,
-                        borderRadius: 16,
-                        messagePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        border: Border(top: BorderSide(color: AppColors.hairline)),
                       ),
-                      inputOptions: InputOptions(
-                        cursorStyle: CursorStyle(color: AppColors.primaryCyan),
-                        inputMaxLines: 4,
-                        inputDecoration: InputDecoration(
-                          hintText: 'Ask about your documents…',
-                          hintStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
-                          filled: true,
-                          fillColor: AppColors.surfaceLight,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
+                      child: DashChat(
+                        currentUser: _currentUser,
+                        onSend: _onSendMessage,
+                        messages: _messages,
+                        messageOptions: MessageOptions(
+                          showTime: false,
+                          containerColor: AppColors.surfaceLight,
+                          currentUserContainerColor: AppColors.registry.withValues(alpha: 0.15),
+                          currentUserTextColor: AppColors.textPrimary,
+                          textColor: AppColors.textPrimary,
+                          borderRadius: 16,
+                          messagePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         ),
-                        sendButtonBuilder: (send) => GestureDetector(
-                          onTap: send,
-                          child: Container(
-                            margin: const EdgeInsets.only(left: 8),
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [AppColors.primaryCyan, AppColors.primaryBlue],
-                              ),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primaryCyan.withValues(alpha: 0.4),
-                                  blurRadius: 12,
-                                  offset: Offset(0, 4),
-                                ),
-                              ],
+                        inputOptions: InputOptions(
+                          cursorStyle: CursorStyle(color: AppColors.registry),
+                          inputMaxLines: 4,
+                          inputDecoration: InputDecoration(
+                            hintText: 'Ask about your documents…',
+                            hintStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+                            filled: true,
+                            fillColor: AppColors.card,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(color: AppColors.hairline),
                             ),
-                            child: Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(color: AppColors.hairline),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(color: AppColors.registry, width: 2),
+                            ),
+                          ),
+                          sendButtonBuilder: (send) => GestureDetector(
+                            onTap: send,
+                            child: Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.registry,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                            ),
                           ),
                         ),
                       ),
@@ -1291,22 +1307,14 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.primaryCyan.withValues(alpha: 0.2),
-                      AppColors.primaryBlue.withValues(alpha: 0.1),
-                    ],
-                  ),
+                  color: AppColors.card,
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.primaryCyan.withValues(alpha: 0.3),
-                    width: 2,
-                  ),
+                  border: Border.all(color: AppColors.hairline),
                 ),
                 child: Icon(
                   Icons.chat_outlined,
                   size: 36,
-                  color: AppColors.primaryCyan,
+                  color: AppColors.registry,
                 ),
               ),
               const SizedBox(height: 16),
@@ -1351,40 +1359,42 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
     final emoji = parts.first;
     final text = parts.skip(1).join(' ');
 
-    final gradients = [
-      [AppColors.primaryBlue, AppColors.primaryCyan],
-      [AppColors.purple, AppColors.primaryBlue],
-      [AppColors.success, AppColors.primaryCyan],
-      [AppColors.warning, AppColors.orange],
-      [AppColors.primaryCyan, AppColors.success],
+    final accents = [
+      AppColors.registry,
+      AppColors.catWarranty,
+      AppColors.success,
+      AppColors.warning,
+      AppColors.catReceipt,
     ];
 
-    final gradient = gradients[index % gradients.length];
+    final accent = accents[index % accents.length];
 
     return GestureDetector(
       onTap: () => _sendQuickQuestion(question),
       child: Container(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              gradient[0].withValues(alpha: 0.2),
-              gradient[1].withValues(alpha: 0.1),
-            ],
-          ),
+          color: AppColors.card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: gradient[0].withValues(alpha: 0.3),
-            width: 1.5,
-          ),
+          border: Border.all(color: AppColors.hairline),
         ),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 24)),
-            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(emoji, style: const TextStyle(fontSize: 22)),
+              ],
+            ),
+            const SizedBox(height: 4),
             Text(
               text,
               style: AppTextStyles.bodySmall.copyWith(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../../core/theme/app_theme.dart';
+import '../../../../../core/theme/app_dimensions.dart';
 import '../../../domain/entities/property.dart';
 
 /// Property card for portfolio screen
@@ -28,17 +29,16 @@ class PropertyCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.1),
-          ),
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.hairline),
+          boxShadow: AppShadows.cardShadow,
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(32),
+            borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -53,22 +53,14 @@ class PropertyCard extends StatelessWidget {
                         height: 48,
                         width: 48,
                         decoration: BoxDecoration(
-                          color: AppColors.slate800,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.1),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 8,
-                            ),
-                          ],
+                          color: AppColors.surfaceLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.hairline),
                         ),
                         child: Icon(
                           _getPropertyIcon(property.type),
                           size: 20,
-                          color: AppColors.textMuted,
+                          color: AppColors.registry,
                         ),
                       ),
 
@@ -108,14 +100,14 @@ class PropertyCard extends StatelessWidget {
                               ? AppColors.success.withOpacity(0.1)
                               : property.hasVacancy
                                   ? AppColors.warning.withOpacity(0.1)
-                                  : AppColors.slate800,
+                                  : AppColors.surfaceLight,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: property.isFullyOccupied
                                 ? AppColors.success.withOpacity(0.2)
                                 : property.hasVacancy
                                     ? AppColors.warning.withOpacity(0.2)
-                                    : AppColors.slate700,
+                                    : AppColors.hairline,
                           ),
                         ),
                         child: Text(
@@ -161,9 +153,7 @@ class PropertyCard extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 16),
                     decoration: BoxDecoration(
                       border: Border(
-                        top: BorderSide(
-                          color: Colors.white.withOpacity(0.05),
-                        ),
+                        top: BorderSide(color: AppColors.hairline),
                       ),
                     ),
                     child: Row(
