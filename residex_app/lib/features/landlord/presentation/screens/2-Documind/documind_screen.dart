@@ -44,15 +44,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     'lease', 'warranty', 'insurance', 'utility', 'receipt'
   ];
 
-  // Quick questions for chat
-  final List<String> _quickQuestions = [
-    '📋 What are the lease terms?',
-    '📅 When does the lease expire?',
-    '💰 What is the monthly rent?',
-    '🛡️ What does the warranty cover?',
-    '📋 What is the deposit amount?',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -1215,14 +1206,12 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
   // CHAT INTERFACE
   // ══════════════════════════════════════════════════════
   Widget _buildChatInterface() {
-    final hasUserMessages = _messages.any((msg) => msg.user.id == _currentUser.id);
     final showEmptyPrompt = _messages.isEmpty && !_isThinking;
 
     return Stack(
       children: [
         Column(
           children: [
-            if (hasUserMessages) _buildQuickQuestionsBar(),
             if (!_isThinking && _lastAnswerForCard != null)
               _buildCertifiedExtractCard(_lastAnswerForCard!),
 
@@ -1289,16 +1278,16 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
           ],
         ),
         if (showEmptyPrompt)
-          _buildCenteredQuickQuestions(),
+          _buildEmptyState(),
       ],
     );
   }
 
-  Widget _buildCenteredQuickQuestions() {
+  Widget _buildEmptyState() {
     return Align(
       alignment: Alignment.topCenter,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
+        padding: const EdgeInsets.fromLTRB(24, 40, 24, 120),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
           child: Column(
@@ -1327,133 +1316,17 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
               ),
               const SizedBox(height: 8),
               Text(
-                'Select a question below or type your own',
+                'Type a question about your documents to get started.',
                 style: AppTextStyles.bodySmall.copyWith(
                   color: AppColors.textMuted,
                 ),
                 textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 18),
-
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 1.7,
-                ),
-                itemCount: _quickQuestions.length,
-                itemBuilder: (context, index) => _buildQuickQuestionCard(_quickQuestions[index], index),
               ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Widget _buildQuickQuestionCard(String question, int index) {
-    final parts = question.split(' ');
-    final emoji = parts.first;
-    final text = parts.skip(1).join(' ');
-
-    final accents = [
-      AppColors.registry,
-      AppColors.catWarranty,
-      AppColors.success,
-      AppColors.warning,
-      AppColors.catReceipt,
-    ];
-
-    final accent = accents[index % accents.length];
-
-    return GestureDetector(
-      onTap: () => _sendQuickQuestion(question),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.hairline),
-        ),
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 6),
-                Text(emoji, style: const TextStyle(fontSize: 22)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              text,
-              style: AppTextStyles.bodySmall.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w500,
-                height: 1.2,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickQuestionsBar() {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
-      ),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        itemCount: _quickQuestions.length,
-        itemBuilder: (_, i) {
-          final q = _quickQuestions[i];
-          return GestureDetector(
-            onTap: () => _sendQuickQuestion(q),
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: AppColors.primaryCyan.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.primaryCyan.withValues(alpha: 0.25)),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                q,
-                style: AppTextStyles.bodySmall.copyWith(color: AppColors.primaryCyan),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _sendQuickQuestion(String question) {
-    final message = ChatMessage(
-      user: _currentUser,
-      createdAt: DateTime.now(),
-      text: question,
-    );
-    _onSendMessage(message);
   }
 
   Future<void> _onSendMessage(ChatMessage message) async {

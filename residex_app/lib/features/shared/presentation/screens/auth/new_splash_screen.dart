@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/router/app_router.dart';
+import '../../../../../core/widgets/residex_logo.dart';
 
 class NewSplashScreen extends ConsumerStatefulWidget {
   const NewSplashScreen({super.key});
@@ -76,6 +77,8 @@ class _NewSplashScreenState extends ConsumerState<NewSplashScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        const ResidexLogo(size: 96, animate: true),
+                        const SizedBox(height: 24),
                         Text(
                           'ResiDex',
                           style: AppTextStyles.displayLarge,

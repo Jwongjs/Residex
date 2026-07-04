@@ -7,6 +7,7 @@ import '../../../../shared/presentation/providers/auth_providers.dart';
 import '../../providers/property_providers.dart';
 import '../../../domain/entities/property.dart';
 import '../../../../../core/theme/app_dimensions.dart';
+import '../../../../../core/widgets/residex_logo.dart';
 
 class LandlordDashboardScreen extends ConsumerWidget {
   final VoidCallback onOpenDocumind;
@@ -32,7 +33,14 @@ class LandlordDashboardScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppColors.paper,
       appBar: AppBar(
-        title: Text('ResiDex', style: AppTextStyles.headlineMedium),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ResidexLogo(size: 30, animate: false),
+            const SizedBox(width: 10),
+            Text('ResiDex', style: AppTextStyles.headlineMedium),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: () => _confirmSignOut(context, ref),

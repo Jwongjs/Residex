@@ -165,7 +165,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.paper,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
       ),
@@ -177,11 +177,9 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
             // Header
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.primaryCyan, AppColors.primaryBlue],
-                ),
-                borderRadius: const BorderRadius.only(
+              decoration: const BoxDecoration(
+                color: AppColors.registry,
+                borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
                 ),
@@ -381,7 +379,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
               decoration: BoxDecoration(
                 color: AppColors.surfaceLight,
                 border: Border(
-                  top: BorderSide(color: AppColors.border),
+                  top: BorderSide(color: AppColors.hairline),
                 ),
               ),
               child: Row(
@@ -398,7 +396,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                   ElevatedButton(
                     onPressed: _isLoading ? null : _handleSubmit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryCyan,
+                      backgroundColor: AppColors.registry,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 32,
                         vertical: 12,
@@ -441,21 +440,24 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textPrimary),
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+        floatingLabelBehavior: FloatingLabelBehavior.auto,
+        isDense: true,
         hintText: hint,
-        prefixIcon: icon != null ? Icon(icon, color: AppColors.primaryCyan) : null,
+        prefixIcon: icon != null ? Icon(icon, color: AppColors.registry) : null,
         filled: true,
-        fillColor: AppColors.background,
+        fillColor: AppColors.card,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.hairline),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.hairline),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryCyan, width: 2),
+          borderSide: BorderSide(color: AppColors.registry, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -476,23 +478,26 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       },
       decoration: InputDecoration(
         labelText: 'Property Type',
-        prefixIcon: const Icon(Icons.category, color: AppColors.primaryCyan),
+        labelStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+        floatingLabelBehavior: FloatingLabelBehavior.auto,
+        isDense: true,
+        prefixIcon: const Icon(Icons.category, color: AppColors.registry),
         filled: true,
-        fillColor: AppColors.background,
+        fillColor: AppColors.card,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.hairline),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.hairline),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryCyan, width: 2),
+          borderSide: BorderSide(color: AppColors.registry, width: 2),
         ),
       ),
-      dropdownColor: AppColors.surface,
+      dropdownColor: AppColors.card,
       style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textPrimary),
       items: PropertyType.values.map((type) {
         return DropdownMenuItem(

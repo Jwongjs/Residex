@@ -5,6 +5,7 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/router/app_router.dart';
 import '../../../domain/entities/users/app_user.dart';
 import '../../providers/auth_providers.dart';
+import '../../../../../core/widgets/residex_logo.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -94,6 +95,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildHeader() {
     return Column(
       children: [
+        const ResidexLogo(size: 64, animate: false),
+        const SizedBox(height: 16),
         Text(
           'ResiDex',
           style: AppTextStyles.displayLarge.copyWith(fontSize: 36),
