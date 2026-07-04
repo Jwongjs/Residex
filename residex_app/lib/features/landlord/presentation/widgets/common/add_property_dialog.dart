@@ -246,19 +246,16 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                             value?.isEmpty ?? true ? 'Required' : null,
                       ),
                       const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: _cityController,
+                        label: 'City',
+                        hint: 'New York',
+                        validator: (value) =>
+                            value?.isEmpty ?? true ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(
-                            flex: 2,
-                            child: _buildTextField(
-                              controller: _cityController,
-                              label: 'City',
-                              hint: 'New York',
-                              validator: (value) =>
-                                  value?.isEmpty ?? true ? 'Required' : null,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
                           Expanded(
                             child: _buildTextField(
                               controller: _stateController,
