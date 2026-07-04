@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dash_chat_2/dash_chat_2.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:io';
 import '../../../../../core/theme/app_theme.dart';
 import '../../providers/documind_provider.dart';
@@ -37,7 +36,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   String? _docuMindSessionId;
   int _docuMindConversationTurn = 1;
   bool _awaitingUserAction = false;
-  DocuMindAnswer? _lastAnswerForCard;
 
   // Document categories (backend-supported)
   final List<String> _categories = [
@@ -156,7 +154,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                   _docuMindSessionId = null;
                   _docuMindConversationTurn = 1;
                   _awaitingUserAction = false;
-                  _lastAnswerForCard = null;
                   _messages.add(
                     ChatMessage(
                       user: _aiUser,
@@ -735,7 +732,7 @@ Widget _buildDocumentTile(DocuMindDocument doc, String category) {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ✅ Filename
+              // Filename
               Text(
                 doc.filename,
                 style: AppTextStyles.titleMedium.copyWith(
@@ -747,7 +744,7 @@ Widget _buildDocumentTile(DocuMindDocument doc, String category) {
               ),
               const SizedBox(height: 8),
               
-              // ✅ Category badge + metadata
+              // Category badge + metadata
               Wrap(
                 spacing: 8,
                 runSpacing: 6,
@@ -864,35 +861,35 @@ Widget _buildDocumentTile(DocuMindDocument doc, String category) {
 
 
 Widget _buildAddMoreButton(String category) {
-  // ✅ Get category-specific colors
+  // Get category-specific colors
   final categoryColor = _getCategoryColor(category);
   final categoryIcon = _getCategoryIcon(category);
-  
+
   return Container(
     margin: const EdgeInsets.only(top: 16),
     child: OutlinedButton.icon(
       onPressed: () => _uploadDocument(category),
       icon: Icon(
         categoryIcon.icon,
-        color: categoryColor, // ✅ Dynamic color
+        color: categoryColor, // Dynamic color
       ),
       label: Text(
         'Add More ${_getCategoryLabel(category)}',
         style: TextStyle(
-          color: categoryColor, // ✅ Dynamic color
+          color: categoryColor, // Dynamic color
           fontWeight: FontWeight.w600,
         ),
       ),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         side: BorderSide(
-          color: categoryColor.withOpacity(0.5), // ✅ Dynamic border
+          color: categoryColor.withOpacity(0.5), // Dynamic border
           width: 2,
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        backgroundColor: categoryColor.withOpacity(0.1), // ✅ Dynamic background
+        backgroundColor: categoryColor.withOpacity(0.1), // Dynamic background
       ),
     ),
   );
@@ -925,7 +922,7 @@ Widget _buildAddMoreButton(String category) {
         return;
       }
 
-      // ✅ Show loading state
+      // Show loading state
       setState(() {
         _isUploading = true;
         _uploadProgress = 0.0;
@@ -933,20 +930,20 @@ Widget _buildAddMoreButton(String category) {
 
       try {
         final uploadAction = ref.read(uploadDocumentActionProvider);
-        
-        // ✅ Simulate progress (if needed)
+
+        // Simulate progress (if needed)
         setState(() => _uploadProgress = 0.3);
-        
+
         await uploadAction(
           propertyId: _selectedPropertyId!,
           category: category,
           file: File(selectedFile.path!),
         );
 
-        // ✅ Complete progress
+        // Complete progress
         setState(() => _uploadProgress = 1.0);
-        
-        // ✅ Wait a moment to show completion, then hide
+
+        // Wait a moment to show completion, then hide
         await Future.delayed(const Duration(milliseconds: 500));
 
         if (mounted) {
@@ -954,7 +951,7 @@ Widget _buildAddMoreButton(String category) {
             _isUploading = false;
             _uploadProgress = 0.0;
           });
-          _showSnackBar('✅ Document uploaded successfully!');
+          _showSnackBar('Document uploaded successfully!');
         }
       } catch (e) {
         if (mounted) {
@@ -1076,7 +1073,7 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
         ),
       );
 
-      // ✅ Call delete action from provider
+      // Call delete action from provider
       final deleteAction = ref.read(deleteDocumentActionProvider);
       await deleteAction(
         propertyId: _selectedPropertyId!,
@@ -1088,7 +1085,7 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
 
       // Show success message
       if (mounted) {
-        _showSnackBar('✅ Document deleted successfully!');
+        _showSnackBar('Document deleted successfully!');
       }
     } catch (e) {
       // Close loading dialog
@@ -1106,21 +1103,15 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
 }
 
   // ══════════════════════════════════════════════════════
-  // CERTIFIED EXTRACT CARD
+  // SOURCE RELEVANCE METER (attached under the AI bubble it belongs to)
   // ══════════════════════════════════════════════════════
-  Widget _buildCertifiedExtractCard(DocuMindAnswer answer) {
-    // Cap the card so a long answer can never squeeze the chat list to zero
-    // height and overflow the Column (the full answer is also in the chat
-    // history below). Header and citations stay pinned; the answer scrolls.
-    final card = Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(16),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.35,
-      ),
+  Widget _buildRelevanceMeter(List<Citation> citations) {
+    return Container(
+      margin: const EdgeInsets.only(top: 6, bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.hairline),
       ),
       child: Column(
@@ -1129,35 +1120,16 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome, size: 14, color: AppColors.registry),
+              const Icon(Icons.verified_outlined, size: 13, color: AppColors.registry),
               const SizedBox(width: 6),
-              Text('DOCUMIND', style: AppTextStyles.labelSmall.copyWith(color: AppColors.registry)),
+              Text('SOURCE RELEVANCE', style: AppTextStyles.labelSmall.copyWith(color: AppColors.registry)),
             ],
           ),
-          const SizedBox(height: 10),
-          Flexible(
-            child: SingleChildScrollView(
-              child: Text(answer.answer, style: AppTextStyles.bodyLarge),
-            ),
-          ),
-          if (answer.citations.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Container(height: 1, color: AppColors.hairline),
-            const SizedBox(height: 10),
-            ...answer.citations.take(3).map((c) => _buildCitationLine(c)),
-          ],
+          const SizedBox(height: 8),
+          ...citations.take(3).map((c) => _buildCitationLine(c)),
         ],
       ),
     );
-
-    if (MediaQuery.of(context).disableAnimations) {
-      return card;
-    }
-
-    return card
-        .animate()
-        .fadeIn(duration: 250.ms)
-        .slideY(begin: 0.05, end: 0, duration: 250.ms, curve: Curves.easeOut);
   }
 
   Widget _buildCitationLine(Citation citation) {
@@ -1212,9 +1184,6 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
       children: [
         Column(
           children: [
-            if (!_isThinking && _lastAnswerForCard != null)
-              _buildCertifiedExtractCard(_lastAnswerForCard!),
-
             Expanded(
               child: _isThinking
                   ? _buildThinkingState()
@@ -1235,6 +1204,13 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
                           textColor: AppColors.textPrimary,
                           borderRadius: 16,
                           messagePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          bottom: (message, previousMessage, nextMessage) {
+                            final citations = message.customProperties?['citations'] as List<Citation>?;
+                            if (citations == null || citations.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return _buildRelevanceMeter(citations);
+                          },
                         ),
                         inputOptions: InputOptions(
                           cursorStyle: CursorStyle(color: AppColors.registry),
@@ -1335,7 +1311,6 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
     setState(() {
       _messages.insert(0, message);
       _isThinking = true;
-      _lastAnswerForCard = null;
     });
 
     try {
@@ -1361,7 +1336,7 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
           ChatMessage(
             user: _aiUser,
             createdAt: DateTime.now(),
-            text: '❌ Error: ${e.toString()}',
+            text: 'Error: ${e.toString()}',
           ),
         );
         _isThinking = false;
@@ -1387,10 +1362,12 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
           user: _aiUser,
           createdAt: DateTime.now(),
           text: responseText,
+          customProperties: answer.citations.isNotEmpty
+              ? {'citations': answer.citations}
+              : null,
         ),
       );
       _isThinking = false;
-      _lastAnswerForCard = shouldRenderAsCertifiedExtract(answer) ? answer : null;
     });
   }
 
@@ -1465,7 +1442,17 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
         backgroundColor: isError ? AppColors.error : AppColors.success,
       ),
     );
