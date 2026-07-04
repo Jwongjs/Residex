@@ -1131,9 +1131,9 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome, size: 14, color: AppColors.brass),
+              const Icon(Icons.auto_awesome, size: 14, color: AppColors.registry),
               const SizedBox(width: 6),
-              Text('DOCUMIND', style: AppTextStyles.labelSmall.copyWith(color: AppColors.brass)),
+              Text('DOCUMIND', style: AppTextStyles.labelSmall.copyWith(color: AppColors.registry)),
             ],
           ),
           const SizedBox(height: 10),
@@ -1188,7 +1188,7 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
                 widthFactor: citation.score.clamp(0.0, 1.0),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: AppColors.brass,
+                    color: AppColors.registry,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1539,15 +1539,14 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
 
   Color _getCategoryColor(String category) {
     final colorMap = {
-      'lease': AppColors.primaryBlue,
-      'warranty': AppColors.success,
-      'insurance': AppColors.warning,
-      'utility': AppColors.info,
-      'receipt': AppColors.purple,
-      'other': AppColors.textMuted,
+      'lease': AppColors.catLease,
+      'warranty': AppColors.catWarranty,
+      'insurance': AppColors.catInsurance,
+      'utility': AppColors.catUtility,
+      'receipt': AppColors.catReceipt,
+      'other': AppColors.catOther,
     };
-    
-    return colorMap[category] ?? AppColors.textMuted;
+    return colorMap[category] ?? AppColors.catOther;
   }
 
   String _getPropertyName(List<Property> properties, String? propertyId) {
@@ -1561,11 +1560,11 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
 
   Color _getPropertyColor(int index) {
     final colors = [
-      AppColors.primaryBlue,
-      AppColors.purple,
-      AppColors.success,
-      AppColors.warning,
-      AppColors.primaryCyan,
+      AppColors.registry,
+      AppColors.catWarranty,
+      AppColors.catInsurance,
+      AppColors.catUtility,
+      AppColors.catReceipt,
     ];
     return colors[index % colors.length];
   }

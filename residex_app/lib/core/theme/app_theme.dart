@@ -100,8 +100,8 @@ export 'app_colors.dart';
       brightness: Brightness.light,
       scaffoldBackgroundColor: AppColors.paper,
       colorScheme: const ColorScheme.light(
-        primary: AppColors.brass,
-        secondary: AppColors.brass,
+        primary: AppColors.registry,
+        secondary: AppColors.registry,
         surface: AppColors.card,
         error: AppColors.sealRed,
       ),
@@ -136,7 +136,7 @@ export 'app_colors.dart';
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.brass,
+          backgroundColor: AppColors.registry,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -156,7 +156,7 @@ export 'app_colors.dart';
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.brass, width: 2),
+          borderSide: const BorderSide(color: AppColors.registry, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         hintStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.textMuted),
@@ -175,6 +175,6 @@ export 'app_colors.dart';
     static BoxDecoration get flatHighlight => BoxDecoration(
       color: AppColors.card,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: AppColors.brass.withValues(alpha: 0.4), width: 1),
+      border: Border.all(color: AppColors.registry.withValues(alpha: 0.4), width: 1),
     );
   }

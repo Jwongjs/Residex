@@ -276,7 +276,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             onTap: _navigateToLogin,
             child: Text(
               'Sign in',
-              style: AppTextStyles.bodySmall.copyWith(color: AppColors.brass, fontWeight: FontWeight.w600),
+              style: AppTextStyles.bodySmall.copyWith(color: AppColors.registry, fontWeight: FontWeight.w600),
             ),
           ),
         ],

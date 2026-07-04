@@ -226,7 +226,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: Text(
               'Create one',
               style: AppTextStyles.bodySmall.copyWith(
-                color: AppColors.brass,
+                color: AppColors.registry,
                 fontWeight: FontWeight.w600,
               ),
             ),

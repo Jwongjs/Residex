@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
+import '../../../domain/entities/property.dart';
 import '../../providers/property_providers.dart';
 import '../../widgets/common/property_card.dart';
 import '../../widgets/common/add_property_dialog.dart';
@@ -24,9 +25,21 @@ class _LandlordPortfolioScreenState
       barrierDismissible: false,
       builder: (context) => const AddPropertyDialog(),
     );
-    
+
     if (result == true && mounted) {
       // Property was added successfully, stream will auto-update
+    }
+  }
+
+  Future<void> _showEditPropertyDialog(Property property) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AddPropertyDialog(property: property),
+    );
+
+    if (result == true && mounted) {
+      // Property was updated successfully, stream will auto-update
     }
   }
 
@@ -243,6 +256,7 @@ class _LandlordPortfolioScreenState
                               child: PropertyCard(
                                 key: ValueKey('property_${properties[index].id}'),
                                 property: properties[index],
+                                onEdit: () => _showEditPropertyDialog(properties[index]),
                               ),
                             );
                           },

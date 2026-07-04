@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../../core/theme/app_theme.dart';
+import '../../../../../core/router/app_router.dart';
+import '../../../../shared/presentation/providers/auth_providers.dart';
 import '../../providers/property_providers.dart';
 import '../../../domain/entities/property.dart';
 
@@ -22,10 +25,18 @@ class LandlordDashboardScreen extends ConsumerWidget {
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         title: Text('ResiDex', style: AppTextStyles.headlineMedium),
+        actions: [
+          IconButton(
+            onPressed: () => _confirmSignOut(context, ref),
+            icon: const Icon(Icons.logout_outlined, color: AppColors.ink),
+            tooltip: 'Sign out',
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: propertiesAsync.when(
         data: (properties) => _buildContent(context, properties),
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.brass)),
+        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.registry)),
         error: (error, stack) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -38,6 +49,44 @@ class LandlordDashboardScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Text('Sign out?', style: AppTextStyles.headlineMedium),
+        content: Text(
+          'You can sign back in anytime.',
+          style: AppTextStyles.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: AppTextStyles.labelLarge.copyWith(color: AppColors.slate)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.sealRed),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    // Clear the dev bypass first so the router redirect doesn't short-circuit,
+    // then sign out of Firebase (harmless no-op for bypass-only sessions).
+    ref.read(devBypassProvider.notifier).clear();
+    try {
+      await ref.read(authControllerProvider).signOut();
+    } catch (_) {
+      // Firebase sign-out can fail offline; local session is cleared either way.
+    }
+    if (context.mounted) context.go(AppRoutes.login);
   }
 
   Widget _buildContent(BuildContext context, List<Property> properties) {
@@ -75,11 +124,11 @@ class LandlordDashboardScreen extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.card,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.brass.withValues(alpha: 0.4)),
+          border: Border.all(color: AppColors.registry.withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.auto_awesome_outlined, color: AppColors.brass, size: 28),
+            const Icon(Icons.auto_awesome_outlined, color: AppColors.registry, size: 28),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -107,7 +156,7 @@ class LandlordDashboardScreen extends ConsumerWidget {
         decoration: CardDecoration.flat,
         child: Row(
           children: [
-            const Icon(Icons.home_work_outlined, color: AppColors.brass, size: 20),
+            const Icon(Icons.home_work_outlined, color: AppColors.registry, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(property.name, style: AppTextStyles.titleMedium),

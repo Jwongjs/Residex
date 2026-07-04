@@ -12,11 +12,13 @@ import '../../../domain/entities/property.dart';
 class PropertyCard extends StatelessWidget {
   final Property property;
   final VoidCallback? onTap;
+  final VoidCallback? onEdit;
 
   const PropertyCard({
     super.key,
     required this.property,
     this.onTap,
+    this.onEdit,
   });
 
   @override
@@ -130,6 +132,26 @@ class PropertyCard extends StatelessWidget {
                           ),
                         ),
                       ),
+
+                      if (onEdit != null) ...[
+                        const SizedBox(width: 8),
+                        // Edit property affordance
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: onEdit,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.edit_outlined,
+                                size: 18,
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
 
