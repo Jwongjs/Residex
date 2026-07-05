@@ -217,11 +217,13 @@ class DocuMindService:
         return property_name
 
     async def ingest_document(
-        self, 
-        landlord_id: str, 
+        self,
+        landlord_id: str,
         property_id: str,
         category: str,
-        file: UploadFile
+        file: UploadFile,
+        unit_id: Optional[str] = None,
+        unit_label: Optional[str] = None,
     ) -> DocUploadResponse:
         """
         Ingest document into Firestore with vector embeddings.
@@ -261,6 +263,8 @@ class DocuMindService:
                         'doc_id': doc_id,
                         'landlord_id': landlord_id,
                         'property_id': property_id,
+                        'unit_id': unit_id,
+                        'unit_label': unit_label,
                         'category': category,
                         'filename': file.filename,
                         'chunk_index': i,
@@ -301,6 +305,8 @@ class DocuMindService:
             doc_ref.set({
                 'landlord_id': landlord_id,
                 'property_id': property_id,
+                'unit_id': unit_id,
+                'unit_label': unit_label,
                 'category': category,
                 'filename': file.filename,
                 'chunks_indexed': len(chunk_documents),
@@ -542,6 +548,7 @@ class DocuMindService:
                 property_id=payload.property_id,
                 top_k=payload.top_k,
                 categories=selected_categories or None,
+                unit_id=payload.unit_id,
             )
             print(f"✅ Retrieved {len(retrieved_chunks)} chunks (hybrid dense+rerank)")
         except Exception as e:
@@ -711,38 +718,47 @@ class DocuMindService:
         return response
 
     async def list_documents(
-        self, 
-        landlord_id: str, 
-        property_id: Optional[str] = None
+        self,
+        landlord_id: str,
+        property_id: Optional[str] = None,
+        unit_id: Optional[str] = None,
     ) -> DocListResponse:
         """
         List documents from Firestore metadata collection.
-        
+
         Args:
             landlord_id: Filter by landlord
             property_id: Optional filter by specific property
-            
+            unit_id: Optional unit filter — matches documents assigned to
+                this unit plus property-wide documents. Applied as a Python
+                post-filter because docs uploaded before units existed have
+                no unit_id field, which a Firestore where-clause can never
+                match.
+
         Returns:
             DocListResponse with documents array, total_count
         """
         query = self.db.collection('documind_docs').where(filter=FieldFilter('landlord_id', '==', landlord_id))
-        
+
         if property_id:
             query = query.where(filter=FieldFilter('property_id', '==', property_id))
-        
+
         docs = query.stream()
-        
+
         documents = []
         for doc in docs:
             data = doc.to_dict()
-            
+
+            if unit_id and data.get('unit_id') not in (None, unit_id):
+                continue
+
             # Convert Firestore Timestamp to datetime
             uploaded_at = data.get('uploaded_at')
             if isinstance(uploaded_at, firestore.SERVER_TIMESTAMP.__class__):
                 uploaded_at = datetime.now()
             elif hasattr(uploaded_at, 'to_pydantic'):
                 uploaded_at = uploaded_at.to_pydantic()
-            
+
             documents.append(DocumentInfo(
                 doc_id=doc.id,
                 landlord_id=data.get('landlord_id'),
@@ -752,6 +768,8 @@ class DocuMindService:
                 uploaded_at=uploaded_at,
                 chunks_indexed=data.get('chunks_indexed'),
                 file_size=data.get('file_size'),
+                unit_id=data.get('unit_id'),
+                unit_label=data.get('unit_label'),
             ))
         
         print(f"✅ Listed {len(documents)} documents")

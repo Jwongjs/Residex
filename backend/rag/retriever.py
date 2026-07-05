@@ -30,15 +30,27 @@ class HybridRetriever:
         property_id: str,
         top_k: int = 4,
         categories: Optional[list[str]] = None,
+        unit_id: Optional[str] = None,
     ) -> list[dict]:
         """
         Retrieve top_k chunks using dense search + cross-encoder reranking.
+
+        unit_id filtering is a Python post-filter, not a Firestore filter:
+        chunks ingested before units existed have no unit_id field at all,
+        and Firestore where-clauses can never match a missing field. A chunk
+        passes when its unit_id is absent/None (property-wide) or equals the
+        requested unit.
 
         Returns list of dicts with keys:
             doc_id, filename, category, page, text, dense_score, rerank_score
         """
         query_vector = self.embeddings.embed_query(question)
         dense_results = self._dense_search(query_vector, landlord_id, property_id, categories, fetch_k=15)
+
+        if unit_id:
+            dense_results = [
+                c for c in dense_results if c.get('unit_id') in (None, unit_id)
+            ]
 
         if not dense_results:
             return []
@@ -84,6 +96,7 @@ class HybridRetriever:
                 'filename': chunk['filename'],
                 'category': chunk['category'],
                 'page': chunk.get('page'),
+                'unit_id': chunk.get('unit_id'),
                 'text': chunk['text'],
                 'dense_score': dense_score,
             })

@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from unittest.mock import MagicMock, PropertyMock, patch
 
 from models.documind_models import AskRequest
@@ -585,6 +586,33 @@ class DocuMindServiceStorageTests(unittest.IsolatedAsyncioTestCase):
             deleted_paths,
             ["documind/l1/p1/doc-1.pdf", "documind/l1/p1/doc-2.pdf"],
         )
+
+    async def test_list_documents_unit_filter_includes_property_wide(self):
+        fake_db = _FakeDB(docs=[
+            {"doc_id": "doc-1", "landlord_id": "l1", "property_id": "p1",
+             "unit_id": "unit-A", "unit_label": "Unit A", "category": "lease",
+             "filename": "leaseA.pdf", "uploaded_at": datetime.now(), "chunks_indexed": 1},
+            {"doc_id": "doc-2", "landlord_id": "l1", "property_id": "p1",
+             "unit_id": "unit-B", "unit_label": "Unit B", "category": "lease",
+             "filename": "leaseB.pdf", "uploaded_at": datetime.now(), "chunks_indexed": 1},
+            {"doc_id": "doc-3", "landlord_id": "l1", "property_id": "p1",
+             "unit_id": None, "unit_label": None, "category": "insurance",
+             "filename": "insurance.pdf", "uploaded_at": datetime.now(), "chunks_indexed": 1},
+            # Pre-units doc: no unit_id key at all — must be treated property-wide.
+            {"doc_id": "doc-4", "landlord_id": "l1", "property_id": "p1",
+             "category": "utility", "filename": "bill.pdf",
+             "uploaded_at": datetime.now(), "chunks_indexed": 1},
+        ])
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        response = await service.list_documents("l1", "p1", unit_id="unit-A")
+
+        returned_ids = {doc.doc_id for doc in response.documents}
+        self.assertEqual(returned_ids, {"doc-1", "doc-3", "doc-4"})
+        self.assertEqual(response.total_count, 3)
+        labels = {doc.doc_id: doc.unit_label for doc in response.documents}
+        self.assertEqual(labels["doc-1"], "Unit A")
+        self.assertIsNone(labels["doc-4"])
 
     async def test_delete_documents_for_property_empty_is_noop_success(self):
         fake_db = _FakeDB(docs=[], chunks=[])

@@ -11,18 +11,26 @@ async def documind_upload(
     landlord_id: str = Form(...),
     property_id: str = Form(...),
     category: str = Form(...),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    unit_id: str | None = Form(None),
+    unit_label: str | None = Form(None),
 ):
     """
     Upload a PDF document for a property.
-    
+
     Category options: 'lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'
+
+    unit_id/unit_label are optional: omit them for property-wide documents
+    (insurance, tax, building warranty); set them to scope the document to a
+    single unit (a lease). unit_label is denormalized for display.
     """
     return await documind_service.ingest_document(
         landlord_id=landlord_id,
         property_id=property_id,
         category=category,
-        file=file
+        file=file,
+        unit_id=unit_id,
+        unit_label=unit_label,
     )
 
 
@@ -57,19 +65,26 @@ async def documind_ask(payload: AskRequest):
 @router.get("/documind/documents", response_model=DocListResponse)
 async def list_documents(
     landlord_id: str = Query(..., description="Landlord ID"),
-    property_id: str | None = Query(None, description="Filter by property ID")
+    property_id: str | None = Query(None, description="Filter by property ID"),
+    unit_id: str | None = Query(
+        None,
+        description="Filter by unit: returns this unit's documents plus property-wide documents",
+    ),
 ):
     """
-    List all documents for a landlord, optionally filtered by property.
-    
+    List all documents for a landlord, optionally filtered by property and unit.
+
     Examples:
     - GET /api/rex/documind/documents?landlord_id=landlord_123
       → Returns ALL documents across all properties
-    
+
     - GET /api/rex/documind/documents?landlord_id=landlord_123&property_id=property_1
       → Returns documents for specific property only
+
+    - GET /api/rex/documind/documents?landlord_id=landlord_123&property_id=property_1&unit_id=unit_9
+      → Returns unit_9's documents plus property-wide documents
     """
-    return await documind_service.list_documents(landlord_id, property_id)
+    return await documind_service.list_documents(landlord_id, property_id, unit_id)
 
 @router.delete("/documind/documents/{doc_id}")
 async def delete_document(

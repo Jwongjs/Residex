@@ -24,6 +24,10 @@ class AskRequest(BaseModel):
         default=None,
         description="Optional category filters: lease, warranty, insurance, utility, receipt, other"
     )
+    unit_id: Optional[str] = Field(
+        default=None,
+        description="Optional unit filter: matches chunks assigned to this unit plus property-wide chunks (no unit)"
+    )
     session_id: Optional[str] = Field(
         default=None,
         description="Optional conversation session id for multi-turn DocuMind orchestration"
@@ -105,6 +109,8 @@ class DocumentInfo(BaseModel):
     uploaded_at: datetime
     chunks_indexed: int
     file_size: int | None = None  # In bytes
+    unit_id: str | None = None  # None = property-wide document
+    unit_label: str | None = None  # Denormalized label for display
 
 
 class DocListResponse(BaseModel):

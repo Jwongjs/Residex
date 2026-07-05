@@ -90,6 +90,43 @@ async def test_hybrid_retriever_rerank_score_single_candidate_is_one():
 
 
 @pytest.mark.asyncio
+async def test_hybrid_retriever_unit_filter_keeps_unit_and_property_wide():
+    """With a unit_id filter, candidates assigned to another unit are
+    dropped before reranking; candidates for the requested unit AND
+    property-wide candidates (unit_id None or missing, e.g. chunks ingested
+    before units existed) both survive."""
+    mock_db = MagicMock()
+    mock_embeddings = MagicMock()
+    mock_embeddings.embed_query.return_value = [0.1, 0.2, 0.3]
+
+    retriever = HybridRetriever(db=mock_db, embeddings=mock_embeddings)
+
+    fake_dense_results = [
+        {'doc_id': 'd0', 'filename': 'f0.pdf', 'category': 'lease', 'page': 1,
+         'unit_id': 'unit-A', 'text': 'unit A lease', 'dense_score': 0.9},
+        {'doc_id': 'd1', 'filename': 'f1.pdf', 'category': 'insurance', 'page': 1,
+         'unit_id': None, 'text': 'building insurance', 'dense_score': 0.85},
+        {'doc_id': 'd2', 'filename': 'f2.pdf', 'category': 'lease', 'page': 1,
+         'unit_id': 'unit-B', 'text': 'unit B lease', 'dense_score': 0.8},
+        # Pre-units chunk: no unit_id key at all — must be treated property-wide.
+        {'doc_id': 'd3', 'filename': 'f3.pdf', 'category': 'utility', 'page': 1,
+         'text': 'water bill', 'dense_score': 0.75},
+    ]
+    with patch.object(retriever.cross_encoder, 'predict', return_value=[2.0, 1.0, 0.5]):
+        with patch.object(retriever, '_dense_search', return_value=fake_dense_results):
+            results = await retriever.retrieve(
+                question="What does the lease say?",
+                landlord_id="landlord_1",
+                property_id="property_1",
+                top_k=4,
+                unit_id="unit-A",
+            )
+
+    returned_ids = {r['doc_id'] for r in results}
+    assert returned_ids == {'d0', 'd1', 'd3'}
+
+
+@pytest.mark.asyncio
 async def test_hybrid_retriever_empty_dense_results_returns_empty():
     """No dense candidates means no reranking call, empty result."""
     mock_db = MagicMock()
