@@ -16,4 +16,7 @@ abstract class UnitRepository {
 
   /// Delete a unit
   Future<void> deleteUnit(String propertyId, String unitId);
+
+  /// Delete ALL units for a property (part of the property-delete cascade)
+  Future<void> deleteAllUnitsForProperty(String propertyId);
 }

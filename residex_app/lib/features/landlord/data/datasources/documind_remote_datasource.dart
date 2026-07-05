@@ -175,6 +175,32 @@ class DocuMindRemoteDataSource {
     }
   }
 
+  /// Delete ALL documents for a property (part of the property-delete cascade)
+  Future<void> deleteDocumentsForProperty({
+    required String landlordId,
+    required String propertyId,
+  }) async {
+    print('🔵 DataSource: Delete all documents for property $propertyId');
+
+    final uri = Uri.parse(
+            '${ApiConstants.baseUrl}${ApiConstants.documindPropertyDocs(propertyId)}')
+        .replace(queryParameters: {'landlord_id': landlordId});
+
+    try {
+      final response = await httpClient.delete(uri);
+
+      print('✅ DataSource: Bulk delete response status ${response.statusCode}');
+
+      if (response.statusCode != 200) {
+        print('❌ DataSource: Bulk delete failed: ${response.body}');
+        throw Exception('Bulk delete failed: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ DataSource: Bulk delete error: $e');
+      rethrow;
+    }
+  }
+
   /// Get a short-lived signed URL to view a document's original PDF
   Future<String> getDocumentViewUrl({
     required String landlordId,

@@ -118,6 +118,25 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
   }
 
   @override
+  Future<void> deleteDocumentsForProperty({
+    required String landlordId,
+    required String propertyId,
+  }) async {
+    print('🔵 Repository: Delete all documents for property $propertyId');
+
+    try {
+      await remoteDataSource.deleteDocumentsForProperty(
+        landlordId: landlordId,
+        propertyId: propertyId,
+      );
+      print('✅ Repository: Property documents deleted');
+    } catch (e) {
+      print('❌ Repository: Bulk delete failed: $e');
+      rethrow;
+    }
+  }
+
+  @override
   Future<String> getDocumentViewUrl({
     required String landlordId,
     required String propertyId,

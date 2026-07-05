@@ -85,6 +85,27 @@ class UnitRemoteDataSource {
     }
   }
 
+  /// Delete ALL units for a property (part of the property-delete cascade).
+  /// Firestore does not cascade subcollection deletes, so this must run
+  /// before the property document itself is deleted.
+  Future<void> deleteAllUnitsForProperty(String propertyId) async {
+    print('🔵 DataSource: Deleting all units for property: $propertyId');
+
+    try {
+      final snapshot = await _unitsCollection(propertyId).get();
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      print('✅ DataSource: Deleted ${snapshot.docs.length} units');
+    } catch (e) {
+      print('❌ DataSource: Error deleting units: $e');
+      rethrow;
+    }
+  }
+
   /// Delete a unit
   Future<void> deleteUnit(String propertyId, String unitId) async {
     print('🔵 DataSource: Deleting unit: $unitId');

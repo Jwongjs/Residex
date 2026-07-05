@@ -38,6 +38,12 @@ abstract class DocuMindRepository {
     required String docId,
   });
 
+  /// Delete ALL documents for a property (part of the property-delete cascade)
+  Future<void> deleteDocumentsForProperty({
+    required String landlordId,
+    required String propertyId,
+  });
+
   /// Get a short-lived signed URL to view a document's original PDF
   Future<String> getDocumentViewUrl({
     required String landlordId,

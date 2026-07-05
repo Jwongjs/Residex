@@ -16,12 +16,14 @@ class PropertyCard extends ConsumerWidget {
   final Property property;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   const PropertyCard({
     super.key,
     required this.property,
     this.onTap,
     this.onEdit,
+    this.onDelete,
   });
 
   @override
@@ -148,6 +150,26 @@ class PropertyCard extends ConsumerWidget {
                                 Icons.edit_outlined,
                                 size: 18,
                                 color: AppColors.textMuted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      if (onDelete != null) ...[
+                        const SizedBox(width: 4),
+                        // Delete property affordance
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: onDelete,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.delete_outline,
+                                size: 18,
+                                color: AppColors.error,
                               ),
                             ),
                           ),

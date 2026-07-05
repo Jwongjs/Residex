@@ -68,4 +68,16 @@ class UnitRepositoryImpl implements UnitRepository {
       rethrow;
     }
   }
+
+  @override
+  Future<void> deleteAllUnitsForProperty(String propertyId) async {
+    print('🔵 Repository: Delete all units for property $propertyId');
+    try {
+      await remoteDataSource.deleteAllUnitsForProperty(propertyId);
+      print('✅ Repository: All units deleted');
+    } catch (e) {
+      print('❌ Repository: Failed to delete units: $e');
+      rethrow;
+    }
+  }
 }

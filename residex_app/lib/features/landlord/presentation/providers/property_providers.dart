@@ -11,6 +11,7 @@ import '../../domain/usecases/get_property_by_id.dart';
 import '../../domain/usecases/search_properties.dart';
 import '../../domain/usecases/update_property.dart';
 import '../../../shared/presentation/providers/auth_providers.dart';
+import 'documind_provider.dart';
 import 'unit_providers.dart';
 
 // ============================================================
@@ -284,12 +285,27 @@ class PropertyController {
     }
   }
 
-  /// Delete a property
+  /// Delete a property and everything under it: Documind documents first
+  /// (the backend cascade removes chunks + stored PDFs), then the units
+  /// subcollection (Firestore never cascades subcollection deletes), then
+  /// the property doc itself. Child-first order so a mid-cascade failure
+  /// never strands unreachable data; every step is idempotent, so a retry
+  /// simply resumes.
   Future<void> deleteProperty(String propertyId) async {
     try {
+      final landlordId = _ref.read(currentLandlordIdProvider);
+      await _ref.read(documindRepositoryProvider).deleteDocumentsForProperty(
+            landlordId: landlordId,
+            propertyId: propertyId,
+          );
+
+      await _ref
+          .read(unitRepositoryProvider)
+          .deleteAllUnitsForProperty(propertyId);
+
       final deleteUseCase = _ref.read(deletePropertyUseCaseProvider);
       await deleteUseCase(propertyId);
-      
+
       // Refresh properties list
       _ref.invalidate(propertiesStreamProvider);
     } catch (e) {
