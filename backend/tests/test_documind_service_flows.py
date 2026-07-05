@@ -115,17 +115,43 @@ class _FakeDocDocRef:
     def set(self, data):
         self._db.docs.append({**data, "doc_id": self._doc_id})
 
+    def _find_index(self):
+        """Return the index of the row matching self._doc_id, or None.
+
+        Rows that carry an explicit "doc_id" field are matched exactly.
+        Rows with no "doc_id" field at all (a shorthand some tests use when
+        there is only a single row in play) are treated as implicitly being
+        whatever doc_id is being looked up for -- but only when there is
+        exactly one such keyless row, so ambiguity can never be silently
+        resolved by picking the first match.
+        """
+        keyless_indices = [i for i, row in enumerate(self._db.docs) if "doc_id" not in row]
+        if len(keyless_indices) > 1:
+            raise AssertionError(
+                "_FakeDocDocRef cannot disambiguate multiple rows without an "
+                "explicit 'doc_id' field; add 'doc_id' to each row in this test's "
+                "_FakeDB(docs=[...]) fixture."
+            )
+
+        for i, row in enumerate(self._db.docs):
+            if row.get("doc_id") == self._doc_id:
+                return i
+
+        if keyless_indices:
+            return keyless_indices[0]
+
+        return None
+
     def get(self):
-        for row in self._db.docs:
-            if row.get("doc_id", self._doc_id) == self._doc_id:
-                return _FakePropertyDoc(exists=True, data=row)
+        index = self._find_index()
+        if index is not None:
+            return _FakePropertyDoc(exists=True, data=self._db.docs[index])
         return _FakePropertyDoc(exists=False, data={})
 
     def delete(self):
-        self._db.docs = [
-            row for row in self._db.docs
-            if row.get("doc_id", self._doc_id) != self._doc_id
-        ]
+        index = self._find_index()
+        if index is not None:
+            del self._db.docs[index]
 
 
 class _FakeChunkDocRef:
