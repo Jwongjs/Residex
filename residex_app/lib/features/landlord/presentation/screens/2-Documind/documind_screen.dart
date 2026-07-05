@@ -236,22 +236,22 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildModeToggleButton(
-                  icon: Icons.folder_outlined,
-                  label: 'Docs',
-                  selected: !_showChatInterface,
-                  onTap: () {
-                    setState(() {
-                      _showChatInterface = false;
-                    });
-                  },
-                ),
-                _buildModeToggleButton(
                   icon: Icons.chat_outlined,
                   label: 'Chat',
                   selected: _showChatInterface,
                   onTap: () {
                     setState(() {
                       _showChatInterface = true;
+                    });
+                  },
+                ),
+                _buildModeToggleButton(
+                  icon: Icons.folder_outlined,
+                  label: 'Docs',
+                  selected: !_showChatInterface,
+                  onTap: () {
+                    setState(() {
+                      _showChatInterface = false;
                     });
                   },
                 ),
