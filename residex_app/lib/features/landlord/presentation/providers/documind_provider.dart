@@ -3,6 +3,7 @@ import 'dart:io';
 import '../../data/datasources/documind_remote_datasource.dart';
 import '../../data/repositories/documind_repository_impl.dart';
 import '../../domain/entities/documind_document.dart';
+import '../../domain/entities/unit.dart';
 import '../../domain/repositories/documind_repository.dart';
 import '../../domain/usecases/upload_document.dart';
 import '../../domain/usecases/ask_documind_question.dart';
@@ -52,29 +53,52 @@ final currentLandlordIdProvider = Provider<String>((ref) {
   return currentUser?.uid ?? 'guest';
 });
 
-/// Document list provider (auto-refresh on property change)
+/// Currently selected unit filter for Documind (null = all units).
+/// Scopes both the Docs list and chat retrieval to that unit's documents
+/// plus property-wide documents. The screen resets this when the selected
+/// property changes.
+class SelectedDocumindUnitNotifier extends Notifier<Unit?> {
+  @override
+  Unit? build() => null;
+
+  void select(Unit? unit) => state = unit;
+}
+
+final selectedDocumindUnitProvider =
+    NotifierProvider<SelectedDocumindUnitNotifier, Unit?>(
+  SelectedDocumindUnitNotifier.new,
+);
+
+/// Document list provider (auto-refresh on property or unit-filter change)
 final documindDocumentsProvider = FutureProvider.family<List<DocuMindDocument>, String>(
   (ref, propertyId) async {
     final landlordId = ref.watch(currentLandlordIdProvider);
+    final selectedUnit = ref.watch(selectedDocumindUnitProvider);
     final useCase = ref.watch(listDocumentsUseCaseProvider);
 
     return await useCase(
       landlordId: landlordId,
       propertyId: propertyId,
+      unitId: selectedUnit?.id,
     );
   },
 );
 
-/// Upload document action (manual trigger)
+/// Upload document action (manual trigger).
+/// unitId/unitLabel scope the document to a unit; omit for property-wide.
 final uploadDocumentActionProvider = Provider<Future<DocuMindDocument> Function({
   required String propertyId,
   required String category,
   required File file,
+  String? unitId,
+  String? unitLabel,
 })>((ref) {
   return ({
     required String propertyId,
     required String category,
     required File file,
+    String? unitId,
+    String? unitLabel,
   }) async {
     final landlordId = ref.read(currentLandlordIdProvider);
     final useCase = ref.read(uploadDocumentUseCaseProvider);
@@ -84,6 +108,8 @@ final uploadDocumentActionProvider = Provider<Future<DocuMindDocument> Function(
       propertyId: propertyId,
       category: category,
       file: file,
+      unitId: unitId,
+      unitLabel: unitLabel,
     );
 
     // Invalidate document list to trigger refresh
@@ -114,6 +140,11 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
   }) async {
     final landlordId = ref.read(currentLandlordIdProvider);
     final useCase = ref.read(askDocuMindQuestionUseCaseProvider);
+    // Read the unit filter here rather than widening the action's function
+    // type: the checkpoint widget tests override this provider with a
+    // matching signature, and chat scoping should always follow the
+    // header's current unit selection anyway.
+    final selectedUnit = ref.read(selectedDocumindUnitProvider);
 
     return await useCase(
       landlordId: landlordId,
@@ -121,6 +152,7 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
       question: question,
       topK: topK,
       categories: categories,
+      unitId: selectedUnit?.id,
       sessionId: sessionId,
       conversationTurn: conversationTurn,
       userAction: userAction,

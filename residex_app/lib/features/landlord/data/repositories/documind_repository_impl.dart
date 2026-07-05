@@ -15,6 +15,8 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
     required String propertyId,
     required String category,
     required File file,
+    String? unitId,
+    String? unitLabel,
   }) async {
     print('🔵 Repository: Upload document');
     print('   - Landlord: $landlordId');
@@ -27,6 +29,8 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
         propertyId: propertyId,
         category: category,
         file: file,
+        unitId: unitId,
+        unitLabel: unitLabel,
       );
       print('✅ Repository: Upload successful');
       return model.toEntity();
@@ -43,6 +47,7 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
     required String question,
     int topK = 4,
     List<String>? categories,
+    String? unitId,
     String? sessionId,
     int conversationTurn = 1,
     String? userAction,
@@ -59,6 +64,7 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
         question: question,
         topK: topK,
         categories: categories,
+        unitId: unitId,
         sessionId: sessionId,
         conversationTurn: conversationTurn,
         userAction: userAction,
@@ -75,6 +81,7 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
   Future<List<DocuMindDocument>> listDocuments({
     required String landlordId,
     String? propertyId,
+    String? unitId,
   }) async {
     print('🔵 Repository: List documents');
     print('   - Landlord: $landlordId');
@@ -84,6 +91,7 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
       final models = await remoteDataSource.listDocuments(
         landlordId: landlordId,
         propertyId: propertyId,
+        unitId: unitId,
       );
       print('✅ Repository: List successful (${models.length} documents)');
       return models.map((model) => model.toEntity()).toList();

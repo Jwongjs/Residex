@@ -5,30 +5,37 @@ import '../entities/documind_document.dart';
 /// 
 /// Defines WHAT operations exist (not HOW they're implemented)
 abstract class DocuMindRepository {
-  /// Upload a PDF document to backend
+  /// Upload a PDF document to backend.
+  /// unitId/unitLabel scope the document to a unit; omit for property-wide.
   Future<DocuMindDocument> uploadDocument({
     required String landlordId,
     required String propertyId,
     required String category,
     required File file,
+    String? unitId,
+    String? unitLabel,
   });
 
-  /// Ask a question about documents
+  /// Ask a question about documents.
+  /// unitId filters retrieval to that unit's docs plus property-wide docs.
   Future<DocuMindAnswer> askQuestion({
     required String landlordId,
     required String propertyId,
     required String question,
     int topK = 4,
     List<String>? categories,
+    String? unitId,
     String? sessionId,
     int conversationTurn = 1,
     String? userAction,
   });
 
-  /// List documents for a property
+  /// List documents for a property.
+  /// unitId filters to that unit's docs plus property-wide docs.
   Future<List<DocuMindDocument>> listDocuments({
     required String landlordId,
     String? propertyId,
+    String? unitId,
   });
 
   /// Delete a document

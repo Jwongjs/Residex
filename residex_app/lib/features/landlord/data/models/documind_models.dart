@@ -11,6 +11,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
     required super.filename,
     required super.chunksIndexed,
     required super.uploadedAt,
+    super.unitId,
+    super.unitLabel,
   });
 
   /// Create from Firestore document
@@ -27,6 +29,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
       filename: data['filename'] as String? ?? 'Unknown',
       chunksIndexed: _parseInt(data['chunks_indexed']),
       uploadedAt: _parseTimestamp(data['uploaded_at']),
+      unitId: data['unit_id'] as String?,
+      unitLabel: data['unit_label'] as String?,
     );
   }
 
@@ -40,6 +44,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
       filename: json['filename'] as String? ?? 'Unknown',
       chunksIndexed: _parseInt(json['chunks_indexed']),
       uploadedAt: _parseTimestamp(json['uploaded_at']),
+      unitId: json['unit_id'] as String?,
+      unitLabel: json['unit_label'] as String?,
     );
   }
 
@@ -53,6 +59,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
       'filename': filename,
       'chunks_indexed': chunksIndexed,
       'uploaded_at': Timestamp.fromDate(uploadedAt),
+      'unit_id': unitId,
+      'unit_label': unitLabel,
     };
   }
 
@@ -66,6 +74,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
       filename: filename,
       chunksIndexed: chunksIndexed,
       uploadedAt: uploadedAt,
+      unitId: unitId,
+      unitLabel: unitLabel,
     );
   }
 

@@ -8,6 +8,13 @@ class DocuMindDocument {
   final int chunksIndexed;
   final DateTime uploadedAt;
 
+  /// Unit this document is scoped to; null means property-wide.
+  final String? unitId;
+
+  /// Denormalized unit label for display (may go stale if the unit is
+  /// renamed/deleted — accepted trade-off).
+  final String? unitLabel;
+
   DocuMindDocument({
     required this.docId,
     required this.landlordId,
@@ -16,6 +23,8 @@ class DocuMindDocument {
     required this.filename,
     required this.chunksIndexed,
     required this.uploadedAt,
+    this.unitId,
+    this.unitLabel,
   });
 }
 

@@ -18,6 +18,8 @@ class UploadDocument {
     required String propertyId,
     required String category,
     required File file,
+    String? unitId,
+    String? unitLabel,
   }) async {
     // ✅ Business validation (domain layer)
     final validCategories = ['lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'];
@@ -44,6 +46,8 @@ class UploadDocument {
       propertyId: propertyId,
       category: category,
       file: file,
+      unitId: unitId,
+      unitLabel: unitLabel,
     );
   }
 }

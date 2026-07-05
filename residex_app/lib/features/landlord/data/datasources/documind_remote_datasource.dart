@@ -17,11 +17,14 @@ class DocuMindRemoteDataSource {
     required String propertyId,
     required String category,
     required File file,
+    String? unitId,
+    String? unitLabel,
   }) async {
     print('🔵 DataSource: Upload document');
     print('   - Landlord: $landlordId');
     print('   - Property: $propertyId');
     print('   - Category: $category');
+    print('   - Unit: ${unitLabel ?? "whole property"}');
 
     ///'http://10.0.2.2:8000/api/rex/documind';
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindUpload}');
@@ -30,6 +33,8 @@ class DocuMindRemoteDataSource {
     request.fields['landlord_id'] = landlordId;
     request.fields['property_id'] = propertyId;
     request.fields['category'] = category;
+    if (unitId != null) request.fields['unit_id'] = unitId;
+    if (unitLabel != null) request.fields['unit_label'] = unitLabel;
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
     try {
@@ -58,6 +63,7 @@ class DocuMindRemoteDataSource {
     required String question,
     int topK = 4,
     List<String>? categories,
+    String? unitId,
     String? sessionId,
     int conversationTurn = 1,
     String? userAction,
@@ -79,6 +85,7 @@ class DocuMindRemoteDataSource {
           'question': question,
           'top_k': topK,
           if (categories != null && categories.isNotEmpty) 'categories': categories,
+          if (unitId != null && unitId.isNotEmpty) 'unit_id': unitId,
           if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
           'conversation_turn': conversationTurn,
           if (userAction != null && userAction.isNotEmpty) 'user_action': userAction,
@@ -104,17 +111,23 @@ class DocuMindRemoteDataSource {
   Future<List<DocuMindDocumentModel>> listDocuments({
     required String landlordId,
     String? propertyId,
+    String? unitId,
   }) async {
     print('🔵 DataSource: List documents');
     print('   - Landlord: $landlordId');
     print('   - Property: ${propertyId ?? "ALL"}');
+    print('   - Unit: ${unitId ?? "ALL"}');
 
     final queryParams = <String, String>{
       'landlord_id': landlordId,
     };
-    
+
     if (propertyId != null) {
       queryParams['property_id'] = propertyId;
+    }
+
+    if (unitId != null) {
+      queryParams['unit_id'] = unitId;
     }
 
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindList}')
