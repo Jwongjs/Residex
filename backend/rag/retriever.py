@@ -114,17 +114,26 @@ class HybridRetriever:
     def _rerank(self, question: str, candidates: list[dict]) -> list[dict]:
         """Score candidates with cross-encoder, return sorted by rerank_score desc.
 
-        The cross-encoder outputs an unbounded logit, not a 0-1 probability,
-        so it's passed through a sigmoid here — the client displays this score
-        directly as a relevance meter and expects a genuine 0-1 range.
+        The cross-encoder outputs an unbounded logit (empirically roughly
+        -10 to +10 for this model), not a 0-1 probability. A plain sigmoid
+        undersells realistic "genuinely relevant" matches: this model's
+        logits for a strong-but-not-exact match commonly land around 0-4,
+        which sigmoid maps to only ~0.5-0.98 — a relevance meter would read
+        as unconvincingly low even for the best available match. Instead,
+        rerank_score is min-max normalized across this batch of candidates,
+        so the best match in the current retrieval always reads 1.0 and the
+        worst reads 0.0, regardless of the raw logit scale.
         """
         if not candidates:
             return []
 
         pairs = [(question, c['text']) for c in candidates]
-        raw_scores = self.cross_encoder.predict(pairs)
+        raw_scores = [float(s) for s in self.cross_encoder.predict(pairs)]
+
+        min_score, max_score = min(raw_scores), max(raw_scores)
+        spread = max_score - min_score
 
         for candidate, raw_score in zip(candidates, raw_scores):
-            candidate['rerank_score'] = float(1 / (1 + np.exp(-raw_score)))
+            candidate['rerank_score'] = (raw_score - min_score) / spread if spread > 0 else 1.0
 
         return sorted(candidates, key=lambda c: c['rerank_score'], reverse=True)
