@@ -174,4 +174,38 @@ class DocuMindRemoteDataSource {
       rethrow;
     }
   }
+
+  /// Get a short-lived signed URL to view a document's original PDF
+  Future<String> getDocumentViewUrl({
+    required String landlordId,
+    required String propertyId,
+    required String docId,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindViewUrl(docId)}')
+        .replace(queryParameters: {
+      'landlord_id': landlordId,
+      'property_id': propertyId,
+    });
+
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 200) {
+      final jsonResponse = json.decode(response.body) as Map<String, dynamic>;
+      return jsonResponse['view_url'] as String;
+    } else if (response.statusCode == 404) {
+      throw DocumentNotFoundException(docId);
+    } else {
+      throw Exception('Failed to get view URL: ${response.body}');
+    }
+  }
+}
+
+/// Thrown when a cited document no longer exists (e.g. deleted, or predates
+/// Storage-backed viewing).
+class DocumentNotFoundException implements Exception {
+  final String docId;
+  const DocumentNotFoundException(this.docId);
+
+  @override
+  String toString() => 'Document $docId not found';
 }

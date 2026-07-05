@@ -37,4 +37,11 @@ abstract class DocuMindRepository {
     required String propertyId,
     required String docId,
   });
+
+  /// Get a short-lived signed URL to view a document's original PDF
+  Future<String> getDocumentViewUrl({
+    required String landlordId,
+    required String propertyId,
+    required String docId,
+  });
 }

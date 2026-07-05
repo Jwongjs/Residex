@@ -7,6 +7,7 @@ import '../../domain/repositories/documind_repository.dart';
 import '../../domain/usecases/upload_document.dart';
 import '../../domain/usecases/ask_documind_question.dart';
 import '../../domain/usecases/list_documents.dart';
+import '../../domain/usecases/get_document_view_url.dart';
 import '../../../shared/presentation/providers/auth_providers.dart';
 
 // ========== DEPENDENCY INJECTION ==========
@@ -36,6 +37,11 @@ final askDocuMindQuestionUseCaseProvider = Provider<AskDocuMindQuestion>((ref) {
 final listDocumentsUseCaseProvider = Provider<ListDocuments>((ref) {
   final repository = ref.watch(documindRepositoryProvider);
   return ListDocuments(repository);
+});
+
+final getDocumentViewUrlUseCaseProvider = Provider<GetDocumentViewUrl>((ref) {
+  final repository = ref.watch(documindRepositoryProvider);
+  return GetDocumentViewUrl(repository);
 });
 
 // ========== STATE PROVIDERS ==========
@@ -146,8 +152,29 @@ final deleteDocumentActionProvider = Provider<
     );
 
     print('✅ Action: Document deleted successfully');
-    
+
     // ✅ Invalidate provider to refresh document list
     ref.invalidate(documindDocumentsProvider(propertyId));
+  };
+});
+
+final documindGetViewUrlActionProvider = Provider<
+  Future<String> Function({
+    required String propertyId,
+    required String docId,
+  })
+>((ref) {
+  return ({
+    required String propertyId,
+    required String docId,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final useCase = ref.read(getDocumentViewUrlUseCaseProvider);
+
+    return await useCase(
+      landlordId: landlordId,
+      propertyId: propertyId,
+      docId: docId,
+    );
   };
 });

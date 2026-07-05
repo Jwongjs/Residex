@@ -116,4 +116,17 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
       rethrow;
     }
   }
+
+  @override
+  Future<String> getDocumentViewUrl({
+    required String landlordId,
+    required String propertyId,
+    required String docId,
+  }) async {
+    return await remoteDataSource.getDocumentViewUrl(
+      landlordId: landlordId,
+      propertyId: propertyId,
+      docId: docId,
+    );
+  }
 }
