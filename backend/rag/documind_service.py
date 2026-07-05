@@ -844,6 +844,45 @@ class DocuMindService:
             "chunks_deleted": deleted_chunks_count,
         }
 
+    async def delete_documents_for_property(
+        self,
+        landlord_id: str,
+        property_id: str,
+    ) -> dict:
+        """
+        Delete ALL documents (metadata + chunks + stored PDFs) for a property.
+
+        Used by the property-deletion cascade in the app. Idempotent: a
+        property with no documents returns a zero-count success.
+        """
+        print(f"🔵 DocuMind: Delete all documents for property {property_id}")
+
+        docs_query = (
+            self.db.collection('documind_docs')
+            .where(filter=FieldFilter('landlord_id', '==', landlord_id))
+            .where(filter=FieldFilter('property_id', '==', property_id))
+        )
+
+        documents_deleted = 0
+        chunks_deleted = 0
+        for doc_snapshot in docs_query.stream():
+            result = await self.delete_document(
+                landlord_id=landlord_id,
+                property_id=property_id,
+                doc_id=doc_snapshot.id,
+            )
+            documents_deleted += 1
+            chunks_deleted += result.get('chunks_deleted', 0)
+
+        print(f"✅ Deleted {documents_deleted} documents / {chunks_deleted} chunks for property {property_id}")
+
+        return {
+            "message": "Property documents deleted",
+            "property_id": property_id,
+            "documents_deleted": documents_deleted,
+            "chunks_deleted": chunks_deleted,
+        }
+
     async def get_document_view_url(
         self,
         landlord_id: str,

@@ -24,11 +24,32 @@ class _FakeEmbeddings:
 
 
 class _FakeSnapshot:
-    def __init__(self, data):
+    def __init__(self, data, reference=None):
         self._data = data
+        self.reference = reference
+
+    @property
+    def id(self):
+        return self._data.get("doc_id")
 
     def to_dict(self):
         return self._data
+
+
+class _FakeRowRef:
+    """Reference to a fixture row, so batch.delete(snapshot.reference) works."""
+
+    def __init__(self, db, collection_name, row):
+        self._db = db
+        self._collection_name = collection_name
+        self._row = row
+
+    def delete(self):
+        rows = self._db.chunks if self._collection_name == "documind_chunks" else self._db.docs
+        for i, row in enumerate(rows):
+            if row is self._row:
+                del rows[i]
+                break
 
 
 class _FakeVectorDoc:
@@ -99,7 +120,10 @@ class _FakeCollectionQuery:
             if include:
                 filtered.append(row)
 
-        return [_FakeSnapshot(row) for row in filtered]
+        return [
+            _FakeSnapshot(row, reference=_FakeRowRef(self._db, self._name, row))
+            for row in filtered
+        ]
 
     def find_nearest(self, vector_field, query_vector, distance_measure, limit):
         del vector_field, query_vector, distance_measure
@@ -164,14 +188,20 @@ class _FakeChunkDocRef:
 
 class _FakeBatch:
     def __init__(self):
-        self._writes = []
+        self._ops = []
 
     def set(self, ref, data):
-        self._writes.append((ref, data))
+        self._ops.append(("set", ref, data))
+
+    def delete(self, ref):
+        self._ops.append(("delete", ref, None))
 
     def commit(self):
-        for ref, data in self._writes:
-            ref.set(data)
+        for op, ref, data in self._ops:
+            if op == "set":
+                ref.set(data)
+            else:
+                ref.delete()
 
 
 class _FakeCollection:
@@ -516,6 +546,54 @@ class DocuMindServiceStorageTests(unittest.IsolatedAsyncioTestCase):
         await service.delete_document(landlord_id="l1", property_id="p1", doc_id="doc-1")
 
         self.assertIn("documind/l1/p1/doc-1.pdf", deleted_paths)
+
+    async def test_delete_documents_for_property_cascades_all_docs(self):
+        fake_db = _FakeDB(
+            docs=[
+                {"doc_id": "doc-1", "landlord_id": "l1", "property_id": "p1",
+                 "storage_path": "documind/l1/p1/doc-1.pdf", "filename": "lease.pdf"},
+                {"doc_id": "doc-2", "landlord_id": "l1", "property_id": "p1",
+                 "storage_path": "documind/l1/p1/doc-2.pdf", "filename": "bill.pdf"},
+                {"doc_id": "doc-3", "landlord_id": "l1", "property_id": "p2",
+                 "storage_path": "documind/l1/p2/doc-3.pdf", "filename": "other.pdf"},
+            ],
+            chunks=[
+                {"doc_id": "doc-1", "text": "a"},
+                {"doc_id": "doc-1", "text": "b"},
+                {"doc_id": "doc-2", "text": "c"},
+            ],
+        )
+        fake_bucket = _FakeStorageBucket()
+        deleted_paths = []
+
+        class _FakeDeletableBlob(_FakeBlob):
+            def delete(self):
+                deleted_paths.append(self.path)
+
+        fake_bucket.blob = lambda path: _FakeDeletableBlob(fake_bucket, path)
+
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        service._storage_bucket = fake_bucket
+
+        result = await service.delete_documents_for_property(landlord_id="l1", property_id="p1")
+
+        self.assertEqual(result["documents_deleted"], 2)
+        self.assertEqual(result["chunks_deleted"], 3)
+        self.assertEqual([d["doc_id"] for d in fake_db.docs], ["doc-3"])
+        self.assertEqual(fake_db.chunks, [])
+        self.assertCountEqual(
+            deleted_paths,
+            ["documind/l1/p1/doc-1.pdf", "documind/l1/p1/doc-2.pdf"],
+        )
+
+    async def test_delete_documents_for_property_empty_is_noop_success(self):
+        fake_db = _FakeDB(docs=[], chunks=[])
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        result = await service.delete_documents_for_property(landlord_id="l1", property_id="p1")
+
+        self.assertEqual(result["documents_deleted"], 0)
+        self.assertEqual(result["chunks_deleted"], 0)
 
 
 if __name__ == "__main__":

@@ -103,6 +103,26 @@ async def delete_document(
     )
 
 
+@router.delete("/documind/properties/{property_id}/documents")
+async def delete_property_documents(
+    property_id: str,
+    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+):
+    """
+    Delete ALL documents for a property (metadata, chunks, stored PDFs).
+
+    Used by the property-deletion cascade in the app. Idempotent — a property
+    with no documents returns a zero-count success.
+
+    Example:
+        DELETE /api/rex/documind/properties/property_789/documents?landlord_id=landlord_456
+    """
+    return await documind_service.delete_documents_for_property(
+        landlord_id=landlord_id,
+        property_id=property_id,
+    )
+
+
 @router.get("/documind/documents/{doc_id}/view-url")
 async def get_document_view_url(
     doc_id: str,
