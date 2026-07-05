@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/theme/app_dimensions.dart';
 import '../../../domain/entities/property.dart';
+import '../../providers/unit_providers.dart';
 
 /// Property card for portfolio screen
-/// 
+///
 /// Displays:
 /// - Property name and address
 /// - Property type
-/// - Occupancy rate and unit counts
+/// - Occupancy rate and unit counts (derived from the property's units)
 /// - Current value
-class PropertyCard extends StatelessWidget {
+class PropertyCard extends ConsumerWidget {
   final Property property;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
@@ -23,7 +25,14 @@ class PropertyCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unitsAsync = ref.watch(unitsForPropertyStreamProvider(property.id));
+    final totalUnits = unitsAsync.value?.length ?? 0;
+    final occupiedUnits = unitsAsync.value?.where((u) => u.isOccupied).length ?? 0;
+    final occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0.0;
+    final isFullyOccupied = totalUnits > 0 && occupiedUnits == totalUnits;
+    final hasVacancy = occupiedUnits < totalUnits;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -96,27 +105,27 @@ class PropertyCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: property.isFullyOccupied
+                          color: isFullyOccupied
                               ? AppColors.success.withOpacity(0.1)
-                              : property.hasVacancy
+                              : hasVacancy
                                   ? AppColors.warning.withOpacity(0.1)
                                   : AppColors.surfaceLight,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: property.isFullyOccupied
+                            color: isFullyOccupied
                                 ? AppColors.success.withOpacity(0.2)
-                                : property.hasVacancy
+                                : hasVacancy
                                     ? AppColors.warning.withOpacity(0.2)
                                     : AppColors.hairline,
                           ),
                         ),
                         child: Text(
-                          '${property.occupancyRate.toStringAsFixed(0)}%',
+                          '${occupancyRate.toStringAsFixed(0)}%',
                           style: AppTextStyles.label.copyWith(
                             fontSize: 10,
-                            color: property.isFullyOccupied
+                            color: isFullyOccupied
                                 ? AppColors.success
-                                : property.hasVacancy
+                                : hasVacancy
                                     ? AppColors.warning
                                     : AppColors.textMuted,
                             fontWeight: FontWeight.w900,
@@ -162,7 +171,7 @@ class PropertyCard extends StatelessWidget {
                         // Units info
                         _buildInfoChip(
                           icon: Icons.home_work_outlined,
-                          label: '${property.occupiedUnits}/${property.totalUnits} Units',
+                          label: '$occupiedUnits/$totalUnits Units',
                           color: AppColors.primary,
                         ),
 

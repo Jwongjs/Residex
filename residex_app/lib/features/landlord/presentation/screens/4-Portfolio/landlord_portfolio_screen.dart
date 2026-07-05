@@ -6,6 +6,7 @@ import '../../../domain/entities/property.dart';
 import '../../providers/property_providers.dart';
 import '../../widgets/common/property_card.dart';
 import '../../widgets/common/add_property_dialog.dart';
+import 'units_screen.dart';
 
 class LandlordPortfolioScreen extends ConsumerStatefulWidget {
   const LandlordPortfolioScreen({super.key});
@@ -243,6 +244,14 @@ class _LandlordPortfolioScreenState
                               child: PropertyCard(
                                 key: ValueKey('property_${properties[index].id}'),
                                 property: properties[index],
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => UnitsScreen(
+                                      propertyId: properties[index].id,
+                                      propertyName: properties[index].name,
+                                    ),
+                                  ),
+                                ),
                                 onEdit: () => _showEditPropertyDialog(properties[index]),
                               ),
                             );
