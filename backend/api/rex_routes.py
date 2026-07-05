@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, Query
+from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
 from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse
 from rag.documind_service import documind_service
 
@@ -101,3 +101,27 @@ async def delete_document(
         property_id=property_id,
         doc_id=doc_id,
     )
+
+
+@router.get("/documind/documents/{doc_id}/view-url")
+async def get_document_view_url(
+    doc_id: str,
+    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+    property_id: str = Query(..., description="Property ID for scoping"),
+):
+    """
+    Get a short-lived signed URL to view a document's original PDF.
+
+    Example:
+        GET /api/rex/documind/documents/abc123/view-url?landlord_id=landlord_456&property_id=property_789
+    """
+    try:
+        view_url = await documind_service.get_document_view_url(
+            landlord_id=landlord_id,
+            property_id=property_id,
+            doc_id=doc_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return {"view_url": view_url}

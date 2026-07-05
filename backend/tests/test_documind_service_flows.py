@@ -70,7 +70,9 @@ class _FakeCollectionQuery:
         self._name = name
         self._filters = filters or []
 
-    def where(self, field, operator, value):
+    def where(self, field=None, operator=None, value=None, filter=None):
+        if filter is not None:
+            field, operator, value = filter.field_path, filter.op_string, filter.value
         if self._name == "documind_chunks" and field == "category":
             self._db.last_chunk_category_filter = (operator, value)
         return _FakeCollectionQuery(self._db, self._name, self._filters + [(field, operator, value)])
@@ -113,6 +115,18 @@ class _FakeDocDocRef:
     def set(self, data):
         self._db.docs.append({**data, "doc_id": self._doc_id})
 
+    def get(self):
+        for row in self._db.docs:
+            if row.get("doc_id", self._doc_id) == self._doc_id:
+                return _FakePropertyDoc(exists=True, data=row)
+        return _FakePropertyDoc(exists=False, data={})
+
+    def delete(self):
+        self._db.docs = [
+            row for row in self._db.docs
+            if row.get("doc_id", self._doc_id) != self._doc_id
+        ]
+
 
 class _FakeChunkDocRef:
     def __init__(self, db):
@@ -139,8 +153,8 @@ class _FakeCollection:
         self._db = db
         self._name = name
 
-    def where(self, field, operator, value):
-        return _FakeCollectionQuery(self._db, self._name).where(field, operator, value)
+    def where(self, field=None, operator=None, value=None, filter=None):
+        return _FakeCollectionQuery(self._db, self._name).where(field, operator, value, filter=filter)
 
     def document(self, _doc_id=None):
         if self._name == "properties":
@@ -422,6 +436,60 @@ class DocuMindServiceStorageTests(unittest.IsolatedAsyncioTestCase):
 
         stored_doc = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
         self.assertEqual(stored_doc["storage_path"], expected_path)
+
+    async def test_get_document_view_url_returns_signed_url(self):
+        fake_db = _FakeDB(docs=[{
+            "landlord_id": "l1",
+            "property_id": "p1",
+            "storage_path": "documind/l1/p1/doc-1.pdf",
+        }])
+        fake_bucket = _FakeStorageBucket()
+
+        class _FakeBlobWithSignedUrl(_FakeBlob):
+            def generate_signed_url(self, expiration, method="GET"):
+                return f"https://fake-storage.example/{self.path}?exp={expiration}"
+
+        fake_bucket.blob = lambda path: _FakeBlobWithSignedUrl(fake_bucket, path)
+
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        service._storage_bucket = fake_bucket
+
+        # _FakeDB needs a document() lookup for "documind_docs" keyed by doc_id,
+        # matching the extension made in Task 1 Step 1 for ingest's doc_ref.set().
+        # Reuse that same fake document-reference support here for .get().
+        url = await service.get_document_view_url(landlord_id="l1", property_id="p1", doc_id="doc-1")
+
+        self.assertIn("documind/l1/p1/doc-1.pdf", url)
+
+    async def test_get_document_view_url_raises_when_not_found(self):
+        fake_db = _FakeDB(docs=[])
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        with self.assertRaises(ValueError):
+            await service.get_document_view_url(landlord_id="l1", property_id="p1", doc_id="missing-doc")
+
+    async def test_delete_document_removes_storage_object(self):
+        fake_db = _FakeDB(docs=[{
+            "landlord_id": "l1",
+            "property_id": "p1",
+            "storage_path": "documind/l1/p1/doc-1.pdf",
+            "filename": "lease.pdf",
+        }])
+        fake_bucket = _FakeStorageBucket()
+        deleted_paths = []
+
+        class _FakeDeletableBlob(_FakeBlob):
+            def delete(self):
+                deleted_paths.append(self.path)
+
+        fake_bucket.blob = lambda path: _FakeDeletableBlob(fake_bucket, path)
+
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        service._storage_bucket = fake_bucket
+
+        await service.delete_document(landlord_id="l1", property_id="p1", doc_id="doc-1")
+
+        self.assertIn("documind/l1/p1/doc-1.pdf", deleted_paths)
 
 
 if __name__ == "__main__":

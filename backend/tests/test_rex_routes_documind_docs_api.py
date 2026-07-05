@@ -124,6 +124,40 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         response = self.client.delete("/api/rex/documind/documents/doc-1")
         self.assertEqual(response.status_code, 422)
 
+    def test_get_document_view_url_returns_200(self):
+        with patch(
+            "api.rex_routes.documind_service.get_document_view_url",
+            new=AsyncMock(return_value="https://fake-storage.example/doc-1.pdf?exp=123"),
+        ) as mocked_view_url:
+            response = self.client.get(
+                "/api/rex/documind/documents/doc-1/view-url",
+                params={"landlord_id": "landlord-1", "property_id": "property-1"},
+            )
+
+            call_kwargs = mocked_view_url.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["view_url"], "https://fake-storage.example/doc-1.pdf?exp=123")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
+        self.assertEqual(call_kwargs["property_id"], "property-1")
+        self.assertEqual(call_kwargs["doc_id"], "doc-1")
+
+    def test_get_document_view_url_returns_404_when_not_found(self):
+        with patch(
+            "api.rex_routes.documind_service.get_document_view_url",
+            new=AsyncMock(side_effect=ValueError("Document doc-1 not found")),
+        ):
+            response = self.client.get(
+                "/api/rex/documind/documents/doc-1/view-url",
+                params={"landlord_id": "landlord-1", "property_id": "property-1"},
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_document_view_url_returns_422_without_required_query(self):
+        response = self.client.get("/api/rex/documind/documents/doc-1/view-url")
+        self.assertEqual(response.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

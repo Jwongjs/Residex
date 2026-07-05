@@ -4,7 +4,7 @@ import tempfile
 from typing import Dict, List, Optional
 from fastapi import UploadFile
 from models.documind_models import *
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 load_dotenv()  
@@ -823,7 +823,16 @@ class DocuMindService:
         if deleted_chunks_count > 0:
             batch.commit()
             print(f"✅ Deleted {deleted_chunks_count} chunks")
-        
+
+        # Step 3.5: Delete the original file from Storage, if one exists
+        storage_path = doc_data.get('storage_path')
+        if storage_path:
+            try:
+                self.storage_bucket.blob(storage_path).delete()
+                print(f"Deleted storage object {storage_path}")
+            except Exception as e:
+                print(f"Warning: could not delete storage object {storage_path}: {e}")
+
         # Step 4: Delete document metadata
         doc_ref.delete()
         print(f"✅ Deleted document {doc_id}")
@@ -834,6 +843,39 @@ class DocuMindService:
             "filename": doc_data.get('filename', 'Unknown'),
             "chunks_deleted": deleted_chunks_count,
         }
+
+    async def get_document_view_url(
+        self,
+        landlord_id: str,
+        property_id: str,
+        doc_id: str,
+    ) -> str:
+        """
+        Generate a short-lived signed URL to view a document's original PDF.
+
+        Raises:
+            ValueError: If document not found or ownership/scope mismatch.
+        """
+        doc_ref = self.db.collection('documind_docs').document(doc_id)
+        doc_snapshot = doc_ref.get()
+
+        if not doc_snapshot.exists:
+            raise ValueError(f"Document {doc_id} not found")
+
+        doc_data = doc_snapshot.to_dict()
+
+        if doc_data.get('landlord_id') != landlord_id:
+            raise ValueError(f"Document {doc_id} does not belong to landlord {landlord_id}")
+
+        if doc_data.get('property_id') != property_id:
+            raise ValueError(f"Document {doc_id} does not belong to property {property_id}")
+
+        storage_path = doc_data.get('storage_path')
+        if not storage_path:
+            raise ValueError(f"Document {doc_id} has no stored file")
+
+        blob = self.storage_bucket.blob(storage_path)
+        return blob.generate_signed_url(expiration=timedelta(minutes=10), method="GET")
 
 # Singleton instance
 documind_service = DocuMindService()
