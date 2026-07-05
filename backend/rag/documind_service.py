@@ -607,9 +607,7 @@ class DocuMindService:
     **Instructions:**
     1. **IF** the question is about property documents (lease, warranty, insurance, utilities, receipts, other):
     - Answer based ONLY on the context above
-    - Do NOT use inline or in-text citations inside sentences
-    - Do not provide in-text citations, only provide citations at the end under a "Sources" section
-    - In "Sources", list each source as: "- filename (page X)"
+    - Do NOT cite sources or mention filenames/pages — the app displays sources separately
     - Format dates clearly (e.g., "15 March 2026")
     - Keep your answer detailed and informative but organized and concise (bullet points or numbered lists)
 

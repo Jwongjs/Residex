@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dash_chat_2/dash_chat_2.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'dart:io';
 import '../../../../../core/theme/app_theme.dart';
 import '../../providers/documind_provider.dart';
@@ -1204,6 +1205,17 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
                           textColor: AppColors.textPrimary,
                           borderRadius: 16,
                           messagePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          markdownStyleSheet: MarkdownStyleSheet(
+                            p: AppTextStyles.bodyMedium.copyWith(color: AppColors.textPrimary),
+                            strong: AppTextStyles.bodyMedium.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            listBullet: AppTextStyles.bodyMedium.copyWith(color: AppColors.textPrimary),
+                            h1: AppTextStyles.titleMedium.copyWith(color: AppColors.textPrimary),
+                            h2: AppTextStyles.titleMedium.copyWith(color: AppColors.textPrimary),
+                            h3: AppTextStyles.titleMedium.copyWith(color: AppColors.textPrimary),
+                          ),
                           bottom: (message, previousMessage, nextMessage) {
                             final citations = message.customProperties?['citations'] as List<Citation>?;
                             if (citations == null || citations.isEmpty) {
@@ -1362,6 +1374,7 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
           user: _aiUser,
           createdAt: DateTime.now(),
           text: responseText,
+          isMarkdown: true,
           customProperties: answer.citations.isNotEmpty
               ? {'citations': answer.citations}
               : null,

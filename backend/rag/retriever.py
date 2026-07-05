@@ -112,14 +112,19 @@ class HybridRetriever:
         return max(0.0, 0.95 - (fallback_rank * 0.05))
 
     def _rerank(self, question: str, candidates: list[dict]) -> list[dict]:
-        """Score candidates with cross-encoder, return sorted by rerank_score desc."""
+        """Score candidates with cross-encoder, return sorted by rerank_score desc.
+
+        The cross-encoder outputs an unbounded logit, not a 0-1 probability,
+        so it's passed through a sigmoid here — the client displays this score
+        directly as a relevance meter and expects a genuine 0-1 range.
+        """
         if not candidates:
             return []
 
         pairs = [(question, c['text']) for c in candidates]
-        scores = self.cross_encoder.predict(pairs)
+        raw_scores = self.cross_encoder.predict(pairs)
 
-        for candidate, score in zip(candidates, scores):
-            candidate['rerank_score'] = float(score)
+        for candidate, raw_score in zip(candidates, raw_scores):
+            candidate['rerank_score'] = float(1 / (1 + np.exp(-raw_score)))
 
         return sorted(candidates, key=lambda c: c['rerank_score'], reverse=True)
