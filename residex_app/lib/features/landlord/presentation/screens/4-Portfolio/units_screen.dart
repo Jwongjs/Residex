@@ -180,9 +180,17 @@ class UnitsScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _toggleOccupied(WidgetRef ref, Unit unit) async {
+  Future<void> _toggleOccupied(BuildContext context, WidgetRef ref, Unit unit) async {
     final controller = ref.read(unitControllerProvider);
-    await controller.updateUnit(unit.copyWith(isOccupied: !unit.isOccupied));
+    try {
+      await controller.updateUnit(unit.copyWith(isOccupied: !unit.isOccupied));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update unit: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
   }
 
   @override
@@ -232,7 +240,7 @@ class UnitsScreen extends ConsumerWidget {
                                   Switch(
                                     value: unit.isOccupied,
                                     activeColor: AppColors.registry,
-                                    onChanged: (_) => _toggleOccupied(ref, unit),
+                                    onChanged: (_) => _toggleOccupied(context, ref, unit),
                                   ),
                                   IconButton(
                                     icon: Icon(Icons.delete_outline, color: AppColors.error),

@@ -321,16 +321,15 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: _totalUnitsController,
-                        label: 'Number of Units',
-                        hint: '10',
-                        keyboardType: TextInputType.number,
-                        enabled: !_isEditMode,
-                        validator: _validatePositiveInt,
-                      ),
+                      if (!_isEditMode)
+                        _buildTextField(
+                          controller: _totalUnitsController,
+                          label: 'Number of Units',
+                          hint: '10',
+                          keyboardType: TextInputType.number,
+                          validator: _validatePositiveInt,
+                        ),
                       if (_isEditMode) ...[
-                        const SizedBox(height: 8),
                         Text(
                           'Manage individual units from the property card.',
                           style: AppTextStyles.bodySmall.copyWith(
