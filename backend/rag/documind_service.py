@@ -21,6 +21,10 @@ from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1.vector import Vector
 from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
+
+# Firebase Storage imports
+import firebase_admin
+from firebase_admin import storage as firebase_storage
 from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
 from rag.conversation_store import ConversationStore
@@ -48,6 +52,12 @@ CATEGORY_KEYWORDS = {
 }
 
 db = firestore.Client()
+
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(options={
+        'storageBucket': f"{os.getenv('GOOGLE_CLOUD_PROJECT')}.appspot.com",
+    })
+
 embeddings = GoogleGenerativeAIEmbeddings(
             model="models/gemini-embedding-001",  
             google_api_key=os.getenv("GOOGLE_API_KEY"), # explicit key: os.getenv("GEMINI_API_KEY")
@@ -71,6 +81,7 @@ class DocuMindService:
 
     def __init__(self):
         self._db = db
+        self._storage_bucket = None
         self._embeddings = embeddings
         self._llm = llm
         self._hybrid_retriever = HybridRetriever(db=self._db, embeddings=self.embeddings)
@@ -107,6 +118,13 @@ class DocuMindService:
         )
         print(f"✅ Gemini embeddings ready (dim={EMBED_DIM})")
         return self._embeddings
+
+    @property
+    def storage_bucket(self):
+        """Lazy-load the Firebase Storage bucket (only when first accessed)."""
+        if self._storage_bucket is None:
+            self._storage_bucket = firebase_storage.bucket()
+        return self._storage_bucket
 
     @property
     def llm(self):
@@ -272,6 +290,11 @@ class DocuMindService:
             batch.commit()
             print(f"✅ Batch wrote {len(chunk_documents)} chunks to Firestore")
             
+            # Step 5.5: Upload original PDF to Firebase Storage
+            storage_path = f"documind/{landlord_id}/{property_id}/{doc_id}.pdf"
+            blob = self.storage_bucket.blob(storage_path)
+            blob.upload_from_string(content, content_type="application/pdf")
+
             # Step 6: Store document metadata
             file_size = os.path.getsize(temp_path)
             doc_ref = self.db.collection('documind_docs').document(doc_id)
@@ -282,6 +305,7 @@ class DocuMindService:
                 'filename': file.filename,
                 'chunks_indexed': len(chunk_documents),
                 'file_size': file_size,
+                'storage_path': storage_path,
                 'status': 'indexed',
                 'uploaded_at': firestore.SERVER_TIMESTAMP,
             })

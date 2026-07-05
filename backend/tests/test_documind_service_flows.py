@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import PropertyMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from models.documind_models import AskRequest
 from rag.documind_service import DocuMindService
@@ -105,6 +105,35 @@ class _FakeCollectionQuery:
         return _FakeVectorQuery(rows)
 
 
+class _FakeDocDocRef:
+    def __init__(self, db, doc_id):
+        self._db = db
+        self._doc_id = doc_id
+
+    def set(self, data):
+        self._db.docs.append({**data, "doc_id": self._doc_id})
+
+
+class _FakeChunkDocRef:
+    def __init__(self, db):
+        self._db = db
+
+    def set(self, data):
+        self._db.chunks.append(data)
+
+
+class _FakeBatch:
+    def __init__(self):
+        self._writes = []
+
+    def set(self, ref, data):
+        self._writes.append((ref, data))
+
+    def commit(self):
+        for ref, data in self._writes:
+            ref.set(data)
+
+
 class _FakeCollection:
     def __init__(self, db, name: str):
         self._db = db
@@ -113,10 +142,14 @@ class _FakeCollection:
     def where(self, field, operator, value):
         return _FakeCollectionQuery(self._db, self._name).where(field, operator, value)
 
-    def document(self, _doc_id):
+    def document(self, _doc_id=None):
         if self._name == "properties":
             return _FakePropertyRef(self._db.property_name)
-        raise NotImplementedError("document() only used for properties in these tests")
+        if self._name == "documind_docs":
+            return _FakeDocDocRef(self._db, _doc_id)
+        if self._name == "documind_chunks":
+            return _FakeChunkDocRef(self._db)
+        raise NotImplementedError("document() only used for properties, documind_docs, documind_chunks in these tests")
 
 
 class _FakeDB:
@@ -128,6 +161,9 @@ class _FakeDB:
 
     def collection(self, name: str):
         return _FakeCollection(self, name)
+
+    def batch(self):
+        return _FakeBatch()
 
 
 class _FakeConversationStore:
@@ -326,6 +362,66 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.category_filter_mode, "clarification_selected")
         self.assertEqual(response.searched_categories, ["warranty"])
         self.assertEqual(fake_db.last_chunk_category_filter, ("==", "warranty"))
+
+
+class _FakeBlob:
+    def __init__(self, bucket, path):
+        self.bucket = bucket
+        self.path = path
+        self.uploaded_content = None
+        self.uploaded_content_type = None
+
+    def upload_from_string(self, content, content_type=None):
+        self.uploaded_content = content
+        self.uploaded_content_type = content_type
+        self.bucket.blobs[self.path] = self
+
+
+class _FakeStorageBucket:
+    def __init__(self):
+        self.blobs = {}
+
+    def blob(self, path):
+        return _FakeBlob(self, path)
+
+
+class DocuMindServiceStorageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_ingest_document_uploads_pdf_to_storage(self):
+        fake_db = _FakeDB()
+        fake_bucket = _FakeStorageBucket()
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        service._storage_bucket = fake_bucket
+
+        pdf_bytes = b"%PDF-1.4 fake content"
+
+        class _FakeUploadFile:
+            filename = "lease.pdf"
+
+            async def read(self):
+                return pdf_bytes
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            fake_page = MagicMock()
+            fake_page.page_content = "Some lease text"
+            fake_page.metadata = {"page": 0}
+            loader_mock.return_value.load.return_value = [fake_page]
+
+            response = await service.ingest_document(
+                landlord_id="l1",
+                property_id="p1",
+                category="lease",
+                file=_FakeUploadFile(),
+            )
+
+        expected_path = f"documind/l1/p1/{response.doc_id}.pdf"
+        self.assertIn(expected_path, fake_bucket.blobs)
+        self.assertEqual(fake_bucket.blobs[expected_path].uploaded_content, pdf_bytes)
+        self.assertEqual(fake_bucket.blobs[expected_path].uploaded_content_type, "application/pdf")
+
+        stored_doc = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
+        self.assertEqual(stored_doc["storage_path"], expected_path)
 
 
 if __name__ == "__main__":
