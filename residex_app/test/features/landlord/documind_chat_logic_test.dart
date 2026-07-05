@@ -73,9 +73,10 @@ void main() {
 
       expect(text, contains('Reply with `confirm` or `cancel`'));
       expect(text, contains('• lease'));
-      expect(text, contains('🏷️ Categories: LEASE (clarified)'));
-      expect(text, contains('📚 Sources:'));
-      expect(text, contains('lease.pdf'));
+      expect(text, contains('Categories: LEASE (clarified)'));
+      // Citations are rendered by the citation widget attached to the chat
+      // bubble (MessageOptions.bottom), not inlined in the assistant text.
+      expect(text, isNot(contains('Sources:')));
     });
 
     test('falls back to predicted categories when clarification options empty', () {
