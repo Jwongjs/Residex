@@ -10,6 +10,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_storage
   permission_handler_windows
   sqlite3_flutter_libs
+  syncfusion_pdfviewer_windows
   url_launcher_windows
 )
 

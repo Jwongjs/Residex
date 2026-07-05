@@ -11,6 +11,7 @@ import '../../providers/property_providers.dart';
 import '../../../domain/entities/documind_document.dart';
 import '../../../domain/entities/property.dart';
 import 'documind_chat_logic.dart';
+import 'document_viewer_screen.dart';
 
 /// DocuMind Screen - Property Document Management + Q&A
 class DocuMindScreen extends ConsumerStatefulWidget {
@@ -1137,48 +1138,63 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
   }
 
   Widget _buildCitationLine(Citation citation) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '${citation.filename} · p.${citation.page ?? '—'}',
-              style: GoogleFonts.ibmPlexMono(
-                fontSize: 11,
-                color: AppColors.textMuted,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return InkWell(
+      onTap: () {
+        if (_selectedPropertyId == null) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DocumentViewerScreen(
+              propertyId: _selectedPropertyId!,
+              docId: citation.docId,
+              filename: citation.filename,
+              page: citation.page,
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            width: 40,
-            height: 3,
-            decoration: BoxDecoration(
-              color: AppColors.hairline,
-              borderRadius: BorderRadius.circular(2),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${citation.filename} · p.${citation.page ?? '—'}',
+                style: GoogleFonts.ibmPlexMono(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                // Never render a fully empty bar — a source appearing in this
-                // card is inherently non-zero relevance; the true score still
-                // drives everything above this floor.
-                widthFactor: citation.score.clamp(0.0, 1.0) < _minRelevanceBarFill
-                    ? _minRelevanceBarFill
-                    : citation.score.clamp(0.0, 1.0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.registry,
-                    borderRadius: BorderRadius.circular(2),
+            const SizedBox(width: 8),
+            Container(
+              width: 40,
+              height: 3,
+              decoration: BoxDecoration(
+                color: AppColors.hairline,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  // Never render a fully empty bar — a source appearing in this
+                  // card is inherently non-zero relevance; the true score still
+                  // drives everything above this floor.
+                  widthFactor: citation.score.clamp(0.0, 1.0) < _minRelevanceBarFill
+                      ? _minRelevanceBarFill
+                      : citation.score.clamp(0.0, 1.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.registry,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
