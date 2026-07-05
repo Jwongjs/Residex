@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/property.dart';
+import '../../../domain/entities/unit.dart';
 import '../../providers/property_providers.dart';
+import '../../providers/unit_providers.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
 
 /// Add/Edit property dialog.
@@ -32,8 +33,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   final _purchasePriceController = TextEditingController();
   final _currentValueController = TextEditingController();
   final _totalUnitsController = TextEditingController();
-  final _occupiedUnitsController = TextEditingController();
-  final _monthlyRentController = TextEditingController();
   
   PropertyType _selectedType = PropertyType.apartment;
   bool _isLoading = false;
@@ -52,9 +51,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       _zipCodeController.text = property.address.zipCode;
       _purchasePriceController.text = property.purchasePrice.toString();
       _currentValueController.text = property.currentValue.toString();
-      _totalUnitsController.text = property.totalUnits.toString();
-      _occupiedUnitsController.text = property.occupiedUnits.toString();
-      _monthlyRentController.text = property.monthlyRent.toString();
       _selectedType = property.type;
     }
   }
@@ -69,8 +65,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     _purchasePriceController.dispose();
     _currentValueController.dispose();
     _totalUnitsController.dispose();
-    _occupiedUnitsController.dispose();
-    _monthlyRentController.dispose();
     super.dispose();
   }
 
@@ -99,15 +93,13 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
 
       if (existing != null) {
         // Edit mode: preserve id/landlordId/createdAt/photos, update the rest.
+        // Unit count/rent are not editable here — see UnitsScreen.
         final updatedProperty = existing.copyWith(
           name: _nameController.text.trim(),
           address: address,
           type: _selectedType,
           purchasePrice: double.parse(_purchasePriceController.text),
           currentValue: double.parse(_currentValueController.text),
-          totalUnits: int.parse(_totalUnitsController.text),
-          occupiedUnits: int.parse(_occupiedUnitsController.text),
-          monthlyRent: double.parse(_monthlyRentController.text),
         );
         await controller.updateProperty(updatedProperty);
       } else {
@@ -119,13 +111,23 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           type: _selectedType,
           purchasePrice: double.parse(_purchasePriceController.text),
           currentValue: double.parse(_currentValueController.text),
-          totalUnits: int.parse(_totalUnitsController.text),
-          occupiedUnits: int.parse(_occupiedUnitsController.text),
-          monthlyRent: double.parse(_monthlyRentController.text),
           photos: [],
           createdAt: DateTime.now(),
         );
-        await controller.createProperty(property);
+        final propertyId = await controller.createProperty(property);
+
+        final unitCount = int.parse(_totalUnitsController.text);
+        final unitController = ref.read(unitControllerProvider);
+        for (var i = 1; i <= unitCount; i++) {
+          await unitController.createUnit(Unit(
+            id: '',
+            propertyId: propertyId,
+            label: 'Unit $i',
+            monthlyRent: 0,
+            isOccupied: false,
+            createdAt: DateTime.now(),
+          ));
+        }
       }
 
       if (mounted) {
@@ -310,15 +312,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: _monthlyRentController,
-                        label: 'Monthly Rent (per unit)',
-                        hint: '2000',
-                        icon: Icons.payment,
-                        keyboardType: TextInputType.number,
-                        validator: _validateNumber,
-                      ),
                       const SizedBox(height: 20),
 
                       Text(
@@ -328,40 +321,23 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _totalUnitsController,
-                              label: 'Total Units',
-                              hint: '10',
-                              keyboardType: TextInputType.number,
-                              validator: _validatePositiveInt,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: _occupiedUnitsController,
-                              label: 'Occupied Units',
-                              hint: '8',
-                              keyboardType: TextInputType.number,
-                              validator: (value) {
-                                final error = _validatePositiveInt(value);
-                                if (error != null) return error;
-                                
-                                final occupied = int.tryParse(value!) ?? 0;
-                                final total = int.tryParse(_totalUnitsController.text) ?? 0;
-                                
-                                if (occupied > total) {
-                                  return 'Cannot exceed total units';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                        ],
+                      _buildTextField(
+                        controller: _totalUnitsController,
+                        label: 'Number of Units',
+                        hint: '10',
+                        keyboardType: TextInputType.number,
+                        enabled: !_isEditMode,
+                        validator: _validatePositiveInt,
                       ),
+                      if (_isEditMode) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Manage individual units from the property card.',
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -427,11 +403,13 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     String? hint,
     IconData? icon,
     TextInputType? keyboardType,
+    bool enabled = true,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
+      enabled: enabled,
       style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textPrimary),
       decoration: InputDecoration(
         labelText: label,
