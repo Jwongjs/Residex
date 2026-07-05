@@ -14,9 +14,6 @@ class PropertyModel extends Property {
     required super.type,
     required super.purchasePrice,
     required super.currentValue,
-    required super.totalUnits,
-    required super.occupiedUnits,
-    required super.monthlyRent,
     super.photos,
     required super.createdAt,
     super.updatedAt,
@@ -32,9 +29,6 @@ class PropertyModel extends Property {
       type: property.type,
       purchasePrice: property.purchasePrice,
       currentValue: property.currentValue,
-      totalUnits: property.totalUnits,
-      occupiedUnits: property.occupiedUnits,
-      monthlyRent: property.monthlyRent,
       photos: property.photos,
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,
@@ -51,9 +45,6 @@ class PropertyModel extends Property {
       type: type,
       purchasePrice: purchasePrice,
       currentValue: currentValue,
-      totalUnits: totalUnits,
-      occupiedUnits: occupiedUnits,
-      monthlyRent: monthlyRent,
       photos: photos,
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -79,9 +70,6 @@ class PropertyModel extends Property {
       // ✅ FIXED: Safe numeric parsing with fallback
       purchasePrice: _parseDouble(json['purchasePrice']),
       currentValue: _parseDouble(json['currentValue']),
-      totalUnits: _parseInt(json['totalUnits']),
-      occupiedUnits: _parseInt(json['occupiedUnits']),
-      monthlyRent: _parseDouble(json['monthlyRent']),
       photos: (json['photos'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
@@ -108,9 +96,6 @@ class PropertyModel extends Property {
       'type': type.toJson(),
       'purchasePrice': purchasePrice,
       'currentValue': currentValue,
-      'totalUnits': totalUnits,
-      'occupiedUnits': occupiedUnits,
-      'monthlyRent': monthlyRent, // ✅ ADDED (was missing)
       'photos': photos,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
@@ -137,15 +122,6 @@ class PropertyModel extends Property {
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
-  }
-
-  /// Safely parse int from dynamic value
-  static int _parseInt(dynamic value) {
-    if (value == null) return 0;
-    if (value is int) return value;
-    if (value is double) return value.toInt();
-    if (value is String) return int.tryParse(value) ?? 0;
-    return 0;
   }
 
   /// Safely parse Firestore Timestamp

@@ -79,8 +79,10 @@ class PropertyAddress {
 }
 
 /// Pure business object - Property entity
-/// 
-/// Represents a real estate property with rental potential
+///
+/// Represents a real estate property with rental potential. Per-unit rent
+/// and occupancy live on the Unit entity (properties/{id}/units subcollection),
+/// not here — Property no longer tracks aggregate unit counts or rent.
 /// Matches Firebase schema: properties/{propertyId}
 class Property {
   final String id;
@@ -90,9 +92,6 @@ class Property {
   final PropertyType type;
   final double purchasePrice;
   final double currentValue;
-  final int totalUnits;
-  final int occupiedUnits;
-  final double monthlyRent;
   final List<String> photos;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -105,34 +104,10 @@ class Property {
     required this.type,
     required this.purchasePrice,
     required this.currentValue,
-    required this.totalUnits,
-    required this.occupiedUnits,
-    required this.monthlyRent,
     this.photos = const [],
     required this.createdAt,
     this.updatedAt,
   });
-
-  // ✅ Business Logic Methods (Domain-specific calculations)
-  
-  /// Calculate occupancy rate as percentage
-  double get occupancyRate {
-    if (totalUnits == 0) return 0;
-    return (occupiedUnits / totalUnits) * 100;
-  }
-
-  /// Calculate vacant units
-  int get vacantUnits => totalUnits - occupiedUnits;
-
-  /// Check if property is fully occupied
-  bool get isFullyOccupied => occupiedUnits == totalUnits;
-
-  /// Check if property has vacancies
-  bool get hasVacancy => occupiedUnits < totalUnits;
-
-  double get potentialRevenue => monthlyRent * totalUnits;
-
-  double get actualRevenue => monthlyRent * occupiedUnits;
 
   /// Calculate property appreciation
   double get appreciation => currentValue - purchasePrice;
@@ -158,9 +133,6 @@ class Property {
     PropertyType? type,
     double? purchasePrice,
     double? currentValue,
-    int? totalUnits,
-    int? occupiedUnits,
-    double? monthlyRent,
     List<String>? photos,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -173,9 +145,6 @@ class Property {
       type: type ?? this.type,
       purchasePrice: purchasePrice ?? this.purchasePrice,
       currentValue: currentValue ?? this.currentValue,
-      totalUnits: totalUnits ?? this.totalUnits,
-      occupiedUnits: occupiedUnits ?? this.occupiedUnits,
-      monthlyRent: monthlyRent ?? this.monthlyRent,
       photos: photos ?? this.photos,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

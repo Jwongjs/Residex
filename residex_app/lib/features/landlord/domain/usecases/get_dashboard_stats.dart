@@ -1,5 +1,3 @@
-import '../entities/property.dart';
-import '../entities/financial_summary.dart';
 import '../repositories/property_repository.dart';
 import '../repositories/financial_repository.dart';
 
@@ -43,8 +41,13 @@ class GetDashboardStats {
       landlordId,
       DateTime.now(),
     );
-    final occupiedUnits = await propertyRepository.getTotalOccupiedUnits(landlordId);
-    final totalUnits = await propertyRepository.getTotalUnits(landlordId);
+    // Unit counts/occupancy moved to the Unit entity (properties/{id}/units
+    // subcollection) and are no longer available as a PropertyRepository
+    // aggregate. This usecase has no live caller anywhere in the app (no
+    // provider constructs it) and depends on FinancialRepository, which has
+    // no implementation either — left unwired pending a real integration.
+    const occupiedUnits = 0;
+    const totalUnits = 0;
 
     // Calculate derived metrics
     final occupancyRate = totalUnits > 0 ? ((occupiedUnits / totalUnits) * 100).toDouble() : 0.0;

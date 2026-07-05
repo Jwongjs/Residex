@@ -22,21 +22,4 @@ abstract class PropertyRepository {
 
   /// Search properties by name or address
   Future<List<Property>> searchProperties(String landlordId, String query);
-
-  // ========== STATISTICS METHODS (NEW) ==========
-
-  /// Get total number of units across all properties
-  Future<int> getTotalUnits(String landlordId);
-
-  /// Get total number of occupied units
-  Future<int> getTotalOccupiedUnits(String landlordId);
-
-  /// Get occupancy rate percentage
-  Future<double> getOccupancyRate(String landlordId);
-
-  /// Get total potential revenue
-  Future<double> getTotalPotentialRevenue(String landlordId);
-
-  /// Get total actual revenue (from occupied units)
-  Future<double> getTotalActualRevenue(String landlordId);
 }

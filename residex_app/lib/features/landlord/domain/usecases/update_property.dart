@@ -22,18 +22,6 @@ class UpdateProperty {
       throw Exception('Property name cannot be empty');
     }
 
-    if (property.totalUnits < 0) {
-      throw Exception('Total units must be >= 0');
-    }
-
-    if (property.occupiedUnits < 0) {
-      throw Exception('Occupied units must be >= 0');
-    }
-
-    if (property.occupiedUnits > property.totalUnits) {
-      throw Exception('Occupied units cannot exceed total units');
-    }
-
     if (property.currentValue < 0) {
       throw Exception('Current value must be >= 0');
     }

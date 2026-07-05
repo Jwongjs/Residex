@@ -16,27 +16,10 @@ class CreateProperty {
   Future<String> call(Property property) async {
     print('🔵 UseCase: CreateProperty called');
     print('🔵 Property: ${property.name}');
-    print('🔵 Monthly Rent: RM ${property.monthlyRent}');
 
     // Business validation
     if (property.name.trim().isEmpty) {
       throw Exception('Property name cannot be empty');
-    }
-
-    if (property.totalUnits < 0) {
-      throw Exception('Total units must be >= 0');
-    }
-
-    if (property.occupiedUnits < 0) {
-      throw Exception('Occupied units must be >= 0');
-    }
-
-    if (property.occupiedUnits > property.totalUnits) {
-      throw Exception('Occupied units cannot exceed total units');
-    }
-
-    if (property.monthlyRent <= 0) {
-      throw ArgumentError('Monthly rent must be greater than 0');
     }
 
     if (property.purchasePrice < 0) {
