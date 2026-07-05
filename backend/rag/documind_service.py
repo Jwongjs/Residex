@@ -567,18 +567,41 @@ class DocuMindService:
                 action_reason="No chunks retrieved",
             )
 
-        citations = []
+        # Dedupe citations by (filename, page): multiple chunks can come from
+        # the same page (overlapping splits), each with its own rerank score.
+        # The LLM still sees every chunk's text via context_text below; this
+        # only collapses what's shown as a citation, keeping the best score
+        # per page so the same source never appears twice with two different
+        # relevance bars.
+        best_citation_by_page: dict[tuple[str, Optional[int]], dict] = {}
         context_text = ""
         for i, chunk in enumerate(retrieved_chunks):
-            citations.append(Citation(
-                doc_id=chunk['doc_id'],
-                filename=chunk['filename'],
-                category=chunk['category'],
-                page=chunk.get('page'),
-                snippet=chunk['text'][:200],
-                score=chunk.get('rerank_score', chunk.get('dense_score', 0.0)),
-            ))
-            context_text += f"\n\n[Document {i+1}: {chunk['filename']}, Page {chunk.get('page', 'N/A')}]\n{chunk['text']}"
+            display_page = chunk['page'] + 1 if chunk.get('page') is not None else None
+            page_key = (chunk['filename'], display_page)
+            chunk_score = chunk.get('rerank_score', chunk.get('dense_score', 0.0))
+            existing = best_citation_by_page.get(page_key)
+            if existing is None or chunk_score > existing['score']:
+                best_citation_by_page[page_key] = {
+                    'doc_id': chunk['doc_id'],
+                    'filename': chunk['filename'],
+                    'category': chunk['category'],
+                    'page': display_page,
+                    'snippet': chunk['text'][:200],
+                    'score': chunk_score,
+                }
+            context_text += f"\n\n[Document {i+1}: {chunk['filename']}, Page {display_page if display_page is not None else 'N/A'}]\n{chunk['text']}"
+
+        citations = [
+            Citation(
+                doc_id=c['doc_id'],
+                filename=c['filename'],
+                category=c['category'],
+                page=c['page'],
+                snippet=c['snippet'],
+                score=c['score'],
+            )
+            for c in sorted(best_citation_by_page.values(), key=lambda c: c['score'], reverse=True)
+        ]
 
         searched_categories_text = ", ".join(selected_categories) if selected_categories else "all categories"
         prompt = f"""You are DocuMind, an AI assistant specialized in property document management.

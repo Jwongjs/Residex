@@ -21,7 +21,10 @@ class DocuMindScreen extends ConsumerStatefulWidget {
 }
 
 class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
-  
+  // Minimum visible width factor for a citation's relevance bar — a source
+  // listed in the card should never look like it has zero relevance.
+  static const double _minRelevanceBarFill = 0.08;
+
   String? _selectedPropertyId;
   String? _selectedCategory;
   bool _showChatInterface = true;
@@ -1160,7 +1163,12 @@ Future<void> _deleteDocument(DocuMindDocument doc) async {
             child: Align(
               alignment: Alignment.centerLeft,
               child: FractionallySizedBox(
-                widthFactor: citation.score.clamp(0.0, 1.0),
+                // Never render a fully empty bar — a source appearing in this
+                // card is inherently non-zero relevance; the true score still
+                // drives everything above this floor.
+                widthFactor: citation.score.clamp(0.0, 1.0) < _minRelevanceBarFill
+                    ? _minRelevanceBarFill
+                    : citation.score.clamp(0.0, 1.0),
                 child: Container(
                   decoration: BoxDecoration(
                     color: AppColors.registry,
