@@ -11,6 +11,7 @@ import '../../domain/usecases/get_property_by_id.dart';
 import '../../domain/usecases/search_properties.dart';
 import '../../domain/usecases/update_property.dart';
 import '../../../shared/presentation/providers/auth_providers.dart';
+import 'unit_providers.dart';
 
 // ============================================================
 // DATA LAYER PROVIDERS
@@ -123,84 +124,44 @@ final propertyFilterProvider =
 );
 
 /// Filtered properties based on current filter
-final filteredPropertiesProvider = Provider<AsyncValue<List<Property>>>((ref) {
+final filteredPropertiesProvider = FutureProvider<List<Property>>((ref) async {
   final propertiesAsync = ref.watch(propertiesStreamProvider);
   final filter = ref.watch(propertyFilterProvider);
 
-  return propertiesAsync.whenData((properties) {
-    switch (filter) {
-      case PropertyFilter.all:
-        return properties;
-      case PropertyFilter.fullyOccupied:
-        return properties.where((p) => p.isFullyOccupied).toList();
-      case PropertyFilter.hasVacancy:
-        return properties.where((p) => p.hasVacancy).toList();
-      default:
-        return [];
+  final properties = propertiesAsync.value ?? [];
+
+  if (filter == PropertyFilter.all) {
+    return properties;
+  }
+
+  final filtered = <Property>[];
+  for (final property in properties) {
+    final units = await ref.watch(unitsForPropertyProvider(property.id).future);
+    final totalUnits = units.length;
+    final occupiedUnits = units.where((u) => u.isOccupied).length;
+    final isFullyOccupied = totalUnits > 0 && occupiedUnits == totalUnits;
+    final hasVacancy = occupiedUnits < totalUnits;
+
+    if (filter == PropertyFilter.fullyOccupied && isFullyOccupied) {
+      filtered.add(property);
+    } else if (filter == PropertyFilter.hasVacancy && hasVacancy) {
+      filtered.add(property);
     }
-  });
+  }
+  return filtered;
 });
 
 // ============================================================
 // PORTFOLIO STATISTICS
 // ============================================================
 
-/// Portfolio statistics provider (calculated from properties)
-final portfolioStatsProvider = Provider<PortfolioStats>((ref) {
+/// Portfolio statistics provider (calculated from properties' units)
+final portfolioStatsProvider = FutureProvider<PortfolioStats>((ref) async {
   final propertiesAsync = ref.watch(propertiesStreamProvider);
-  
-  return propertiesAsync.when(
-    data: (properties) {
-      if (properties.isEmpty) {
-        return PortfolioStats(
-          totalProperties: 0,
-          totalUnits: 0,
-          occupiedUnits: 0,
-          vacantUnits: 0,
-          averageOccupancyRate: 0.0,
-          fullyOccupiedProperties: 0,
-          vacantProperties: 0,
-          totalRevenue: 0.0,
-        );
-      }
+  final properties = propertiesAsync.value ?? [];
 
-      final totalUnits = properties.fold<int>(
-        0,
-        (sum, property) => sum + property.totalUnits,
-      );
-
-      final occupiedUnits = properties.fold<int>(
-        0,
-        (sum, property) => sum + property.occupiedUnits,
-      );
-
-      final vacantUnits = totalUnits - occupiedUnits;
-      
-      final averageOccupancyRate = totalUnits > 0 
-          ? (occupiedUnits / totalUnits) * 100 
-          : 0.0;
-
-      final fullyOccupiedCount = properties.where((p) => p.isFullyOccupied).length;
-      final vacantCount = properties.where((p) => p.hasVacancy).length;
-
-      // Calculate total revenue (sum of monthly rent * occupied units)
-      final totalRevenue = properties.fold<double>(
-        0.0,
-        (sum, property) => sum + (property.monthlyRent * property.occupiedUnits),
-      );
-
-      return PortfolioStats(
-        totalProperties: properties.length,
-        totalUnits: totalUnits,
-        occupiedUnits: occupiedUnits,
-        vacantUnits: vacantUnits,
-        averageOccupancyRate: averageOccupancyRate,
-        fullyOccupiedProperties: fullyOccupiedCount,
-        vacantProperties: vacantCount,
-        totalRevenue: totalRevenue,
-      );
-    },
-    loading: () => PortfolioStats(
+  if (properties.isEmpty) {
+    return PortfolioStats(
       totalProperties: 0,
       totalUnits: 0,
       occupiedUnits: 0,
@@ -209,17 +170,47 @@ final portfolioStatsProvider = Provider<PortfolioStats>((ref) {
       fullyOccupiedProperties: 0,
       vacantProperties: 0,
       totalRevenue: 0.0,
-    ),
-    error: (_, __) => PortfolioStats(
-      totalProperties: 0,
-      totalUnits: 0,
-      occupiedUnits: 0,
-      vacantUnits: 0,
-      averageOccupancyRate: 0.0,
-      fullyOccupiedProperties: 0,
-      vacantProperties: 0,
-      totalRevenue: 0.0,
-    ),
+    );
+  }
+
+  var totalUnits = 0;
+  var occupiedUnits = 0;
+  var fullyOccupiedCount = 0;
+  var vacantCount = 0;
+  var totalRevenue = 0.0;
+
+  for (final property in properties) {
+    final units = await ref.watch(unitsForPropertyProvider(property.id).future);
+    final propertyTotalUnits = units.length;
+    final propertyOccupiedUnits = units.where((u) => u.isOccupied).length;
+
+    totalUnits += propertyTotalUnits;
+    occupiedUnits += propertyOccupiedUnits;
+
+    if (propertyTotalUnits > 0 && propertyOccupiedUnits == propertyTotalUnits) {
+      fullyOccupiedCount++;
+    }
+    if (propertyOccupiedUnits < propertyTotalUnits) {
+      vacantCount++;
+    }
+
+    totalRevenue += units
+        .where((u) => u.isOccupied)
+        .fold<double>(0.0, (sum, u) => sum + u.monthlyRent);
+  }
+
+  final vacantUnits = totalUnits - occupiedUnits;
+  final averageOccupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0.0;
+
+  return PortfolioStats(
+    totalProperties: properties.length,
+    totalUnits: totalUnits,
+    occupiedUnits: occupiedUnits,
+    vacantUnits: vacantUnits,
+    averageOccupancyRate: averageOccupancyRate,
+    fullyOccupiedProperties: fullyOccupiedCount,
+    vacantProperties: vacantCount,
+    totalRevenue: totalRevenue,
   );
 });
 

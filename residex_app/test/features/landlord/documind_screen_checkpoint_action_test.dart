@@ -68,9 +68,6 @@ void main() {
       type: PropertyType.apartment,
       purchasePrice: 500000,
       currentValue: 550000,
-      totalUnits: 10,
-      occupiedUnits: 9,
-      monthlyRent: 2000,
       createdAt: DateTime(2026, 1, 1),
     );
 
@@ -169,9 +166,6 @@ void main() {
       type: PropertyType.apartment,
       purchasePrice: 500000,
       currentValue: 550000,
-      totalUnits: 10,
-      occupiedUnits: 9,
-      monthlyRent: 2000,
       createdAt: DateTime(2026, 1, 1),
     );
 
@@ -269,9 +263,6 @@ void main() {
       type: PropertyType.apartment,
       purchasePrice: 500000,
       currentValue: 550000,
-      totalUnits: 10,
-      occupiedUnits: 9,
-      monthlyRent: 2000,
       createdAt: DateTime(2026, 1, 1),
     );
 

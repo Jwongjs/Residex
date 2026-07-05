@@ -52,7 +52,8 @@ class LandlordDashboardScreen extends ConsumerWidget {
       ),
       body: propertiesAsync.when(
         data: (properties) => _buildContent(context, ref, properties),
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.registry)),
+        loading: () => const Center(
+            child: CircularProgressIndicator(color: AppColors.registry)),
         error: (error, stack) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -81,7 +82,9 @@ class LandlordDashboardScreen extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AppTextStyles.labelLarge.copyWith(color: AppColors.slate)),
+            child: Text('Cancel',
+                style:
+                    AppTextStyles.labelLarge.copyWith(color: AppColors.slate)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -105,46 +108,54 @@ class LandlordDashboardScreen extends ConsumerWidget {
     if (context.mounted) context.go(AppRoutes.login);
   }
 
-  Widget _buildContent(BuildContext context, WidgetRef ref, List<Property> properties) {
+  Widget _buildContent(
+      BuildContext context, WidgetRef ref, List<Property> properties) {
     if (properties.isEmpty) {
       return _buildEmptyState(context);
     }
 
-    final stats = ref.watch(portfolioStatsProvider);
+    final statsAsync = ref.watch(portfolioStatsProvider);
     final visibleProperties = properties.take(3).toList();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(_greeting(), style: AppTextStyles.displayMedium),
-          const SizedBox(height: 4),
-          Text(
-            '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} on file',
-            style: AppTextStyles.bodyMedium,
-          ),
-          const SizedBox(height: 20),
-          _buildStatTileRow(stats),
-          const SizedBox(height: 20),
-          _buildDocumindEntryCard(context),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: Text('Your properties', style: AppTextStyles.titleLarge),
-              ),
-              TextButton(
-                onPressed: onOpenPortfolio,
-                style: TextButton.styleFrom(foregroundColor: AppColors.registry),
-                child: const Text('View all'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          ...visibleProperties.map((p) => _buildPropertyRow(context, p)),
-        ],
+    return statsAsync.when(
+      data: (stats) => SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_greeting(), style: AppTextStyles.displayMedium),
+            const SizedBox(height: 4),
+            Text(
+              '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} on file',
+              style: AppTextStyles.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            _buildStatTileRow(stats),
+            const SizedBox(height: 20),
+            _buildDocumindEntryCard(context),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child:
+                      Text('Your properties', style: AppTextStyles.titleLarge),
+                ),
+                TextButton(
+                  onPressed: onOpenPortfolio,
+                  style:
+                      TextButton.styleFrom(foregroundColor: AppColors.registry),
+                  child: const Text('View all'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            ...visibleProperties.map((p) => _buildPropertyRow(context, p)),
+          ],
+        ),
       ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) =>
+          const Center(child: Text('Failed to load portfolio stats')),
     );
   }
 
@@ -210,12 +221,14 @@ class LandlordDashboardScreen extends ConsumerWidget {
                 children: [
                   Text(
                     'Ask Documind',
-                    style: AppTextStyles.titleLarge.copyWith(color: Colors.white),
+                    style:
+                        AppTextStyles.titleLarge.copyWith(color: Colors.white),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     'Get answers from your leases, warranties, and bills.',
-                    style: AppTextStyles.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: Colors.white.withValues(alpha: 0.85)),
                   ),
                 ],
               ),
@@ -236,12 +249,14 @@ class LandlordDashboardScreen extends ConsumerWidget {
         decoration: CardDecoration.flat,
         child: Row(
           children: [
-            const Icon(Icons.home_work_outlined, color: AppColors.registry, size: 20),
+            const Icon(Icons.home_work_outlined,
+                color: AppColors.registry, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(property.name, style: AppTextStyles.titleMedium),
             ),
-            const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 18),
+            const Icon(Icons.chevron_right,
+                color: AppColors.textMuted, size: 18),
           ],
         ),
       ),
@@ -255,7 +270,8 @@ class LandlordDashboardScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.home_work_outlined, size: 48, color: AppColors.textMuted),
+            const Icon(Icons.home_work_outlined,
+                size: 48, color: AppColors.textMuted),
             const SizedBox(height: 16),
             Text('No properties yet', style: AppTextStyles.titleLarge),
             const SizedBox(height: 8),

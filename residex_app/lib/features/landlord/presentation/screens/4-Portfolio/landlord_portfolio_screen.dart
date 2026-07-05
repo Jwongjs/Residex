@@ -48,7 +48,7 @@ class _LandlordPortfolioScreenState
   @override
   Widget build(BuildContext context) {
     final propertiesAsync = ref.watch(filteredPropertiesProvider);
-    final portfolioStats = ref.watch(portfolioStatsProvider);
+    final portfolioStatsAsync = ref.watch(portfolioStatsProvider);
     final currentFilter = ref.watch(propertyFilterProvider);
 
     // Filter button labels
@@ -100,7 +100,11 @@ class _LandlordPortfolioScreenState
                                 if (showSubtitle) ...[
                                   const SizedBox(height: 2),
                                   Text(
-                                    '${portfolioStats.totalProperties} PROPERTIES • ${portfolioStats.averageOccupancyRate.toStringAsFixed(0)}% OCCUPIED',
+                                    portfolioStatsAsync.maybeWhen(
+                                      data: (stats) =>
+                                          '${stats.totalProperties} PROPERTIES • ${stats.averageOccupancyRate.toStringAsFixed(0)}% OCCUPIED',
+                                      orElse: () => '',
+                                    ),
                                     style: AppTextStyles.labelSmall.copyWith(
                                       color: AppColors.textMuted,
                                       letterSpacing: 1.5,
@@ -124,7 +128,14 @@ class _LandlordPortfolioScreenState
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: _buildStatsCards(portfolioStats),
+                    child: portfolioStatsAsync.when(
+                      data: (stats) => _buildStatsCards(stats),
+                      loading: () => const SizedBox(
+                        height: 96,
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
                   ),
                 ),
 
