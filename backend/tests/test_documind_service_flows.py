@@ -277,6 +277,42 @@ class _FakeGraphOrchestrator:
         return self._state
 
 
+class _FakeHybridRetriever:
+    """Stands in for HybridRetriever: filters the _FakeDB chunk fixtures the
+    same way the real retriever's dense search + unit post-filter would, and
+    records every call so tests can assert on question/categories/unit_id."""
+
+    def __init__(self, db):
+        self._db = db
+        self.calls = []
+
+    async def retrieve(self, question, landlord_id, property_id, top_k=4,
+                       categories=None, unit_id=None):
+        self.calls.append({
+            "question": question,
+            "categories": categories,
+            "unit_id": unit_id,
+        })
+
+        rows = [
+            dict(row) for row in self._db.chunks
+            if row.get("landlord_id") == landlord_id
+            and row.get("property_id") == property_id
+        ]
+        if categories:
+            if len(categories) == 1:
+                self._db.last_chunk_category_filter = ("==", categories[0])
+            else:
+                self._db.last_chunk_category_filter = ("in", categories[:10])
+            rows = [row for row in rows if row.get("category") in categories]
+        if unit_id:
+            rows = [row for row in rows if row.get("unit_id") in (None, unit_id)]
+
+        for rank, row in enumerate(rows):
+            row.setdefault("rerank_score", 0.9 - rank * 0.05)
+        return rows[:top_k]
+
+
 def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service = DocuMindService.__new__(DocuMindService)
     service._db = fake_db
@@ -284,6 +320,7 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service._llm = fake_llm
     service._conversation_store = fake_store
     service._graph_orchestrator = fake_graph
+    service._hybrid_retriever = _FakeHybridRetriever(fake_db)
     return service
 
 
