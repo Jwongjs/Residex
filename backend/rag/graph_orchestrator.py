@@ -77,7 +77,7 @@ class DocuMindGraphOrchestrator:
 
     async def _route_conversation_node(self, state: DocuMindState) -> DocuMindState:
         user_action = (state.get("user_action") or "").strip().lower()
-        if user_action in {"confirm", "cancel"} or user_action.startswith("override:"):
+        if user_action in {"confirm", "cancel"} or user_action.startswith(("override:", "unit:")):
             return {
                 **state,
                 "intent": "document_question",
@@ -142,6 +142,9 @@ class DocuMindGraphOrchestrator:
             return {**state, "action": "cancel"}
 
         if user_action.startswith("override:"):
+            return {**state, "action": "retrieve"}
+
+        if user_action.startswith("unit:"):
             return {**state, "action": "retrieve"}
 
         if user_action == "confirm":

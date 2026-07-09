@@ -504,13 +504,15 @@ class DocuMindService:
 
         working_question = payload.question
         selected_categories: List[str] = []
+        effective_unit_id = payload.unit_id
 
         if explicit_valid:
             selected_categories = explicit_valid[:10]
             category_filter_mode = "explicit"
         else:
             pending = self._conversation_store.get_pending_confirmation(session_id)
-            user_action = (payload.user_action or "").strip().lower()
+            user_action_raw = (payload.user_action or "").strip()
+            user_action = user_action_raw.lower()
 
             if user_action == "confirm":
                 if pending and pending.get("predicted_categories"):
@@ -528,6 +530,22 @@ class DocuMindService:
                     working_question = pending.get("question", payload.question) if pending else payload.question
                     category_filter_mode = "clarification_selected"
                 self._conversation_store.clear_pending_confirmation(session_id)
+            elif user_action.startswith("unit:"):
+                # Resume of a unit-ambiguity checkpoint. The unit id keeps its
+                # original casing (Firestore ids are case-sensitive); the "all"
+                # sentinel proceeds unfiltered. A missing pending confirmation
+                # falls back to treating this as a fresh question.
+                unit_target = user_action_raw.split(":", 1)[1].strip()
+                if pending:
+                    working_question = pending.get("question", payload.question)
+                if unit_target and unit_target.lower() != "all":
+                    effective_unit_id = unit_target
+                self._conversation_store.clear_pending_confirmation(session_id)
+                selected_categories = [
+                    category for category in predicted_categories if category in ALLOWED_CATEGORIES
+                ]
+                if selected_categories:
+                    category_filter_mode = "auto"
             elif user_action in ALLOWED_CATEGORIES:
                 selected_categories = [user_action]
                 working_question = pending.get("question", payload.question) if pending else payload.question
@@ -548,7 +566,7 @@ class DocuMindService:
                 property_id=payload.property_id,
                 top_k=payload.top_k,
                 categories=selected_categories or None,
-                unit_id=payload.unit_id,
+                unit_id=effective_unit_id,
             )
             print(f"✅ Retrieved {len(retrieved_chunks)} chunks (hybrid dense+rerank)")
         except Exception as e:
@@ -596,6 +614,72 @@ class DocuMindService:
                 user_action_required=False,
                 predicted_categories=predicted_categories,
                 action_reason="No chunks retrieved",
+            )
+
+        # Unit-ambiguity checkpoint (post-retrieval — only knowable after
+        # seeing which units the retrieved chunks belong to). Fires when the
+        # chat isn't unit-scoped, this isn't already a unit-checkpoint
+        # answer, and the chunks span two or more distinct units.
+        checkpoint_action = (payload.user_action or "").strip().lower()
+        distinct_unit_ids = {
+            chunk.get('unit_id') for chunk in retrieved_chunks if chunk.get('unit_id')
+        }
+        if (
+            payload.unit_id is None
+            and not checkpoint_action.startswith("unit:")
+            and len(distinct_unit_ids) >= 2
+        ):
+            labels_by_unit: dict[str, str] = {}
+            for chunk in retrieved_chunks:
+                chunk_unit_id = chunk.get('unit_id')
+                if chunk_unit_id and chunk_unit_id not in labels_by_unit:
+                    labels_by_unit[chunk_unit_id] = chunk.get('unit_label') or chunk_unit_id
+            unit_options = [
+                UnitOption(unit_id=unit_id, unit_label=unit_label)
+                for unit_id, unit_label in sorted(labels_by_unit.items(), key=lambda item: item[1])
+            ]
+            unit_options.append(UnitOption(unit_id="all", unit_label="All units"))
+
+            matched_labels = " and ".join(option.unit_label for option in unit_options[:-1])
+            unit_prompt = (
+                f"That question matches documents from {matched_labels}. "
+                "Which unit do you mean?"
+            )
+            self._conversation_store.set_pending_confirmation(
+                session_id,
+                {
+                    "type": "unit",
+                    "question": working_question,
+                    "unit_options": [option.model_dump() for option in unit_options],
+                },
+            )
+            self._conversation_store.append_turn(
+                session_id,
+                {
+                    "turn": turn_number,
+                    "question": working_question,
+                    "intent": "document_question",
+                    "action": "ask_unit_clarification",
+                    "unit_options": [option.unit_id for option in unit_options],
+                },
+            )
+            return AskResponse(
+                answer=unit_prompt,
+                confidence=0.6,
+                citations=[],
+                property_name=property_name,
+                searched_categories=selected_categories,
+                category_filter_mode=category_filter_mode,
+                needs_category_clarification=False,
+                clarification_prompt=unit_prompt,
+                clarification_options=[],
+                session_id=session_id,
+                conversation_turn=turn_number,
+                user_action_required=True,
+                needs_unit_clarification=True,
+                unit_options=unit_options,
+                predicted_categories=predicted_categories,
+                action_reason="Retrieved documents span multiple units",
             )
 
         # Dedupe citations by (filename, page): multiple chunks can come from

@@ -126,6 +126,27 @@ class GraphOrchestratorEmptyPredictionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state["action"], "retrieve")
 
+    async def test_unit_action_routes_to_retrieve_without_new_checkpoint(self):
+        orchestrator = DocuMindGraphOrchestrator(
+            conversation_router=_FakeRouter(),
+            category_predictor=_FakePredictor({
+                "predicted_categories": ["lease"],
+                "confidence": 0.8,
+                "reason": "lease question",
+            }),
+        )
+
+        state = await orchestrator.run({
+            "user_input": "when does the lease expire?",
+            "explicit_categories": [],
+            "available_categories": ["lease"],
+            "user_action": "unit:unit-A",
+            "recent_turns": [],
+            "property_name": "Maple Residency",
+        })
+
+        self.assertEqual(state["action"], "retrieve")
+
 
 if __name__ == "__main__":
     unittest.main()

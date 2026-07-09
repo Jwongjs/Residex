@@ -530,6 +530,140 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("— Property-wide]", fake_llm.last_prompt)
 
 
+class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
+    def _multi_unit_db(self):
+        return _FakeDB(
+            docs=[
+                {"doc_id": "doc-A", "landlord_id": "l1", "property_id": "p1", "category": "lease"},
+                {"doc_id": "doc-B", "landlord_id": "l1", "property_id": "p1", "category": "lease"},
+            ],
+            chunks=[
+                {"doc_id": "doc-A", "filename": "leaseA.pdf", "category": "lease", "page": 1,
+                 "unit_id": "unit-A", "unit_label": "Unit A",
+                 "text": "Unit A tenancy ends 31 December 2026.",
+                 "landlord_id": "l1", "property_id": "p1"},
+                {"doc_id": "doc-B", "filename": "leaseB.pdf", "category": "lease", "page": 1,
+                 "unit_id": "unit-B", "unit_label": "Unit B",
+                 "text": "Unit B tenancy ends 30 June 2027.",
+                 "landlord_id": "l1", "property_id": "p1"},
+            ],
+        )
+
+    def _retrieve_graph(self):
+        return _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": ["lease"],
+            "prediction_reason": "lease question",
+            "intent": "document_question",
+        })
+
+    def _unit_pending(self):
+        return {
+            "type": "unit",
+            "question": "when does the lease expire?",
+            "unit_options": [
+                {"unit_id": "unit-A", "unit_label": "Unit A"},
+                {"unit_id": "unit-B", "unit_label": "Unit B"},
+                {"unit_id": "all", "unit_label": "All units"},
+            ],
+        }
+
+    async def test_multi_unit_retrieval_without_filter_triggers_checkpoint(self):
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("unused"))
+
+        payload = AskRequest(landlord_id="l1", property_id="p1", question="when does the lease expire?")
+        response = await service.ask_documind(payload)
+
+        self.assertTrue(response.needs_unit_clarification)
+        self.assertTrue(response.user_action_required)
+        self.assertEqual(response.citations, [])
+        self.assertEqual(
+            [option.unit_id for option in response.unit_options],
+            ["unit-A", "unit-B", "all"],
+        )
+        pending = fake_store.pending[response.session_id]
+        self.assertEqual(pending["type"], "unit")
+        self.assertEqual(pending["question"], "when does the lease expire?")
+
+    async def test_unit_action_reruns_pending_question_with_unit_filter(self):
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        fake_store.pending["session-7"] = self._unit_pending()
+        service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("It ends 31 December 2026."))
+
+        payload = AskRequest(
+            landlord_id="l1",
+            property_id="p1",
+            question="Unit A",
+            session_id="session-7",
+            user_action="unit:unit-A",
+        )
+        response = await service.ask_documind(payload)
+
+        self.assertFalse(response.needs_unit_clarification)
+        self.assertEqual(len(response.citations), 1)
+        self.assertEqual(response.citations[0].unit_label, "Unit A")
+        retriever_call = service._hybrid_retriever.calls[-1]
+        self.assertEqual(retriever_call["unit_id"], "unit-A")
+        self.assertEqual(retriever_call["question"], "when does the lease expire?")
+        self.assertIsNone(fake_store.pending["session-7"])
+
+    async def test_unit_all_action_answers_unfiltered_without_loop(self):
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        fake_store.pending["session-8"] = self._unit_pending()
+        service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("Unit A ends 2026; Unit B ends 2027."))
+
+        payload = AskRequest(
+            landlord_id="l1",
+            property_id="p1",
+            question="All units",
+            session_id="session-8",
+            user_action="unit:all",
+        )
+        response = await service.ask_documind(payload)
+
+        self.assertFalse(response.needs_unit_clarification)
+        self.assertFalse(response.user_action_required)
+        self.assertEqual(len(response.citations), 2)
+        retriever_call = service._hybrid_retriever.calls[-1]
+        self.assertIsNone(retriever_call["unit_id"])
+        self.assertEqual(retriever_call["question"], "when does the lease expire?")
+
+    async def test_single_unit_plus_property_wide_does_not_trigger(self):
+        fake_db = _FakeDB(
+            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}],
+            chunks=[
+                {"doc_id": "doc-A", "filename": "leaseA.pdf", "category": "lease", "page": 1,
+                 "unit_id": "unit-A", "unit_label": "Unit A",
+                 "text": "Unit A tenancy ends 31 December 2026.",
+                 "landlord_id": "l1", "property_id": "p1"},
+                # Pre-units chunk: no unit keys at all — property-wide.
+                {"doc_id": "doc-C", "filename": "insurance.pdf", "category": "insurance", "page": 1,
+                 "text": "Building insurance covers fire damage.",
+                 "landlord_id": "l1", "property_id": "p1"},
+            ],
+        )
+        fake_store = _FakeConversationStore()
+        # Empty predicted_categories so the fake retriever applies no category
+        # filter — otherwise the property-wide insurance chunk would be dropped
+        # before the citation count check. Matches Task 3's fields-test pattern.
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": [],
+            "intent": "document_question",
+        })
+        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("It ends 31 December 2026."))
+
+        payload = AskRequest(landlord_id="l1", property_id="p1", question="when does the lease expire?")
+        response = await service.ask_documind(payload)
+
+        self.assertFalse(response.needs_unit_clarification)
+        self.assertEqual(len(response.citations), 2)
+
+
 class _FakeBlob:
     def __init__(self, bucket, path):
         self.bucket = bucket
