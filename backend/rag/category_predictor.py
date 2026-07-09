@@ -53,9 +53,11 @@ categories=<comma separated categories>;confidence=<0.0-1.0>;reason=<short reaso
                     reason = part.replace("reason=", "").strip()
 
             if not predicted:
-                predicted = [available_categories[0]]
-                confidence = min(confidence, 0.5)
-                reason = "No clear parse; defaulted to first available category"
+                return {
+                    "predicted_categories": [],
+                    "confidence": 0.0,
+                    "reason": "no clear category signal",
+                }
 
             return {
                 "predicted_categories": predicted[:2],
@@ -83,7 +85,11 @@ categories=<comma separated categories>;confidence=<0.0-1.0>;reason=<short reaso
             scored.sort(reverse=True)
             best = [category for score, category in scored if score > 0]
             if not best:
-                best = [available_categories[0]]
+                return {
+                    "predicted_categories": [],
+                    "confidence": 0.0,
+                    "reason": "no clear category signal",
+                }
 
             return {
                 "predicted_categories": best[:2],
