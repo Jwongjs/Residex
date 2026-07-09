@@ -144,3 +144,33 @@ async def test_hybrid_retriever_empty_dense_results_returns_empty():
         )
 
     assert results == []
+
+
+def test_dense_search_propagates_unit_id_and_label():
+    """_dense_search's result mapping must carry unit_id AND unit_label from
+    the Firestore chunk; chunks ingested before units existed (no keys at
+    all) yield None for both."""
+    mock_db = MagicMock()
+    mock_embeddings = MagicMock()
+    retriever = HybridRetriever(db=mock_db, embeddings=mock_embeddings)
+
+    rows = [
+        {'doc_id': 'd0', 'filename': 'leaseA.pdf', 'category': 'lease', 'page': 1,
+         'unit_id': 'unit-A', 'unit_label': 'Unit A', 'text': 'unit A lease', 'embedding': None},
+        {'doc_id': 'd1', 'filename': 'old.pdf', 'category': 'utility', 'page': 2,
+         'text': 'pre-units chunk', 'embedding': None},
+    ]
+    fake_docs = []
+    for row in rows:
+        doc = MagicMock()
+        doc.to_dict.return_value = row
+        fake_docs.append(doc)
+    query = mock_db.collection.return_value.where.return_value.where.return_value
+    query.find_nearest.return_value.stream.return_value = fake_docs
+
+    results = retriever._dense_search([0.1, 0.2, 0.3], 'landlord_1', 'property_1', categories=None, fetch_k=15)
+
+    assert results[0]['unit_id'] == 'unit-A'
+    assert results[0]['unit_label'] == 'Unit A'
+    assert results[1]['unit_id'] is None
+    assert results[1]['unit_label'] is None

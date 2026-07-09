@@ -97,6 +97,7 @@ class HybridRetriever:
                 'category': chunk['category'],
                 'page': chunk.get('page'),
                 'unit_id': chunk.get('unit_id'),
+                'unit_label': chunk.get('unit_label'),
                 'text': chunk['text'],
                 'dense_score': dense_score,
             })
