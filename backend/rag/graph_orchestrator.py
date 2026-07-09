@@ -147,19 +147,25 @@ class DocuMindGraphOrchestrator:
         if user_action == "confirm":
             return {**state, "action": "retrieve"}
 
-        if predicted and available:
+        if available:
             return {**state, "action": "ask_confirmation"}
 
         return {**state, "action": "retrieve"}
 
     async def _prepare_confirmation_node(self, state: DocuMindState) -> DocuMindState:
         predicted = state.get("predicted_categories", [])
-        prediction_label = ", ".join(predicted) if predicted else "the most relevant documents"
 
-        message = (
-            f"I am going to search your {prediction_label} documents to answer this accurately. "
-            "Can you confirm, cancel, or choose another category?"
-        )
+        if predicted:
+            prediction_label = ", ".join(predicted)
+            message = (
+                f"I am going to search your {prediction_label} documents to answer this accurately. "
+                "Can you confirm, cancel, or choose another category?"
+            )
+        else:
+            message = (
+                "I couldn't tell which document category fits this question. "
+                "Which category should I search?"
+            )
 
         return {
             **state,

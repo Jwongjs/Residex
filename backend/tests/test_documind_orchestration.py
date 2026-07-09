@@ -58,5 +58,74 @@ class CategoryPredictorHonestUnknownTests(unittest.TestCase):
         self.assertEqual(result["predicted_categories"], ["lease"])
 
 
+from rag.graph_orchestrator import DocuMindGraphOrchestrator
+
+
+class _FakeRouter:
+    def route(self, text, recent_turns, property_name=None):
+        return {
+            "intent": "document_question",
+            "rag_needed": True,
+            "confidence": 0.9,
+            "reason": "document question",
+            "assistant_reply": "",
+        }
+
+
+class _FakePredictor:
+    def __init__(self, result):
+        self._result = result
+
+    def predict(self, question, available_categories):
+        return self._result
+
+
+class GraphOrchestratorEmptyPredictionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_empty_prediction_routes_to_ask_confirmation(self):
+        orchestrator = DocuMindGraphOrchestrator(
+            conversation_router=_FakeRouter(),
+            category_predictor=_FakePredictor({
+                "predicted_categories": [],
+                "confidence": 0.0,
+                "reason": "no clear category signal",
+            }),
+        )
+
+        state = await orchestrator.run({
+            "user_input": "zzz qqq",
+            "explicit_categories": [],
+            "available_categories": ["lease", "warranty"],
+            "user_action": "",
+            "recent_turns": [],
+            "property_name": "Maple Residency",
+        })
+
+        self.assertEqual(state["action"], "ask_confirmation")
+        self.assertEqual(state["predicted_categories"], [])
+
+    async def test_no_available_categories_still_retrieves(self):
+        # No uploaded docs at all: nothing to clarify against, fall through
+        # to retrieve (which answers "no relevant documents").
+        orchestrator = DocuMindGraphOrchestrator(
+            conversation_router=_FakeRouter(),
+            category_predictor=_FakePredictor({
+                "predicted_categories": [],
+                "confidence": 0.0,
+                "reason": "No uploaded categories for this property",
+            }),
+        )
+
+        state = await orchestrator.run({
+            "user_input": "when does the lease end",
+            "explicit_categories": [],
+            "available_categories": [],
+            "user_action": "",
+            "recent_turns": [],
+            "property_name": "Maple Residency",
+        })
+
+        self.assertEqual(state["action"], "retrieve")
+
+
 if __name__ == "__main__":
     unittest.main()
