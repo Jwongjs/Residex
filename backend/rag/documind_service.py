@@ -619,8 +619,11 @@ class DocuMindService:
                     'page': display_page,
                     'snippet': chunk['text'][:200],
                     'score': chunk_score,
+                    'unit_id': chunk.get('unit_id'),
+                    'unit_label': chunk.get('unit_label'),
                 }
-            context_text += f"\n\n[Document {i+1}: {chunk['filename']}, Page {display_page if display_page is not None else 'N/A'}]\n{chunk['text']}"
+            unit_context = chunk.get('unit_label') or 'Property-wide'
+            context_text += f"\n\n[Document {i+1}: {chunk['filename']}, Page {display_page if display_page is not None else 'N/A'} — {unit_context}]\n{chunk['text']}"
 
         citations = [
             Citation(
@@ -630,6 +633,8 @@ class DocuMindService:
                 page=c['page'],
                 snippet=c['snippet'],
                 score=c['score'],
+                unit_id=c['unit_id'],
+                unit_label=c['unit_label'],
             )
             for c in sorted(best_citation_by_page.values(), key=lambda c: c['score'], reverse=True)
         ]

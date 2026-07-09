@@ -14,8 +14,10 @@ class _LLMResponse:
 class _FakeLLM:
     def __init__(self, content: str):
         self._content = content
+        self.last_prompt = None
 
-    def invoke(self, _prompt: str):
+    def invoke(self, prompt: str):
+        self.last_prompt = prompt
         return _LLMResponse(self._content)
 
 
@@ -470,6 +472,39 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.category_filter_mode, "clarification_selected")
         self.assertEqual(response.searched_categories, ["warranty"])
         self.assertEqual(fake_db.last_chunk_category_filter, ("==", "warranty"))
+
+    async def test_citations_and_context_carry_unit_fields(self):
+        fake_db = _FakeDB(
+            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}],
+            chunks=[
+                {"doc_id": "d1", "filename": "leaseA.pdf", "category": "lease", "page": 2,
+                 "unit_id": "unit-A", "unit_label": "Unit A",
+                 "text": "Unit A tenancy ends 31 December 2026.",
+                 "landlord_id": "l1", "property_id": "p1"},
+                {"doc_id": "d2", "filename": "insurance.pdf", "category": "insurance", "page": 0,
+                 "text": "Building insurance covers fire damage.",
+                 "landlord_id": "l1", "property_id": "p1"},
+            ],
+        )
+        fake_store = _FakeConversationStore()
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": [],
+            "intent": "document_question",
+        })
+        fake_llm = _FakeLLM("The tenancy ends 31 December 2026.")
+        service = _build_service(fake_db, fake_store, fake_graph, fake_llm)
+
+        payload = AskRequest(landlord_id="l1", property_id="p1", question="when does the lease end")
+        response = await service.ask_documind(payload)
+
+        citations_by_doc = {c.doc_id: c for c in response.citations}
+        self.assertEqual(citations_by_doc["d1"].unit_id, "unit-A")
+        self.assertEqual(citations_by_doc["d1"].unit_label, "Unit A")
+        self.assertIsNone(citations_by_doc["d2"].unit_id)
+        self.assertIsNone(citations_by_doc["d2"].unit_label)
+        self.assertIn("— Unit A]", fake_llm.last_prompt)
+        self.assertIn("— Property-wide]", fake_llm.last_prompt)
 
 
 class _FakeBlob:

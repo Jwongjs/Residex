@@ -51,6 +51,8 @@ class Citation(BaseModel):
     page: int | None = None
     snippet: str  # First 200 chars of chunk
     score: float  # Relevance score (0.0 - 1.0)
+    unit_id: str | None = None  # None = property-wide source
+    unit_label: str | None = None  # Denormalized label captured at ingest
 
 
 class AskResponse(BaseModel):
