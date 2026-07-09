@@ -39,7 +39,7 @@ class AskRequest(BaseModel):
     )
     user_action: Optional[str] = Field(
         default=None,
-        description="User response for checkpointed actions: confirm | cancel | override:<category>"
+        description="User response for checkpointed actions: confirm | cancel | override:<category> | unit:<unit_id> | unit:all"
     )
 
 
@@ -53,6 +53,12 @@ class Citation(BaseModel):
     score: float  # Relevance score (0.0 - 1.0)
     unit_id: str | None = None  # None = property-wide source
     unit_label: str | None = None  # Denormalized label captured at ingest
+
+
+class UnitOption(BaseModel):
+    """One selectable unit in a unit-clarification checkpoint"""
+    unit_id: str
+    unit_label: str
 
 
 class AskResponse(BaseModel):
@@ -98,6 +104,14 @@ class AskResponse(BaseModel):
     action_reason: Optional[str] = Field(
         default=None,
         description="Reasoning shown to user for the suggested action"
+    )
+    needs_unit_clarification: bool = Field(
+        default=False,
+        description="Whether frontend should ask user to choose a unit before answering",
+    )
+    unit_options: List[UnitOption] = Field(
+        default_factory=list,
+        description="Units whose documents matched; ends with sentinel {unit_id: 'all', unit_label: 'All units'}",
     )
 
 

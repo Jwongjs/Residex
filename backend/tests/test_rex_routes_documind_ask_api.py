@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
-from models.documind_models import AskResponse
+from models.documind_models import AskResponse, UnitOption
 
 
 class DocuMindAskApiTests(unittest.TestCase):
@@ -91,6 +91,45 @@ class DocuMindAskApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 422)
+
+    def test_documind_ask_serializes_unit_clarification_checkpoint(self):
+        mocked_response = AskResponse(
+            answer="That question matches documents from Unit A and Unit B. Which unit do you mean?",
+            confidence=0.6,
+            citations=[],
+            property_name="Maple Residency",
+            searched_categories=[],
+            category_filter_mode="all",
+            session_id="sess-42",
+            conversation_turn=1,
+            user_action_required=True,
+            needs_unit_clarification=True,
+            unit_options=[
+                UnitOption(unit_id="unit-a", unit_label="Unit A"),
+                UnitOption(unit_id="unit-b", unit_label="Unit B"),
+                UnitOption(unit_id="all", unit_label="All units"),
+            ],
+        )
+
+        with patch("api.rex_routes.documind_service.ask_documind", new=AsyncMock(return_value=mocked_response)):
+            response = self.client.post(
+                "/api/rex/documind/ask",
+                json={
+                    "landlord_id": "landlord-1",
+                    "property_id": "property-1",
+                    "question": "when does the lease expire?",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["needs_unit_clarification"])
+        self.assertEqual(
+            [option["unit_id"] for option in data["unit_options"]],
+            ["unit-a", "unit-b", "all"],
+        )
+        self.assertTrue(data["user_action_required"])
+        self.assertEqual(data["citations"], [])
 
 
 if __name__ == "__main__":

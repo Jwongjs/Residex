@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
-from models.documind_models import AskResponse, Citation
+from models.documind_models import AskResponse, Citation, UnitOption
 
 
 class DocuMindStructuralEvaluationTests(unittest.TestCase):
@@ -170,6 +170,54 @@ class DocuMindStructuralEvaluationTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 422)
+
+    def test_multi_unit_ambiguity_checkpoint(self):
+        """Multi-unit ambiguity: with no unit filter set, a question matching
+        two units' documents must return a unit checkpoint (no blended
+        answer, no citations) whose options end with the 'all' sentinel."""
+        mocked_response = AskResponse(
+            answer="That question matches documents from Unit A and Unit B. Which unit do you mean?",
+            confidence=0.6,
+            citations=[],
+            property_name="Oakwood Apartments",
+            searched_categories=["lease"],
+            category_filter_mode="auto",
+            session_id="sess-eval-5",
+            conversation_turn=1,
+            user_action_required=True,
+            needs_unit_clarification=True,
+            unit_options=[
+                UnitOption(unit_id="unit-a", unit_label="Unit A"),
+                UnitOption(unit_id="unit-b", unit_label="Unit B"),
+                UnitOption(unit_id="all", unit_label="All units"),
+            ],
+            predicted_categories=["lease"],
+            action_reason="Retrieved documents span multiple units",
+        )
+
+        with patch(
+            "api.rex_routes.documind_service.ask_documind", new=AsyncMock(return_value=mocked_response)
+        ) as mocked_ask:
+            response = self.client.post(
+                "/api/rex/documind/ask",
+                json={
+                    "landlord_id": "landlord-eval-5",
+                    "property_id": "property-eval-5",
+                    "question": "when does the lease expire?",
+                    "session_id": "sess-eval-5",
+                    "conversation_turn": 1,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["needs_unit_clarification"])
+        self.assertTrue(data["user_action_required"])
+        self.assertEqual(len(data["citations"]), 0)
+        self.assertEqual(data["unit_options"][-1]["unit_id"], "all")
+        self.assertEqual(data["unit_options"][-1]["unit_label"], "All units")
+
+        mocked_ask.assert_awaited_once()
 
     @classmethod
     def tearDownClass(cls):
