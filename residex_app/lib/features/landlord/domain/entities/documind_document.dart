@@ -39,6 +39,12 @@ class Citation {
   final String snippet;
   final double score;
 
+  /// Unit the cited chunk belongs to; null = property-wide source.
+  final String? unitId;
+
+  /// Denormalized unit label captured at ingest (display fallback).
+  final String? unitLabel;
+
   Citation({
     required this.docId,
     required this.filename,
@@ -46,6 +52,8 @@ class Citation {
     this.page,
     required this.snippet,
     required this.score,
+    this.unitId,
+    this.unitLabel,
   });
 }
 

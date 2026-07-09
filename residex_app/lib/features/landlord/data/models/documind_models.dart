@@ -110,6 +110,8 @@ class CitationModel {
   final int? page;
   final String snippet;
   final double score;
+  final String? unitId;
+  final String? unitLabel;
 
   CitationModel({
     required this.docId,
@@ -118,6 +120,8 @@ class CitationModel {
     this.page,
     required this.snippet,
     required this.score,
+    this.unitId,
+    this.unitLabel,
   });
 
   factory CitationModel.fromJson(Map<String, dynamic> json) {
@@ -128,6 +132,8 @@ class CitationModel {
       page: json['page'] as int?,
       snippet: json['snippet'] as String? ?? '',
       score: (json['score'] as num?)?.toDouble() ?? 0.0,
+      unitId: json['unit_id'] as String?,
+      unitLabel: json['unit_label'] as String?,
     );
   }
 
@@ -139,6 +145,8 @@ class CitationModel {
       'page': page,
       'snippet': snippet,
       'score': score,
+      'unit_id': unitId,
+      'unit_label': unitLabel,
     };
   }
 }
@@ -238,6 +246,8 @@ class DocuMindAnswerModel {
         page: c.page,
         snippet: c.snippet,
         score: c.score,
+        unitId: c.unitId,
+        unitLabel: c.unitLabel,
       )).toList(),
       propertyName: propertyName,
       searchedCategories: searchedCategories,

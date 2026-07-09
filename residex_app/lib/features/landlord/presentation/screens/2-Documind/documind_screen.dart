@@ -1383,14 +1383,40 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          '${citation.filename} · p.${citation.page ?? '—'}',
-          style: GoogleFonts.ibmPlexMono(
-            fontSize: 11,
-            color: AppColors.textMuted,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        child: Row(
+          children: [
+            Flexible(
+              child: Text(
+                '${citation.filename} · p.${citation.page ?? '—'}',
+                style: GoogleFonts.ibmPlexMono(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (citation.unitLabel != null) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Text(
+                  citation.unitLabel!.toUpperCase(),
+                  style: AppTextStyles.labelSmall.copyWith(
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 9,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
