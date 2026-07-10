@@ -98,4 +98,75 @@ void main() {
       expect(text, contains('• insurance'));
     });
   });
+
+  group('mapDocuMindUserAction unit clarification', () {
+    const categories = ['lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'];
+    final unitOptions = [
+      UnitOption(unitId: 'unit-A', unitLabel: 'Unit A'),
+      UnitOption(unitId: 'unit-B', unitLabel: 'Unit B'),
+      UnitOption(unitId: 'all', unitLabel: 'All units'),
+    ];
+
+    test('maps typed unit label to unit action preserving id casing', () {
+      final action = mapDocuMindUserAction(
+        awaitingUserAction: true,
+        messageText: 'unit a',
+        categories: categories,
+        unitOptions: unitOptions,
+      );
+
+      expect(action, 'unit:unit-A');
+    });
+
+    test('maps all units reply to unit:all sentinel', () {
+      final action = mapDocuMindUserAction(
+        awaitingUserAction: true,
+        messageText: 'all units',
+        categories: categories,
+        unitOptions: unitOptions,
+      );
+
+      expect(action, 'unit:all');
+    });
+
+    test('does not map category overrides while a unit checkpoint is pending', () {
+      final action = mapDocuMindUserAction(
+        awaitingUserAction: true,
+        messageText: 'lease',
+        categories: categories,
+        unitOptions: unitOptions,
+      );
+
+      expect(action, isNull);
+    });
+  });
+
+  group('buildDocuMindAssistantText unit clarification', () {
+    test('renders unit options for a unit clarification checkpoint', () {
+      final answer = DocuMindAnswer(
+        answer:
+            'That question matches documents from Unit A and Unit B. Which unit do you mean?',
+        confidence: 0.6,
+        citations: const [],
+        propertyName: 'Maple Residency',
+        userActionRequired: true,
+        needsUnitClarification: true,
+        unitOptions: [
+          UnitOption(unitId: 'unit-A', unitLabel: 'Unit A'),
+          UnitOption(unitId: 'unit-B', unitLabel: 'Unit B'),
+          UnitOption(unitId: 'all', unitLabel: 'All units'),
+        ],
+      );
+
+      final text = buildDocuMindAssistantText(
+        answer: answer,
+        categoryLabelResolver: (category) => category,
+      );
+
+      expect(text, contains('Reply with a unit'));
+      expect(text, contains('• Unit A'));
+      expect(text, contains('• All units'));
+      expect(text, isNot(contains('`confirm`')));
+    });
+  });
 }

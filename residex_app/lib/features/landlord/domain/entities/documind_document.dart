@@ -57,6 +57,14 @@ class Citation {
   });
 }
 
+/// One selectable unit in a unit-clarification checkpoint.
+class UnitOption {
+  final String unitId;
+  final String unitLabel;
+
+  UnitOption({required this.unitId, required this.unitLabel});
+}
+
 ///Answer entity for Q&A responses
 class DocuMindAnswer {
   final String answer;
@@ -73,6 +81,8 @@ class DocuMindAnswer {
   final bool userActionRequired;
   final List<String> predictedCategories;
   final String? actionReason;
+  final bool needsUnitClarification;
+  final List<UnitOption> unitOptions;
 
   DocuMindAnswer({
     required this.answer,
@@ -89,5 +99,7 @@ class DocuMindAnswer {
     this.userActionRequired = false,
     this.predictedCategories = const [],
     this.actionReason,
+    this.needsUnitClarification = false,
+    this.unitOptions = const [],
   });
 }

@@ -39,6 +39,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   String? _docuMindSessionId;
   int _docuMindConversationTurn = 1;
   bool _awaitingUserAction = false;
+  List<UnitOption> _pendingUnitOptions = const [];
 
   // Document categories (backend-supported)
   final List<String> _categories = [
@@ -1591,7 +1592,13 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         awaitingUserAction: _awaitingUserAction,
         messageText: message.text,
         categories: _categories,
+        unitOptions: _pendingUnitOptions,
       );
+      if (userAction != null &&
+          userAction.startsWith('unit:') &&
+          userAction != 'unit:all') {
+        _syncUnitFilterFromAction(userAction.substring('unit:'.length));
+      }
       final answer = await askAction(
         propertyId: _selectedPropertyId!,
         question: message.text,
@@ -1616,11 +1623,28 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     }
   }
 
+  /// Keep the header unit filter in sync with a unit chosen in chat, so the
+  /// Docs tab and follow-up questions stay scoped to the same unit.
+  void _syncUnitFilterFromAction(String unitId) {
+    if (_selectedPropertyId == null) return;
+    final units =
+        ref.read(unitsForPropertyStreamProvider(_selectedPropertyId!)).value ??
+            const <Unit>[];
+    for (final unit in units) {
+      if (unit.id == unitId) {
+        ref.read(selectedDocumindUnitProvider.notifier).select(unit);
+        break;
+      }
+    }
+  }
+
   void _consumeAnswer(DocuMindAnswer answer, String sourceQuestion) {
     _lastQuestion = sourceQuestion;
     _docuMindSessionId = answer.sessionId ?? _docuMindSessionId;
     _docuMindConversationTurn = answer.conversationTurn + 1;
     _awaitingUserAction = answer.userActionRequired;
+    _pendingUnitOptions =
+        answer.userActionRequired ? answer.unitOptions : const [];
 
     final responseText = buildDocuMindAssistantText(
       answer: answer,

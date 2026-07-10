@@ -4,6 +4,7 @@ String? mapDocuMindUserAction({
   required bool awaitingUserAction,
   required String messageText,
   required List<String> categories,
+  List<UnitOption> unitOptions = const [],
 }) {
   if (!awaitingUserAction) {
     return null;
@@ -22,6 +23,23 @@ String? mapDocuMindUserAction({
     return 'cancel';
   }
 
+  // A pending unit checkpoint takes over interpretation: match unit labels
+  // (returning ids with original casing), then the "all" sentinel. Category
+  // overrides are suspended so "lease" can't hijack a unit question.
+  if (unitOptions.isNotEmpty) {
+    for (final option in unitOptions) {
+      if (option.unitId == 'all') continue;
+      final label = option.unitLabel.toLowerCase();
+      if (normalized == label || normalized.contains(label)) {
+        return 'unit:${option.unitId}';
+      }
+    }
+    if (normalized.contains('all')) {
+      return 'unit:all';
+    }
+    return null;
+  }
+
   for (final category in categories) {
     if (normalized == category || normalized.contains(category)) {
       return 'override:$category';
@@ -38,12 +56,18 @@ String buildDocuMindAssistantText({
   var responseText = answer.answer;
 
   if (answer.userActionRequired) {
-    final options = answer.clarificationOptions.isNotEmpty
-        ? answer.clarificationOptions
-        : answer.predictedCategories;
-    if (options.isNotEmpty) {
-      responseText += '\n\nReply with `confirm` or `cancel`, or type a category:';
-      responseText += '\n${options.map((option) => '• $option').join('\n')}';
+    if (answer.needsUnitClarification && answer.unitOptions.isNotEmpty) {
+      responseText += '\n\nReply with a unit, or `all units`:';
+      responseText +=
+          '\n${answer.unitOptions.map((option) => '• ${option.unitLabel}').join('\n')}';
+    } else {
+      final options = answer.clarificationOptions.isNotEmpty
+          ? answer.clarificationOptions
+          : answer.predictedCategories;
+      if (options.isNotEmpty) {
+        responseText += '\n\nReply with `confirm` or `cancel`, or type a category:';
+        responseText += '\n${options.map((option) => '• $option').join('\n')}';
+      }
     }
   }
 

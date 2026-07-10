@@ -151,6 +151,25 @@ class CitationModel {
   }
 }
 
+/// Unit option model for unit-clarification checkpoints
+class UnitOptionModel {
+  final String unitId;
+  final String unitLabel;
+
+  UnitOptionModel({required this.unitId, required this.unitLabel});
+
+  factory UnitOptionModel.fromJson(Map<String, dynamic> json) {
+    return UnitOptionModel(
+      unitId: json['unit_id'] as String? ?? '',
+      unitLabel: json['unit_label'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'unit_id': unitId, 'unit_label': unitLabel};
+
+  UnitOption toEntity() => UnitOption(unitId: unitId, unitLabel: unitLabel);
+}
+
 /// ✅ ADDED: Answer model for Q&A responses
 class DocuMindAnswerModel {
   final String answer;
@@ -167,6 +186,8 @@ class DocuMindAnswerModel {
   final bool userActionRequired;
   final List<String> predictedCategories;
   final String? actionReason;
+  final bool needsUnitClarification;
+  final List<UnitOptionModel> unitOptions;
 
   DocuMindAnswerModel({
     required this.answer,
@@ -183,6 +204,8 @@ class DocuMindAnswerModel {
     this.userActionRequired = false,
     this.predictedCategories = const [],
     this.actionReason,
+    this.needsUnitClarification = false,
+    this.unitOptions = const [],
   });
 
   factory DocuMindAnswerModel.fromJson(Map<String, dynamic> json) {
@@ -212,6 +235,10 @@ class DocuMindAnswerModel {
           .map((category) => category.toString())
           .toList(),
         actionReason: json['action_reason'] as String?,
+        needsUnitClarification: json['needs_unit_clarification'] as bool? ?? false,
+        unitOptions: (json['unit_options'] as List<dynamic>? ?? [])
+            .map((option) => UnitOptionModel.fromJson(option as Map<String, dynamic>))
+            .toList(),
     );
   }
 
@@ -231,6 +258,8 @@ class DocuMindAnswerModel {
       'user_action_required': userActionRequired,
       'predicted_categories': predictedCategories,
       'action_reason': actionReason,
+      'needs_unit_clarification': needsUnitClarification,
+      'unit_options': unitOptions.map((option) => option.toJson()).toList(),
     };
   }
 
@@ -260,6 +289,8 @@ class DocuMindAnswerModel {
       userActionRequired: userActionRequired,
       predictedCategories: predictedCategories,
       actionReason: actionReason,
+      needsUnitClarification: needsUnitClarification,
+      unitOptions: unitOptions.map((option) => option.toEntity()).toList(),
     );
   }
 }
