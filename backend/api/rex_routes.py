@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -135,6 +135,24 @@ async def delete_property_documents(
     return await documind_service.delete_documents_for_property(
         landlord_id=landlord_id,
         property_id=property_id,
+    )
+
+
+@router.post("/documind/documents/unassign-unit")
+async def unassign_unit_documents(payload: UnassignUnitRequest):
+    """
+    Clear the unit assignment on all of a unit's documents and chunks,
+    converting them to property-wide. Called before a unit is deleted so its
+    documents don't keep a stale unit_id. Nothing is deleted; idempotent.
+
+    Example:
+        POST /api/rex/documind/documents/unassign-unit
+        {"landlord_id": "landlord_456", "property_id": "property_789", "unit_id": "unit_9"}
+    """
+    return await documind_service.unassign_unit_documents(
+        landlord_id=payload.landlord_id,
+        property_id=payload.property_id,
+        unit_id=payload.unit_id,
     )
 
 

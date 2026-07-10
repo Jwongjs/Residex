@@ -134,3 +134,10 @@ class DocListResponse(BaseModel):
     documents: list[DocumentInfo]
     total_count: int
     filtered_by_property: str | None = None  # property_id if filtered
+
+
+class UnassignUnitRequest(BaseModel):
+    """Request to convert one unit's documents to property-wide"""
+    landlord_id: str
+    property_id: str
+    unit_id: str

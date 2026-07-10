@@ -54,6 +54,9 @@ class _FakeRowRef:
                 del rows[i]
                 break
 
+    def update(self, fields):
+        self._row.update(fields)
+
 
 class _FakeVectorDoc:
     def __init__(self, data):
@@ -196,6 +199,9 @@ class _FakeBatch:
     def set(self, ref, data):
         self._ops.append(("set", ref, data))
 
+    def update(self, ref, fields):
+        self._ops.append(("update", ref, fields))
+
     def delete(self, ref):
         self._ops.append(("delete", ref, None))
 
@@ -203,6 +209,8 @@ class _FakeBatch:
         for op, ref, data in self._ops:
             if op == "set":
                 ref.set(data)
+            elif op == "update":
+                ref.update(data)
             else:
                 ref.delete()
 
@@ -888,6 +896,59 @@ class DocuMindServiceStorageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["documents_deleted"], 0)
         self.assertEqual(result["chunks_deleted"], 0)
+
+
+class DocuMindUnassignUnitTests(unittest.IsolatedAsyncioTestCase):
+    def _db_with_unit_docs(self):
+        return _FakeDB(
+            docs=[
+                {"doc_id": "doc-A", "landlord_id": "l1", "property_id": "p1",
+                 "unit_id": "unit-A", "unit_label": "Unit A", "category": "lease"},
+                {"doc_id": "doc-B", "landlord_id": "l1", "property_id": "p1",
+                 "unit_id": "unit-B", "unit_label": "Unit B", "category": "lease"},
+                {"doc_id": "doc-C", "landlord_id": "l1", "property_id": "p1",
+                 "unit_id": None, "unit_label": None, "category": "insurance"},
+            ],
+            chunks=[
+                {"doc_id": "doc-A", "landlord_id": "l1", "property_id": "p1",
+                 "unit_id": "unit-A", "unit_label": "Unit A", "text": "a"},
+                {"doc_id": "doc-A", "landlord_id": "l1", "property_id": "p1",
+                 "unit_id": "unit-A", "unit_label": "Unit A", "text": "b"},
+                {"doc_id": "doc-B", "landlord_id": "l1", "property_id": "p1",
+                 "unit_id": "unit-B", "unit_label": "Unit B", "text": "c"},
+            ],
+        )
+
+    async def test_unassign_clears_target_unit_only(self):
+        fake_db = self._db_with_unit_docs()
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        result = await service.unassign_unit_documents("l1", "p1", "unit-A")
+
+        self.assertEqual(result["documents_updated"], 1)
+        self.assertEqual(result["chunks_updated"], 2)
+        doc_a = next(d for d in fake_db.docs if d["doc_id"] == "doc-A")
+        self.assertIsNone(doc_a["unit_id"])
+        self.assertIsNone(doc_a["unit_label"])
+        doc_b = next(d for d in fake_db.docs if d["doc_id"] == "doc-B")
+        self.assertEqual(doc_b["unit_id"], "unit-B")
+        self.assertEqual(doc_b["unit_label"], "Unit B")
+        for chunk in fake_db.chunks:
+            if chunk["doc_id"] == "doc-A":
+                self.assertIsNone(chunk["unit_id"])
+                self.assertIsNone(chunk["unit_label"])
+            if chunk["doc_id"] == "doc-B":
+                self.assertEqual(chunk["unit_id"], "unit-B")
+
+    async def test_unassign_is_idempotent(self):
+        fake_db = self._db_with_unit_docs()
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        await service.unassign_unit_documents("l1", "p1", "unit-A")
+        second = await service.unassign_unit_documents("l1", "p1", "unit-A")
+
+        self.assertEqual(second["documents_updated"], 0)
+        self.assertEqual(second["chunks_updated"], 0)
 
 
 if __name__ == "__main__":

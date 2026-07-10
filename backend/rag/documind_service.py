@@ -1001,6 +1001,59 @@ class DocuMindService:
             "chunks_deleted": chunks_deleted,
         }
 
+    async def unassign_unit_documents(
+        self,
+        landlord_id: str,
+        property_id: str,
+        unit_id: str,
+    ) -> dict:
+        """
+        Clear the unit assignment on every doc + chunk scoped to a unit,
+        converting them to property-wide documents.
+
+        Called by the app before deleting a unit so its documents are
+        unassigned rather than orphaned with a stale unit_id. Idempotent: a
+        unit with no assigned documents returns zero counts. A single batch
+        is fine at this scale (Firestore's 500-op batch limit).
+        """
+        print(f"🔵 DocuMind: Unassign unit {unit_id} documents for property {property_id}")
+
+        batch = self.db.batch()
+        documents_updated = 0
+        chunks_updated = 0
+
+        docs_query = (
+            self.db.collection('documind_docs')
+            .where(filter=FieldFilter('landlord_id', '==', landlord_id))
+            .where(filter=FieldFilter('property_id', '==', property_id))
+            .where(filter=FieldFilter('unit_id', '==', unit_id))
+        )
+        for snapshot in docs_query.stream():
+            batch.update(snapshot.reference, {'unit_id': None, 'unit_label': None})
+            documents_updated += 1
+
+        chunks_query = (
+            self.db.collection('documind_chunks')
+            .where(filter=FieldFilter('landlord_id', '==', landlord_id))
+            .where(filter=FieldFilter('property_id', '==', property_id))
+            .where(filter=FieldFilter('unit_id', '==', unit_id))
+        )
+        for snapshot in chunks_query.stream():
+            batch.update(snapshot.reference, {'unit_id': None, 'unit_label': None})
+            chunks_updated += 1
+
+        if documents_updated or chunks_updated:
+            batch.commit()
+
+        print(f"✅ Unassigned {documents_updated} docs / {chunks_updated} chunks from unit {unit_id}")
+
+        return {
+            "message": "Unit documents unassigned",
+            "unit_id": unit_id,
+            "documents_updated": documents_updated,
+            "chunks_updated": chunks_updated,
+        }
+
     async def get_document_view_url(
         self,
         landlord_id: str,

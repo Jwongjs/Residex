@@ -158,6 +158,40 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         response = self.client.get("/api/rex/documind/documents/doc-1/view-url")
         self.assertEqual(response.status_code, 422)
 
+    def test_unassign_unit_documents_returns_200_and_calls_service(self):
+        with patch(
+            "api.rex_routes.documind_service.unassign_unit_documents",
+            new=AsyncMock(return_value={
+                "message": "Unit documents unassigned",
+                "unit_id": "unit-9",
+                "documents_updated": 2,
+                "chunks_updated": 7,
+            }),
+        ) as mocked_unassign:
+            response = self.client.post(
+                "/api/rex/documind/documents/unassign-unit",
+                json={
+                    "landlord_id": "landlord-1",
+                    "property_id": "property-1",
+                    "unit_id": "unit-9",
+                },
+            )
+
+            call_kwargs = mocked_unassign.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["documents_updated"], 2)
+        self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
+        self.assertEqual(call_kwargs["property_id"], "property-1")
+        self.assertEqual(call_kwargs["unit_id"], "unit-9")
+
+    def test_unassign_unit_documents_returns_422_when_missing_fields(self):
+        response = self.client.post(
+            "/api/rex/documind/documents/unassign-unit",
+            json={"landlord_id": "landlord-1"},
+        )
+        self.assertEqual(response.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()
