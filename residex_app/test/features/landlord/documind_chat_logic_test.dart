@@ -139,6 +139,21 @@ void main() {
 
       expect(action, isNull);
     });
+
+    test('exact unit label wins over a prefix-colliding label', () {
+      final collidingOptions = [
+        UnitOption(unitId: 'unit-a', unitLabel: 'Unit A'),
+        UnitOption(unitId: 'unit-a1', unitLabel: 'Unit A1'),
+        UnitOption(unitId: 'all', unitLabel: 'All units'),
+      ];
+      final action = mapDocuMindUserAction(
+        awaitingUserAction: true,
+        messageText: 'Unit A1',
+        categories: categories,
+        unitOptions: collidingOptions,
+      );
+      expect(action, 'unit:unit-a1');
+    });
   });
 
   group('buildDocuMindAssistantText unit clarification', () {

@@ -27,10 +27,17 @@ String? mapDocuMindUserAction({
   // (returning ids with original casing), then the "all" sentinel. Category
   // overrides are suspended so "lease" can't hijack a unit question.
   if (unitOptions.isNotEmpty) {
+    // First pass: exact label match, so "Unit A" can't shadow "Unit A1".
     for (final option in unitOptions) {
       if (option.unitId == 'all') continue;
-      final label = option.unitLabel.toLowerCase();
-      if (normalized == label || normalized.contains(label)) {
+      if (normalized == option.unitLabel.toLowerCase()) {
+        return 'unit:${option.unitId}';
+      }
+    }
+    // Second pass: substring match as a fallback for looser phrasing.
+    for (final option in unitOptions) {
+      if (option.unitId == 'all') continue;
+      if (normalized.contains(option.unitLabel.toLowerCase())) {
         return 'unit:${option.unitId}';
       }
     }

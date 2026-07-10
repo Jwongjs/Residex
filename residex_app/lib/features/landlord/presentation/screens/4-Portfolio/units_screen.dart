@@ -121,10 +121,12 @@ class UnitsScreen extends ConsumerWidget {
     if (confirmed == true) {
       final controller = ref.read(unitControllerProvider);
       try {
-        if (assignedDocCount > 0) {
-          final unassignDocuments = ref.read(unassignUnitDocumentsActionProvider);
-          await unassignDocuments(propertyId: propertyId, unitId: unit.id);
-        }
+        // Always unassign before deleting: the display count above can be 0
+        // due to a failed fetch, but the unit may still own documents. The
+        // endpoint is idempotent and cheap when there are none — gating it on
+        // the count would risk orphaning docs with a stale unit_id.
+        final unassignDocuments = ref.read(unassignUnitDocumentsActionProvider);
+        await unassignDocuments(propertyId: propertyId, unitId: unit.id);
         await controller.deleteUnit(propertyId, unit.id);
       } catch (e) {
         if (context.mounted) {
