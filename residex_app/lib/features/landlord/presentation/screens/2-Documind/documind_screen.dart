@@ -1062,7 +1062,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   /// selected unit (null unit = whole property), or null if the user
   /// dismissed the dialog. Properties without units skip the dialog and
   /// upload property-wide.
-  Future<_UploadUnitChoice?> _pickUploadUnit() async {
+  Future<_UploadUnitChoice?> _pickUploadUnit({required String category}) async {
     List<Unit> units;
     try {
       units =
@@ -1073,6 +1073,10 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     }
     if (units.isEmpty) return const _UploadUnitChoice(null);
 
+    final isLease = category == 'lease';
+    final orderedOptions =
+        uploadUnitDialogOptions(category: category, units: units);
+
     if (!mounted) return null;
     return showDialog<_UploadUnitChoice>(
       context: context,
@@ -1081,37 +1085,54 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Assign to a unit?', style: AppTextStyles.titleMedium),
         children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, const _UploadUnitChoice(null)),
-            child: Row(
-              children: [
-                Icon(Icons.home_work_outlined,
-                    size: 18, color: AppColors.primaryCyan),
-                const SizedBox(width: 10),
-                Text('Whole property', style: AppTextStyles.bodyMedium),
-              ],
-            ),
-          ),
-          ...units.map(
-            (unit) => SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, _UploadUnitChoice(unit)),
-              child: Row(
-                children: [
-                  Icon(Icons.meeting_room_outlined,
-                      size: 18, color: AppColors.primaryCyan),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      unit.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.bodyMedium,
+          for (final unit in orderedOptions)
+            if (unit == null)
+              SimpleDialogOption(
+                onPressed: () =>
+                    Navigator.pop(ctx, const _UploadUnitChoice(null)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.home_work_outlined,
+                        size: 18, color: AppColors.primaryCyan),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Whole property',
+                              style: AppTextStyles.bodyMedium),
+                          if (isLease)
+                            Text(
+                              'Leases usually belong to a specific unit',
+                              style: AppTextStyles.bodySmall
+                                  .copyWith(color: AppColors.textMuted),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              )
+            else
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, _UploadUnitChoice(unit)),
+                child: Row(
+                  children: [
+                    Icon(Icons.meeting_room_outlined,
+                        size: 18, color: AppColors.primaryCyan),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        unit.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
         ],
       ),
     );
@@ -1147,7 +1168,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
 
       // Ask which unit this document belongs to (skipped when the property
       // has no units). Null result = user cancelled the dialog.
-      final unitChoice = await _pickUploadUnit();
+      final unitChoice = await _pickUploadUnit(category: category);
       if (unitChoice == null) return;
 
       // Show loading state
@@ -1837,4 +1858,18 @@ class _UploadUnitChoice {
   final Unit? unit;
 
   const _UploadUnitChoice(this.unit);
+}
+
+/// Option order for the upload unit-picker dialog. A null entry is the
+/// "Whole property" option. Leases lead with units (a lease almost always
+/// belongs to one unit) and demote "Whole property" to last; every other
+/// category keeps "Whole property" first.
+List<Unit?> uploadUnitDialogOptions({
+  required String category,
+  required List<Unit> units,
+}) {
+  if (category == 'lease') {
+    return [...units, null];
+  }
+  return [null, ...units];
 }
