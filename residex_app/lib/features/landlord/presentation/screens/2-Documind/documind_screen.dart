@@ -14,6 +14,7 @@ import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
 import 'documind_chat_logic.dart';
 import 'document_viewer_screen.dart';
+import 'unit_label_resolver.dart';
 
 /// DocuMind Screen - Property Document Management + Q&A
 class DocuMindScreen extends ConsumerStatefulWidget {
@@ -828,6 +829,12 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   }
 
   Widget _buildDocumentTile(DocuMindDocument doc, String category) {
+    final displayUnitLabel = resolveUnitLabel(
+      unitId: doc.unitId,
+      storedLabel: doc.unitLabel,
+      liveUnits: _liveUnits(),
+    );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -913,7 +920,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                     ),
 
                     // Unit badge (only for unit-scoped documents)
-                    if (doc.unitLabel != null)
+                    if (displayUnitLabel != null)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -934,7 +941,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              doc.unitLabel!.toUpperCase(),
+                              displayUnitLabel.toUpperCase(),
                               style: AppTextStyles.labelSmall.copyWith(
                                 color: AppColors.textMuted,
                                 fontWeight: FontWeight.w600,
@@ -1355,6 +1362,14 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     }
   }
 
+  /// Live units for the selected property (empty while loading/unavailable —
+  /// resolveUnitLabel then falls back to the stored label).
+  List<Unit> _liveUnits() {
+    if (_selectedPropertyId == null) return const <Unit>[];
+    return ref.watch(unitsForPropertyStreamProvider(_selectedPropertyId!)).value ??
+        const <Unit>[];
+  }
+
   // ══════════════════════════════════════════════════════
   // SOURCE RELEVANCE METER (attached under the AI bubble it belongs to)
   // ══════════════════════════════════════════════════════
@@ -1389,6 +1404,12 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   }
 
   Widget _buildCitationLine(Citation citation) {
+    final displayUnitLabel = resolveUnitLabel(
+      unitId: citation.unitId,
+      storedLabel: citation.unitLabel,
+      liveUnits: _liveUnits(),
+    );
+
     return InkWell(
       onTap: () {
         if (_selectedPropertyId == null) return;
@@ -1418,7 +1439,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (citation.unitLabel != null) ...[
+            if (displayUnitLabel != null) ...[
               const SizedBox(width: 6),
               Container(
                 padding:
@@ -1429,7 +1450,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                   border: Border.all(color: AppColors.border),
                 ),
                 child: Text(
-                  citation.unitLabel!.toUpperCase(),
+                  displayUnitLabel.toUpperCase(),
                   style: AppTextStyles.labelSmall.copyWith(
                     color: AppColors.textMuted,
                     fontWeight: FontWeight.w600,
