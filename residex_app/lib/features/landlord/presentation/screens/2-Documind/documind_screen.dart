@@ -1159,12 +1159,9 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
 
     if (result != null) {
       final selectedFile = result.files.single;
-      final selectedName = selectedFile.name.toLowerCase();
-      final isAllowed =
-          selectedName.endsWith('.pdf') || selectedName.endsWith('.docx');
 
-      if (!isAllowed) {
-        _showSnackBar('Only PDF and DOCX files are supported.', isError: true);
+      if (!isAllowedUploadFilename(selectedFile.name)) {
+        _showSnackBar('Only PDF files are supported.', isError: true);
         return;
       }
 
@@ -1880,6 +1877,11 @@ class _UploadUnitChoice {
 
   const _UploadUnitChoice(this.unit);
 }
+
+/// The backend ingest is PyPDFLoader-only and stores application/pdf, so
+/// the picker must reject anything but PDF up front (DOCX is future work).
+bool isAllowedUploadFilename(String filename) =>
+    filename.toLowerCase().endsWith('.pdf');
 
 /// Option order for the upload unit-picker dialog. A null entry is the
 /// "Whole property" option. Leases lead with units (a lease almost always

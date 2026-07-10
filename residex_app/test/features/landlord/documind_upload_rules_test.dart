@@ -38,4 +38,19 @@ void main() {
       expect(options.sublist(1).map((unit) => unit!.id), ['u1', 'u2']);
     });
   });
+
+  group('isAllowedUploadFilename', () {
+    test('accepts pdf regardless of case', () {
+      expect(isAllowedUploadFilename('Lease.PDF'), isTrue);
+      expect(isAllowedUploadFilename('lease.pdf'), isTrue);
+    });
+
+    test('rejects docx now that ingestion is PDF-only', () {
+      expect(isAllowedUploadFilename('lease.docx'), isFalse);
+    });
+
+    test('rejects other extensions', () {
+      expect(isAllowedUploadFilename('lease.txt'), isFalse);
+    });
+  });
 }
