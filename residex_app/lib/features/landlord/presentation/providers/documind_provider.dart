@@ -176,7 +176,7 @@ final deleteDocumentActionProvider = Provider<
 
     final landlordId = ref.read(currentLandlordIdProvider);
     final repository = ref.read(documindRepositoryProvider);
-    
+
     await repository.deleteDocument(
       landlordId: landlordId,
       propertyId: propertyId,
@@ -186,6 +186,30 @@ final deleteDocumentActionProvider = Provider<
     print('✅ Action: Document deleted successfully');
 
     // ✅ Invalidate provider to refresh document list
+    ref.invalidate(documindDocumentsProvider(propertyId));
+  };
+});
+
+/// Convert a unit's documents to property-wide before the unit is deleted.
+final unassignUnitDocumentsActionProvider = Provider<
+    Future<void> Function({
+      required String propertyId,
+      required String unitId,
+    })>((ref) {
+  return ({
+    required String propertyId,
+    required String unitId,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final repository = ref.read(documindRepositoryProvider);
+
+    await repository.unassignUnitDocuments(
+      landlordId: landlordId,
+      propertyId: propertyId,
+      unitId: unitId,
+    );
+
+    // Unassigned docs are now property-wide; refresh any doc list.
     ref.invalidate(documindDocumentsProvider(propertyId));
   };
 });

@@ -51,6 +51,13 @@ abstract class DocuMindRepository {
     required String propertyId,
   });
 
+  /// Convert one unit's documents to property-wide (before unit deletion)
+  Future<void> unassignUnitDocuments({
+    required String landlordId,
+    required String propertyId,
+    required String unitId,
+  });
+
   /// Get a short-lived signed URL to view a document's original PDF
   Future<String> getDocumentViewUrl({
     required String landlordId,

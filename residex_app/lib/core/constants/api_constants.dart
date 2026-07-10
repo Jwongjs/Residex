@@ -11,6 +11,7 @@ class ApiConstants {
   static const String documindUpload = '/api/rex/documind/upload';
   static const String documindAsk = '/api/rex/documind/ask';
   static const String documindList = '/api/rex/documind/documents';
+  static const String documindUnassignUnit = '/api/rex/documind/documents/unassign-unit';
   static String documindViewUrl(String docId) => '/api/rex/documind/documents/$docId/view-url';
   static String documindPropertyDocs(String propertyId) => '/api/rex/documind/properties/$propertyId/documents';
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/unit.dart';
 import '../../providers/unit_providers.dart';
+import '../../providers/documind_provider.dart';
 
 /// Lists and manages the individual units within a property: each unit's
 /// label, monthly rent, and occupied/vacant status.
@@ -37,6 +38,22 @@ class UnitsScreen extends ConsumerWidget {
   }
 
   Future<void> _confirmDeleteUnit(BuildContext context, WidgetRef ref, Unit unit) async {
+    // Count documents assigned to this unit so the dialog can explain what
+    // happens to them. A count failure must never block unit deletion.
+    int assignedDocCount = 0;
+    try {
+      final landlordId = ref.read(currentLandlordIdProvider);
+      final listDocuments = ref.read(listDocumentsUseCaseProvider);
+      final docs = await listDocuments(
+        landlordId: landlordId,
+        propertyId: propertyId,
+      );
+      assignedDocCount = docs.where((doc) => doc.unitId == unit.id).length;
+    } catch (_) {
+      assignedDocCount = 0;
+    }
+
+    if (!context.mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -70,6 +87,13 @@ class UnitsScreen extends ConsumerWidget {
                 ),
               ),
             ),
+            if (assignedDocCount > 0) ...[
+              const SizedBox(height: 12),
+              Text(
+                '$assignedDocCount document${assignedDocCount == 1 ? '' : 's'} assigned to this unit will be kept as property-wide documents.',
+                style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+              ),
+            ],
             const SizedBox(height: 12),
             Text(
               'This action cannot be undone.',
@@ -97,6 +121,10 @@ class UnitsScreen extends ConsumerWidget {
     if (confirmed == true) {
       final controller = ref.read(unitControllerProvider);
       try {
+        if (assignedDocCount > 0) {
+          final unassignDocuments = ref.read(unassignUnitDocumentsActionProvider);
+          await unassignDocuments(propertyId: propertyId, unitId: unit.id);
+        }
         await controller.deleteUnit(propertyId, unit.id);
       } catch (e) {
         if (context.mounted) {

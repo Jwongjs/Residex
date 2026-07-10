@@ -214,6 +214,42 @@ class DocuMindRemoteDataSource {
     }
   }
 
+  /// Convert one unit's documents to property-wide (called before deleting
+  /// the unit, so its documents don't keep a stale unit_id)
+  Future<void> unassignUnitDocuments({
+    required String landlordId,
+    required String propertyId,
+    required String unitId,
+  }) async {
+    print('🔵 DataSource: Unassign unit documents');
+    print('   - Unit: $unitId');
+
+    final uri =
+        Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindUnassignUnit}');
+
+    try {
+      final response = await httpClient.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'landlord_id': landlordId,
+          'property_id': propertyId,
+          'unit_id': unitId,
+        }),
+      );
+
+      print('✅ DataSource: Unassign response status ${response.statusCode}');
+
+      if (response.statusCode != 200) {
+        print('❌ DataSource: Unassign failed: ${response.body}');
+        throw Exception('Unassign failed: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ DataSource: Unassign error: $e');
+      rethrow;
+    }
+  }
+
   /// Get a short-lived signed URL to view a document's original PDF
   Future<String> getDocumentViewUrl({
     required String landlordId,

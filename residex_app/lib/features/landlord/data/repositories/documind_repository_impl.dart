@@ -145,6 +145,27 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
   }
 
   @override
+  Future<void> unassignUnitDocuments({
+    required String landlordId,
+    required String propertyId,
+    required String unitId,
+  }) async {
+    print('🔵 Repository: Unassign unit documents for unit $unitId');
+
+    try {
+      await remoteDataSource.unassignUnitDocuments(
+        landlordId: landlordId,
+        propertyId: propertyId,
+        unitId: unitId,
+      );
+      print('✅ Repository: Unit documents unassigned');
+    } catch (e) {
+      print('❌ Repository: Unassign failed: $e');
+      rethrow;
+    }
+  }
+
+  @override
   Future<String> getDocumentViewUrl({
     required String landlordId,
     required String propertyId,
