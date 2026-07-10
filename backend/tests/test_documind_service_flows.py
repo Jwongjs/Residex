@@ -663,6 +663,43 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(response.needs_unit_clarification)
         self.assertEqual(len(response.citations), 2)
 
+    async def test_unit_resume_preserves_original_category_scope(self):
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        # Pending carries the ORIGINAL question's lease scope.
+        fake_store.pending["session-scope"] = {
+            "type": "unit",
+            "question": "when does the lease expire?",
+            "selected_categories": ["lease"],
+            "unit_options": [
+                {"unit_id": "unit-A", "unit_label": "Unit A"},
+                {"unit_id": "unit-B", "unit_label": "Unit B"},
+                {"unit_id": "all", "unit_label": "All units"},
+            ],
+        }
+        # This turn's graph runs over "Unit A" and honestly returns no category.
+        empty_pred_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": [],
+            "intent": "document_question",
+        })
+        service = _build_service(fake_db, fake_store, empty_pred_graph, _FakeLLM("It ends 31 December 2026."))
+
+        payload = AskRequest(
+            landlord_id="l1",
+            property_id="p1",
+            question="Unit A",
+            session_id="session-scope",
+            user_action="unit:unit-A",
+        )
+        response = await service.ask_documind(payload)
+
+        # The resumed retrieval must keep the ORIGINAL lease scope, not search all categories.
+        retriever_call = service._hybrid_retriever.calls[-1]
+        self.assertEqual(retriever_call["categories"], ["lease"])
+        self.assertEqual(retriever_call["unit_id"], "unit-A")
+        self.assertEqual(response.searched_categories, ["lease"])
+
 
 class _FakeBlob:
     def __init__(self, bucket, path):

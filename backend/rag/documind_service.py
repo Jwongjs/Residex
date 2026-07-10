@@ -540,12 +540,22 @@ class DocuMindService:
                     working_question = pending.get("question", payload.question)
                 if unit_target and unit_target.lower() != "all":
                     effective_unit_id = unit_target
+                # Reuse the ORIGINAL question's category scope (stashed when the
+                # checkpoint fired) — the follow-up turn's text is just the unit
+                # label, so re-predicting over it would drop the real scope.
+                pending_categories = pending.get("selected_categories") if pending else None
+                if pending_categories:
+                    selected_categories = [
+                        category for category in pending_categories if category in ALLOWED_CATEGORIES
+                    ]
+                    category_filter_mode = "clarification_selected"
+                else:
+                    selected_categories = [
+                        category for category in predicted_categories if category in ALLOWED_CATEGORIES
+                    ]
+                    if selected_categories:
+                        category_filter_mode = "auto"
                 self._conversation_store.clear_pending_confirmation(session_id)
-                selected_categories = [
-                    category for category in predicted_categories if category in ALLOWED_CATEGORIES
-                ]
-                if selected_categories:
-                    category_filter_mode = "auto"
             elif user_action in ALLOWED_CATEGORIES:
                 selected_categories = [user_action]
                 working_question = pending.get("question", payload.question) if pending else payload.question
@@ -650,6 +660,7 @@ class DocuMindService:
                 {
                     "type": "unit",
                     "question": working_question,
+                    "selected_categories": selected_categories,
                     "unit_options": [option.model_dump() for option in unit_options],
                 },
             )
