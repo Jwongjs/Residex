@@ -71,8 +71,9 @@ void main() {
         categoryLabelResolver: (category) => category.toUpperCase(),
       );
 
-      expect(text, contains('Reply with `confirm` or `cancel`'));
-      expect(text, contains('• lease'));
+      expect(text, contains('Tap Confirm to proceed'));
+      // Options render as quick-reply chips, not inline bullets.
+      expect(text, isNot(contains('• lease')));
       expect(text, contains('Categories: LEASE (clarified)'));
       // Citations are rendered by the citation widget attached to the chat
       // bubble (MessageOptions.bottom), not inlined in the assistant text.
@@ -95,7 +96,103 @@ void main() {
         categoryLabelResolver: (category) => category,
       );
 
-      expect(text, contains('• insurance'));
+      expect(text, contains('Tap Confirm to proceed'));
+      expect(buildDocuMindQuickReplies(answer),
+          ['Confirm', 'Insurance', 'Cancel']);
+    });
+  });
+
+  group('buildDocuMindQuickReplies', () {
+    test('returns no replies when no action is required', () {
+      final answer = DocuMindAnswer(
+        answer: 'Done.',
+        confidence: 0.9,
+        citations: const [],
+        propertyName: 'Property',
+      );
+
+      expect(buildDocuMindQuickReplies(answer), isEmpty);
+    });
+
+    test('wraps category options with Confirm and Cancel', () {
+      final answer = DocuMindAnswer(
+        answer: 'Did you mean these categories?',
+        confidence: 0.8,
+        citations: const [],
+        propertyName: 'Property',
+        userActionRequired: true,
+        clarificationOptions: const ['lease', 'warranty'],
+      );
+
+      expect(buildDocuMindQuickReplies(answer),
+          ['Confirm', 'Lease', 'Warranty', 'Cancel']);
+    });
+
+    test('lists unit labels and a canonical All units entry', () {
+      final answer = DocuMindAnswer(
+        answer: 'Which unit do you mean?',
+        confidence: 0.6,
+        citations: const [],
+        propertyName: 'Property',
+        userActionRequired: true,
+        needsUnitClarification: true,
+        unitOptions: [
+          UnitOption(unitId: 'unit-A', unitLabel: 'Unit A-12-03'),
+          UnitOption(unitId: 'unit-B', unitLabel: 'Unit B-08-11'),
+          // Backend "all" pseudo-option must not duplicate the appended one.
+          UnitOption(unitId: 'all', unitLabel: 'All units'),
+        ],
+      );
+
+      expect(buildDocuMindQuickReplies(answer),
+          ['Unit A-12-03', 'Unit B-08-11', 'All units']);
+    });
+
+    test('every quick reply round-trips through mapDocuMindUserAction', () {
+      const categories = ['lease', 'warranty', 'insurance', 'utility', 'receipt'];
+      final unitOptions = [
+        UnitOption(unitId: 'unit-A', unitLabel: 'Unit A-12-03'),
+        UnitOption(unitId: 'all', unitLabel: 'All units'),
+      ];
+      final unitAnswer = DocuMindAnswer(
+        answer: 'Which unit?',
+        confidence: 0.6,
+        citations: const [],
+        propertyName: 'Property',
+        userActionRequired: true,
+        needsUnitClarification: true,
+        unitOptions: unitOptions,
+      );
+      final categoryAnswer = DocuMindAnswer(
+        answer: 'Which category?',
+        confidence: 0.6,
+        citations: const [],
+        propertyName: 'Property',
+        userActionRequired: true,
+        clarificationOptions: const ['lease'],
+      );
+
+      for (final reply in buildDocuMindQuickReplies(unitAnswer)) {
+        final action = mapDocuMindUserAction(
+          awaitingUserAction: true,
+          messageText: reply,
+          categories: categories,
+          unitOptions: unitOptions,
+        );
+        expect(action, isNotNull, reason: 'unit reply "$reply" must map');
+        expect(action, startsWith('unit:'));
+      }
+
+      expect(
+        buildDocuMindQuickReplies(categoryAnswer)
+            .map((reply) => mapDocuMindUserAction(
+                  awaitingUserAction: true,
+                  messageText: reply,
+                  categories: categories,
+                ))
+            .toList(),
+        ['confirm', 'override:lease', 'cancel'],
+      );
     });
   });
 
@@ -178,10 +275,10 @@ void main() {
         categoryLabelResolver: (category) => category,
       );
 
-      expect(text, contains('Reply with a unit'));
-      expect(text, contains('• Unit A'));
-      expect(text, contains('• All units'));
-      expect(text, isNot(contains('`confirm`')));
+      expect(text, contains('Tap a unit below'));
+      // Unit options render as quick-reply chips, not inline bullets.
+      expect(text, isNot(contains('• Unit A')));
+      expect(text, isNot(contains('Confirm')));
     });
   });
 }

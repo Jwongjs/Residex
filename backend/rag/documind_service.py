@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import tempfile
 from typing import Dict, List, Optional
@@ -51,11 +52,81 @@ CATEGORY_KEYWORDS = {
     ],
 }
 
+# Question-side unit reference resolution. Matching is deterministic and
+# label-driven: "unit a" resolves to "Unit A-12-03" only when exactly one
+# unit label starts with that reference at a segment boundary.
+_UNIT_REF_PATTERN = re.compile(r"\bunit\s+([a-z0-9]+(?:-[a-z0-9]+)*)")
+_AGGREGATE_UNIT_PHRASES = (
+    "all units", "all the units", "all my units", "across units",
+    "every unit", "each unit", "per unit", "between units",
+)
+
+
+def _label_matches_token(label: str, token: str) -> bool:
+    label_norm = " ".join(label.lower().split())
+    prefix = f"unit {token}"
+    if label_norm == token or label_norm == prefix:
+        return True
+    if label_norm.startswith(prefix):
+        # Boundary check so "unit a" never matches "Unit AB-2".
+        return label_norm[len(prefix):][:1] in ("-", " ", ".")
+    return False
+
+
+def resolve_unit_mention(question: str, units: List[Dict]) -> Dict:
+    """Decide which unit(s) a question refers to, before retrieval runs.
+
+    units: [{"unit_id": ..., "label": ...}]. Returns a dict whose "kind" is:
+      none      - no unit signal; search everything, attribute per unit
+      scoped    - exactly one unit referenced -> {"unit": {...}}
+      multi     - several units named deliberately; search everything
+      aggregate - "all units"-style phrasing; search everything
+      ambiguous - one reference matches several units -> {"candidates": [...]}
+      unknown   - a unit was named that does not exist -> {"mention": str}
+    """
+    q = " ".join((question or "").lower().split())
+    if not q or not units:
+        return {"kind": "none"}
+
+    named = [
+        u for u in units
+        if u.get("label") and " ".join(u["label"].lower().split()) in q
+    ]
+    if len(named) == 1:
+        return {"kind": "scoped", "unit": named[0]}
+    if len(named) >= 2:
+        return {"kind": "multi"}
+
+    if any(phrase in q for phrase in _AGGREGATE_UNIT_PHRASES):
+        return {"kind": "aggregate"}
+
+    resolved: Dict[str, Dict] = {}
+    for token in _UNIT_REF_PATTERN.findall(q):
+        candidates = [
+            u for u in units
+            if u.get("label") and _label_matches_token(u["label"], token)
+        ]
+        if not candidates:
+            return {"kind": "unknown", "mention": f"Unit {token.upper()}"}
+        if len(candidates) > 1:
+            return {"kind": "ambiguous", "candidates": candidates}
+        resolved[candidates[0]["unit_id"]] = candidates[0]
+
+    if len(resolved) == 1:
+        return {"kind": "scoped", "unit": next(iter(resolved.values()))}
+    if len(resolved) >= 2:
+        return {"kind": "multi"}
+    return {"kind": "none"}
+
+
 db = firestore.Client()
 
 if not firebase_admin._apps:
     firebase_admin.initialize_app(options={
-        'storageBucket': f"{os.getenv('GOOGLE_CLOUD_PROJECT')}.appspot.com",
+        'storageBucket': os.getenv(
+            'FIREBASE_STORAGE_BUCKET',
+            f"{os.getenv('GOOGLE_CLOUD_PROJECT')}.firebasestorage.app",
+        ),
     })
 
 embeddings = GoogleGenerativeAIEmbeddings(
@@ -216,6 +287,27 @@ class DocuMindService:
             print(f"⚠️ Could not fetch property name: {e}")
         return property_name
 
+    def _list_property_units(self, property_id: str) -> List[Dict]:
+        """Unit ids + labels for a property. Empty on lookup failure so a
+        units outage degrades to unscoped search instead of blocking."""
+        try:
+            snapshots = (
+                self.db.collection('properties')
+                .document(property_id)
+                .collection('units')
+                .stream()
+            )
+            return [
+                {
+                    "unit_id": snap.id,
+                    "label": (snap.to_dict() or {}).get('label') or snap.id,
+                }
+                for snap in snapshots
+            ]
+        except Exception as e:
+            print(f"⚠️ Unit lookup failed for property {property_id}: {e}")
+            return []
+
     async def ingest_document(
         self,
         landlord_id: str,
@@ -374,10 +466,15 @@ class DocuMindService:
         turn_number = max(1, self._conversation_store.get_turn_count(session_id) + 1)
         recent_turns = session.get("conversation_turns", []) if isinstance(session, dict) else []
 
+        # Units go into the graph so the routing node can decide the unit
+        # scope in the same LLM call that picks categories.
+        property_units = self._list_property_units(payload.property_id)
+
         graph_state = await self._graph_orchestrator.run({
             "user_input": payload.question,
             "explicit_categories": explicit_valid,
             "available_categories": available_categories,
+            "available_units": property_units,
             "user_action": payload.user_action or "",
             "recent_turns": recent_turns,
             "property_name": property_name,
@@ -562,12 +659,125 @@ class DocuMindService:
                 category_filter_mode = "clarification_selected"
                 self._conversation_store.clear_pending_confirmation(session_id)
             else:
-                # Fallback to predicted categories when there is no checkpoint action
-                selected_categories = [
-                    category for category in predicted_categories if category in ALLOWED_CATEGORIES
-                ]
+                # Auto scope: apply the predicted categories only when the
+                # predictor is reasonably confident; a weak prediction searches
+                # the whole corpus rather than risking a wrong silent filter.
+                if graph_state.get("prediction_confidence", 0.0) >= 0.45:
+                    selected_categories = [
+                        category for category in predicted_categories if category in ALLOWED_CATEGORIES
+                    ]
                 if selected_categories:
                     category_filter_mode = "auto"
+
+        # Unit routing (skipped when the header dropdown already scopes the
+        # chat or this turn resumes a unit checkpoint). The search-router LLM
+        # decides the unit scope from the question when it can (tool-style
+        # routing); when it couldn't, deterministic label matching takes over.
+        # Either way: explicit references route silently, a reference matching
+        # several units is the only case that still asks, and a reference to a
+        # unit that does not exist gets an honest answer listing the real ones.
+        user_action_lower = (payload.user_action or "").strip().lower()
+        if effective_unit_id is None and not user_action_lower.startswith("unit:"):
+            unit_ids = {unit["unit_id"] for unit in property_units}
+            routed_unit_id = graph_state.get("routed_unit_id")
+            unknown_mention = graph_state.get("unknown_unit_mention")
+            ambiguous_candidates = None
+
+            if unknown_mention:
+                pass  # honest not-found answer below
+            elif routed_unit_id and routed_unit_id in unit_ids:
+                effective_unit_id = routed_unit_id
+            elif not graph_state.get("unit_routing_decided"):
+                unit_resolution = resolve_unit_mention(working_question, property_units)
+                if unit_resolution["kind"] == "scoped":
+                    effective_unit_id = unit_resolution["unit"]["unit_id"]
+                elif unit_resolution["kind"] == "unknown":
+                    unknown_mention = unit_resolution["mention"]
+                elif unit_resolution["kind"] == "ambiguous":
+                    ambiguous_candidates = unit_resolution["candidates"]
+
+            if unknown_mention:
+                unit_labels = ", ".join(sorted(u["label"] for u in property_units))
+                not_found_message = (
+                    f"I couldn't find {unknown_mention} in {property_name}. "
+                    f"This property's units are: {unit_labels}. "
+                    "Ask about one of those, or ask without naming a unit to search everything."
+                )
+                self._conversation_store.append_turn(
+                    session_id,
+                    {
+                        "turn": turn_number,
+                        "question": working_question,
+                        "intent": "document_question",
+                        "action": "unknown_unit",
+                        "answer": not_found_message,
+                    },
+                )
+                return AskResponse(
+                    answer=not_found_message,
+                    confidence=0.9,
+                    citations=[],
+                    property_name=property_name,
+                    searched_categories=selected_categories,
+                    category_filter_mode=category_filter_mode,
+                    session_id=session_id,
+                    conversation_turn=turn_number,
+                    user_action_required=False,
+                    predicted_categories=predicted_categories,
+                    action_reason="Question referenced a unit that does not exist",
+                )
+
+            if ambiguous_candidates:
+                unit_options = [
+                    UnitOption(unit_id=u["unit_id"], unit_label=u["label"])
+                    for u in sorted(ambiguous_candidates, key=lambda u: u["label"])
+                ]
+                unit_options.append(UnitOption(unit_id="all", unit_label="All units"))
+                matched_labels = " and ".join(
+                    option.unit_label for option in unit_options[:-1]
+                )
+                unit_prompt = (
+                    f"That could mean {matched_labels}. Which unit do you mean?"
+                )
+                self._conversation_store.set_pending_confirmation(
+                    session_id,
+                    {
+                        "type": "unit",
+                        "question": working_question,
+                        "selected_categories": selected_categories,
+                        "unit_options": [option.model_dump() for option in unit_options],
+                    },
+                )
+                self._conversation_store.append_turn(
+                    session_id,
+                    {
+                        "turn": turn_number,
+                        "question": working_question,
+                        "intent": "document_question",
+                        "action": "ask_unit_clarification",
+                        "unit_options": [option.unit_id for option in unit_options],
+                    },
+                )
+                return AskResponse(
+                    answer=unit_prompt,
+                    confidence=0.6,
+                    citations=[],
+                    property_name=property_name,
+                    searched_categories=selected_categories,
+                    category_filter_mode=category_filter_mode,
+                    needs_category_clarification=False,
+                    clarification_prompt=unit_prompt,
+                    clarification_options=[],
+                    session_id=session_id,
+                    conversation_turn=turn_number,
+                    user_action_required=True,
+                    needs_unit_clarification=True,
+                    unit_options=unit_options,
+                    predicted_categories=predicted_categories,
+                    action_reason="Unit reference matches multiple units",
+                )
+            # "multi", "aggregate", and "none" all search unscoped; the answer
+            # prompt attributes every fact to its unit.
 
         try:
             retrieved_chunks = await self._hybrid_retriever.retrieve(
@@ -626,72 +836,9 @@ class DocuMindService:
                 action_reason="No chunks retrieved",
             )
 
-        # Unit-ambiguity checkpoint (post-retrieval — only knowable after
-        # seeing which units the retrieved chunks belong to). Fires when the
-        # chat isn't unit-scoped, this isn't already a unit-checkpoint
-        # answer, and the chunks span two or more distinct units.
-        checkpoint_action = (payload.user_action or "").strip().lower()
-        distinct_unit_ids = {
-            chunk.get('unit_id') for chunk in retrieved_chunks if chunk.get('unit_id')
-        }
-        if (
-            payload.unit_id is None
-            and not checkpoint_action.startswith("unit:")
-            and len(distinct_unit_ids) >= 2
-        ):
-            labels_by_unit: dict[str, str] = {}
-            for chunk in retrieved_chunks:
-                chunk_unit_id = chunk.get('unit_id')
-                if chunk_unit_id and chunk_unit_id not in labels_by_unit:
-                    labels_by_unit[chunk_unit_id] = chunk.get('unit_label') or chunk_unit_id
-            unit_options = [
-                UnitOption(unit_id=unit_id, unit_label=unit_label)
-                for unit_id, unit_label in sorted(labels_by_unit.items(), key=lambda item: item[1])
-            ]
-            unit_options.append(UnitOption(unit_id="all", unit_label="All units"))
-
-            matched_labels = " and ".join(option.unit_label for option in unit_options[:-1])
-            unit_prompt = (
-                f"That question matches documents from {matched_labels}. "
-                "Which unit do you mean?"
-            )
-            self._conversation_store.set_pending_confirmation(
-                session_id,
-                {
-                    "type": "unit",
-                    "question": working_question,
-                    "selected_categories": selected_categories,
-                    "unit_options": [option.model_dump() for option in unit_options],
-                },
-            )
-            self._conversation_store.append_turn(
-                session_id,
-                {
-                    "turn": turn_number,
-                    "question": working_question,
-                    "intent": "document_question",
-                    "action": "ask_unit_clarification",
-                    "unit_options": [option.unit_id for option in unit_options],
-                },
-            )
-            return AskResponse(
-                answer=unit_prompt,
-                confidence=0.6,
-                citations=[],
-                property_name=property_name,
-                searched_categories=selected_categories,
-                category_filter_mode=category_filter_mode,
-                needs_category_clarification=False,
-                clarification_prompt=unit_prompt,
-                clarification_options=[],
-                session_id=session_id,
-                conversation_turn=turn_number,
-                user_action_required=True,
-                needs_unit_clarification=True,
-                unit_options=unit_options,
-                predicted_categories=predicted_categories,
-                action_reason="Retrieved documents span multiple units",
-            )
+        # No post-retrieval unit checkpoint: unit routing happened above from
+        # the question text, and answers over mixed-unit chunks attribute every
+        # fact to its unit (prompt rule 5) instead of blocking to ask.
 
         # Dedupe citations by (filename, page): multiple chunks can come from
         # the same page (overlapping splits), each with its own rerank score.
@@ -774,7 +921,9 @@ class DocuMindService:
     Else if there are no uploaded documents to reference: 
     - Say "You do not have any relevant uploaded documents for that matter. Please upload a [category name] document to get answers about [specific topic]."
     
-    4. **DO NOT** make up information - only use what's provided in the context. 
+    4. **DO NOT** make up information - only use what's provided in the context.
+
+    5. **Unit attribution:** Each excerpt header names the unit it belongs to (or "Property-wide"). Never blend values from different units — attribute every figure to its unit. If the excerpts span multiple units, break the answer down per unit (e.g. "Unit A-12-03: ...", "Unit B-08-11: ..."). For totals across units, show each unit's value and then the combined total. Property-wide documents apply to the whole property.
 
     **Your Answer:**"""
 

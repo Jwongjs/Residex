@@ -3,7 +3,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, PropertyMock, patch
 
 from models.documind_models import AskRequest
-from rag.documind_service import DocuMindService
+from rag.documind_service import DocuMindService, resolve_unit_mention
 
 
 class _LLMResponse:
@@ -83,12 +83,35 @@ class _FakePropertyDoc:
         return self._data
 
 
+class _FakeUnitSnapshot:
+    def __init__(self, unit_id, label):
+        self.id = unit_id
+        self._label = label
+
+    def to_dict(self):
+        return {"label": self._label}
+
+
+class _FakeUnitsCollection:
+    def __init__(self, units):
+        self._units = units
+
+    def stream(self):
+        return [_FakeUnitSnapshot(u["unit_id"], u["label"]) for u in self._units]
+
+
 class _FakePropertyRef:
-    def __init__(self, property_name: str):
+    def __init__(self, property_name: str, units=None):
         self._property_name = property_name
+        self._units = units or []
 
     def get(self):
         return _FakePropertyDoc(exists=True, data={"name": self._property_name})
+
+    def collection(self, name: str):
+        if name == "units":
+            return _FakeUnitsCollection(self._units)
+        raise NotImplementedError("only the units subcollection is faked")
 
 
 class _FakeCollectionQuery:
@@ -225,7 +248,9 @@ class _FakeCollection:
 
     def document(self, _doc_id=None):
         if self._name == "properties":
-            return _FakePropertyRef(self._db.property_name)
+            return _FakePropertyRef(
+                self._db.property_name, getattr(self._db, "units", [])
+            )
         if self._name == "documind_docs":
             return _FakeDocDocRef(self._db, _doc_id)
         if self._name == "documind_chunks":
@@ -234,8 +259,9 @@ class _FakeCollection:
 
 
 class _FakeDB:
-    def __init__(self, docs=None, chunks=None, property_name="Test Property"):
+    def __init__(self, docs=None, chunks=None, property_name="Test Property", units=None):
         self.docs = docs or []
+        self.units = units or []
         self.chunks = chunks or []
         self.property_name = property_name
         self.last_chunk_category_filter = None
@@ -545,6 +571,10 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
                 {"doc_id": "doc-A", "landlord_id": "l1", "property_id": "p1", "category": "lease"},
                 {"doc_id": "doc-B", "landlord_id": "l1", "property_id": "p1", "category": "lease"},
             ],
+            units=[
+                {"unit_id": "unit-A", "label": "Unit A"},
+                {"unit_id": "unit-B", "label": "Unit B"},
+            ],
             chunks=[
                 {"doc_id": "doc-A", "filename": "leaseA.pdf", "category": "lease", "page": 1,
                  "unit_id": "unit-A", "unit_label": "Unit A",
@@ -576,24 +606,157 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
             ],
         }
 
-    async def test_multi_unit_retrieval_without_filter_triggers_checkpoint(self):
+    async def test_multi_unit_retrieval_without_filter_answers_with_attribution(self):
+        # Mixed-unit retrieval no longer blocks on a checkpoint: the answer
+        # comes back directly and the prompt's unit-attribution rule keeps
+        # each figure tied to its unit.
         fake_db = self._multi_unit_db()
         fake_store = _FakeConversationStore()
-        service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("unused"))
+        fake_llm = _FakeLLM("Unit A ends 2026; Unit B ends 2027.")
+        service = _build_service(fake_db, fake_store, self._retrieve_graph(), fake_llm)
 
         payload = AskRequest(landlord_id="l1", property_id="p1", question="when does the lease expire?")
         response = await service.ask_documind(payload)
 
+        self.assertFalse(response.needs_unit_clarification)
+        self.assertFalse(response.user_action_required)
+        self.assertEqual(len(response.citations), 2)
+        self.assertIn("Unit attribution", fake_llm.last_prompt)
+
+    async def test_explicit_unit_reference_scopes_retrieval(self):
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        service = _build_service(
+            fake_db, fake_store, self._retrieve_graph(), _FakeLLM("Ends 31 December 2026.")
+        )
+
+        payload = AskRequest(
+            landlord_id="l1", property_id="p1", question="When does unit A's lease expire?"
+        )
+        response = await service.ask_documind(payload)
+
+        self.assertFalse(response.needs_unit_clarification)
+        retriever_call = service._hybrid_retriever.calls[-1]
+        self.assertEqual(retriever_call["unit_id"], "unit-A")
+        self.assertEqual(len(response.citations), 1)
+        self.assertEqual(response.citations[0].unit_label, "Unit A")
+
+    async def test_unknown_unit_reference_answers_honestly_without_retrieval(self):
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("unused"))
+
+        payload = AskRequest(
+            landlord_id="l1", property_id="p1", question="What is the rent for unit D?"
+        )
+        response = await service.ask_documind(payload)
+
+        self.assertFalse(response.needs_unit_clarification)
+        self.assertFalse(response.user_action_required)
+        self.assertIn("Unit D", response.answer)
+        self.assertIn("Unit A", response.answer)
+        self.assertEqual(response.citations, [])
+        self.assertEqual(service._hybrid_retriever.calls, [])
+
+    async def test_aggregate_phrasing_searches_all_units_without_checkpoint(self):
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        service = _build_service(
+            fake_db,
+            fake_store,
+            self._retrieve_graph(),
+            _FakeLLM("Unit A: RM 1; Unit B: RM 2; total RM 3."),
+        )
+
+        payload = AskRequest(
+            landlord_id="l1",
+            property_id="p1",
+            question="What is the total monthly rent across all units?",
+        )
+        response = await service.ask_documind(payload)
+
+        self.assertFalse(response.needs_unit_clarification)
+        self.assertFalse(response.user_action_required)
+        retriever_call = service._hybrid_retriever.calls[-1]
+        self.assertIsNone(retriever_call["unit_id"])
+        self.assertEqual(len(response.citations), 2)
+
+    async def test_llm_routed_unit_scopes_retrieval(self):
+        # The router LLM decided the unit (tool-style routing); no label
+        # parsing is involved and retrieval is scoped straight to that unit.
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": ["lease"],
+            "prediction_confidence": 0.9,
+            "intent": "document_question",
+            "routed_unit_id": "unit-B",
+            "unit_routing_decided": True,
+        })
+        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("Ends 30 June 2027."))
+
+        payload = AskRequest(
+            landlord_id="l1",
+            property_id="p1",
+            question="when does the tenancy for the second unit end?",
+        )
+        response = await service.ask_documind(payload)
+
+        self.assertFalse(response.needs_unit_clarification)
+        retriever_call = service._hybrid_retriever.calls[-1]
+        self.assertEqual(retriever_call["unit_id"], "unit-B")
+        self.assertEqual(len(response.citations), 1)
+        self.assertEqual(response.citations[0].unit_label, "Unit B")
+
+    async def test_llm_routed_unknown_unit_answers_honestly(self):
+        fake_db = self._multi_unit_db()
+        fake_store = _FakeConversationStore()
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": [],
+            "intent": "document_question",
+            "unknown_unit_mention": "Unit D",
+            "unit_routing_decided": True,
+        })
+        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
+
+        payload = AskRequest(landlord_id="l1", property_id="p1", question="rent for unit D?")
+        response = await service.ask_documind(payload)
+
+        self.assertFalse(response.user_action_required)
+        self.assertIn("Unit D", response.answer)
+        self.assertIn("Unit A", response.answer)
+        self.assertEqual(service._hybrid_retriever.calls, [])
+
+    async def test_prefix_collision_still_asks_which_unit(self):
+        # The one surviving unit checkpoint: a reference that genuinely
+        # matches several units (pre-retrieval, so no wasted search).
+        fake_db = _FakeDB(
+            docs=[{"doc_id": "doc-A", "landlord_id": "l1", "property_id": "p1", "category": "lease"}],
+            chunks=[],
+            units=[
+                {"unit_id": "unit-A1", "label": "Unit A-1"},
+                {"unit_id": "unit-A2", "label": "Unit A-2"},
+            ],
+        )
+        fake_store = _FakeConversationStore()
+        service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("unused"))
+
+        payload = AskRequest(
+            landlord_id="l1", property_id="p1", question="what is the rent for unit A?"
+        )
+        response = await service.ask_documind(payload)
+
         self.assertTrue(response.needs_unit_clarification)
         self.assertTrue(response.user_action_required)
-        self.assertEqual(response.citations, [])
         self.assertEqual(
             [option.unit_id for option in response.unit_options],
-            ["unit-A", "unit-B", "all"],
+            ["unit-A1", "unit-A2", "all"],
         )
         pending = fake_store.pending[response.session_id]
         self.assertEqual(pending["type"], "unit")
-        self.assertEqual(pending["question"], "when does the lease expire?")
+        self.assertEqual(service._hybrid_retriever.calls, [])
 
     async def test_unit_action_reruns_pending_question_with_unit_filter(self):
         fake_db = self._multi_unit_db()
@@ -949,6 +1112,58 @@ class DocuMindUnassignUnitTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(second["documents_updated"], 0)
         self.assertEqual(second["chunks_updated"], 0)
+
+
+class UnitMentionResolutionTests(unittest.TestCase):
+    _UNITS = [
+        {"unit_id": "unit-A", "label": "Unit A-12-03"},
+        {"unit_id": "unit-B", "label": "Unit B-08-11"},
+    ]
+
+    def test_no_unit_signal_is_none(self):
+        result = resolve_unit_mention("what is the insurance deductible?", self._UNITS)
+        self.assertEqual(result["kind"], "none")
+
+    def test_short_reference_scopes_to_unique_unit(self):
+        result = resolve_unit_mention("What is Unit A's monthly rent?", self._UNITS)
+        self.assertEqual(result["kind"], "scoped")
+        self.assertEqual(result["unit"]["unit_id"], "unit-A")
+
+    def test_full_label_scopes(self):
+        result = resolve_unit_mention("does unit b-08-11 allow pets?", self._UNITS)
+        self.assertEqual(result["kind"], "scoped")
+        self.assertEqual(result["unit"]["unit_id"], "unit-B")
+
+    def test_unknown_unit_reference(self):
+        result = resolve_unit_mention("monthly rent for unit D please", self._UNITS)
+        self.assertEqual(result["kind"], "unknown")
+        self.assertEqual(result["mention"], "Unit D")
+
+    def test_aggregate_phrasing(self):
+        result = resolve_unit_mention(
+            "what is the total monthly rent across all units?", self._UNITS
+        )
+        self.assertEqual(result["kind"], "aggregate")
+
+    def test_two_full_labels_is_deliberate_multi(self):
+        result = resolve_unit_mention(
+            "compare unit a-12-03 and unit b-08-11 rent", self._UNITS
+        )
+        self.assertEqual(result["kind"], "multi")
+
+    def test_prefix_collision_is_ambiguous(self):
+        units = [
+            {"unit_id": "unit-A1", "label": "Unit A-1"},
+            {"unit_id": "unit-A2", "label": "Unit A-2"},
+        ]
+        result = resolve_unit_mention("rent for unit a?", units)
+        self.assertEqual(result["kind"], "ambiguous")
+        self.assertEqual(len(result["candidates"]), 2)
+
+    def test_reference_never_matches_across_segment_boundary(self):
+        units = [{"unit_id": "unit-AB", "label": "Unit AB-2"}]
+        result = resolve_unit_mention("rent for unit a?", units)
+        self.assertEqual(result["kind"], "unknown")
 
 
 if __name__ == "__main__":

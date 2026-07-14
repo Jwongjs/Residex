@@ -240,9 +240,28 @@ class UnitsScreen extends ConsumerWidget {
               Expanded(
                 child: units.isEmpty
                     ? Center(
-                        child: Text(
-                          'No units yet.',
-                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textMuted),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'No units yet.',
+                                style: AppTextStyles.bodyMedium
+                                    .copyWith(color: AppColors.textMuted),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Rent and occupancy are tracked per unit, so this '
+                                'property is left out of portfolio stats until it '
+                                'has one. For a single-dwelling home, add one unit '
+                                'representing the whole property.',
+                                textAlign: TextAlign.center,
+                                style: AppTextStyles.bodySmall
+                                    .copyWith(color: AppColors.textMuted),
+                              ),
+                            ],
+                          ),
                         ),
                       )
                     : ListView.builder(
@@ -267,10 +286,32 @@ class UnitsScreen extends ConsumerWidget {
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Switch(
-                                    value: unit.isOccupied,
-                                    activeColor: AppColors.registry,
-                                    onChanged: (_) => _toggleOccupied(context, ref, unit),
+                                  Tooltip(
+                                    message: 'Unit occupancy status',
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          unit.isOccupied ? 'OCCUPIED' : 'VACANT',
+                                          style: AppTextStyles.labelSmall.copyWith(
+                                            fontSize: 9,
+                                            letterSpacing: 0.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: unit.isOccupied
+                                                ? AppColors.registry
+                                                : AppColors.textMuted,
+                                          ),
+                                        ),
+                                        Switch(
+                                          value: unit.isOccupied,
+                                          activeColor: AppColors.registry,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          onChanged: (_) =>
+                                              _toggleOccupied(context, ref, unit),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                   IconButton(
                                     icon: Icon(Icons.delete_outline, color: AppColors.error),

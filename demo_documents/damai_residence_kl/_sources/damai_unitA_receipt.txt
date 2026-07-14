@@ -1,0 +1,42 @@
+TAX INVOICE / PAYMENT RECEIPT
+Vendor: CoolAir Engineering Sdn Bhd
+SSM No: 201901234567
+Invoice No: CAE-INV-2026-0412
+Receipt ID: RCPT-2026-0412
+Service Date: 2026-04-12
+Property: Damai Residence, Unit A-12-03, 1 Jalan Damai, Keramat, W.P. Kuala Lumpur, Malaysia
+
+BILL TO
+Landlord One Sdn Bhd
+Finance Department
+
+WORK ORDER SUMMARY
+Service Request No: MNT-DMA-2026-0041
+Issue Reported: Indoor unit noise and unstable cooling performance in Unit A-12-03
+Technician: Azlan Haris
+
+LINE ITEMS
+1) HVAC indoor unit fan motor replacement
+	Quantity: 1
+	Parts Cost: RM 480.00
+	Labor Cost: RM 220.00
+
+2) Thermostat calibration and system test
+	Quantity: 1
+	Parts Cost: RM 90.00
+	Labor Cost: RM 80.00
+
+FINANCIAL SUMMARY
+Subtotal: RM 870.00
+SST (6%): RM 52.20
+Grand Total: RM 922.20
+
+PAYMENT DETAILS
+Payment Method: Bank Transfer
+Payment Date: 2026-04-15
+Reference: IBG-88421917
+Payment Status: Paid in Full
+
+WARRANTY ON WORKMANSHIP
+Labor workmanship warranty: 30 days from service date.
+Parts warranty subject to manufacturer terms and exclusions.

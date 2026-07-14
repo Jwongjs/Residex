@@ -63,21 +63,58 @@ String buildDocuMindAssistantText({
   var responseText = answer.answer;
 
   if (answer.userActionRequired) {
+    // The options themselves render as tappable quick-reply chips under the
+    // bubble (buildDocuMindQuickReplies) — the text only points at them.
     if (answer.needsUnitClarification && answer.unitOptions.isNotEmpty) {
-      responseText += '\n\nReply with a unit, or `all units`:';
-      responseText +=
-          '\n${answer.unitOptions.map((option) => '• ${option.unitLabel}').join('\n')}';
+      responseText += '\n\nTap a unit below, or All units to search across all of them.';
     } else {
       final options = answer.clarificationOptions.isNotEmpty
           ? answer.clarificationOptions
           : answer.predictedCategories;
       if (options.isNotEmpty) {
-        responseText += '\n\nReply with `confirm` or `cancel`, or type a category:';
-        responseText += '\n${options.map((option) => '• $option').join('\n')}';
+        responseText +=
+            '\n\nTap Confirm to proceed, Cancel to dismiss, or pick a category below.';
       }
     }
   }
 
+  return _appendSearchedCategories(responseText, answer, categoryLabelResolver);
+}
+
+/// Tappable quick-reply texts for a checkpoint answer. Each entry is sent
+/// verbatim as a user message, so every label must round-trip through
+/// [mapDocuMindUserAction]: unit labels match exactly, "All units" hits the
+/// `all` sentinel, and Confirm/Cancel/category names match case-insensitively.
+List<String> buildDocuMindQuickReplies(DocuMindAnswer answer) {
+  if (!answer.userActionRequired) return const [];
+
+  if (answer.needsUnitClarification && answer.unitOptions.isNotEmpty) {
+    return [
+      for (final option in answer.unitOptions)
+        if (option.unitId != 'all') option.unitLabel,
+      'All units',
+    ];
+  }
+
+  final options = answer.clarificationOptions.isNotEmpty
+      ? answer.clarificationOptions
+      : answer.predictedCategories;
+  if (options.isEmpty) return const [];
+  return [
+    'Confirm',
+    ...options.map(_capitalize),
+    'Cancel',
+  ];
+}
+
+String _capitalize(String value) =>
+    value.isEmpty ? value : value[0].toUpperCase() + value.substring(1);
+
+String _appendSearchedCategories(
+  String responseText,
+  DocuMindAnswer answer,
+  String Function(String category) categoryLabelResolver,
+) {
   if (answer.searchedCategories.isNotEmpty) {
     final displayCategories = answer.searchedCategories
         .map((category) => categoryLabelResolver(category))

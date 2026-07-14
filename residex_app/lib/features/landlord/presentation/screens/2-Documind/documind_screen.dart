@@ -51,6 +51,11 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     'receipt'
   ];
 
+  // Focus of the chat input. The empty-state overlay hides while it has
+  // focus — the keyboard signal can't come from viewInsets because the
+  // Scaffold consumes those before this subtree reads them.
+  final FocusNode _chatInputFocusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +63,19 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     _currentUser = ChatUser(id: 'user_1', firstName: 'Landlord');
     _aiUser =
         ChatUser(id: 'docuMind_ai', firstName: 'DocuMind', lastName: 'AI');
+    _chatInputFocusNode.addListener(_onChatInputFocusChange);
+  }
+
+  void _onChatInputFocusChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _chatInputFocusNode
+      ..removeListener(_onChatInputFocusChange)
+      ..dispose();
+    super.dispose();
   }
 
   @override
@@ -158,10 +176,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                 child: PopupMenuButton<String>(
                   tooltip: 'Switch Property',
                   onSelected: (propertyId) {
-                    // Unit filter is property-specific; clear it on switch.
-                    ref
-                        .read(selectedDocumindUnitProvider.notifier)
-                        .select(null);
                     setState(() {
                       _selectedPropertyId = propertyId;
                       _selectedCategory = null;
@@ -280,109 +294,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
               ),
             ],
           ),
-          _buildUnitFilterRow(),
         ],
-      ),
-    );
-  }
-
-  /// Unit filter below the property picker: scopes the Docs list and chat
-  /// retrieval to one unit's documents plus property-wide documents.
-  /// Hidden when the property has no units.
-  Widget _buildUnitFilterRow() {
-    if (_selectedPropertyId == null) return const SizedBox.shrink();
-
-    final unitsAsync =
-        ref.watch(unitsForPropertyStreamProvider(_selectedPropertyId!));
-    final units = unitsAsync.value ?? const <Unit>[];
-    if (units.isEmpty) return const SizedBox.shrink();
-
-    final selectedUnit = ref.watch(selectedDocumindUnitProvider);
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: PopupMenuButton<String>(
-        tooltip: 'Filter by Unit',
-        onSelected: (unitId) {
-          final unit =
-              unitId.isEmpty ? null : units.firstWhere((u) => u.id == unitId);
-          ref.read(selectedDocumindUnitProvider.notifier).select(unit);
-        },
-        itemBuilder: (context) => [
-          PopupMenuItem<String>(
-            value: '',
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'All units',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      fontWeight: selectedUnit == null
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                    ),
-                  ),
-                ),
-                if (selectedUnit == null)
-                  Icon(Icons.check, color: AppColors.success, size: 16),
-              ],
-            ),
-          ),
-          ...units.map(
-            (unit) => PopupMenuItem<String>(
-              value: unit.id,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      unit.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        fontWeight: unit.id == selectedUnit?.id
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                  if (unit.id == selectedUnit?.id)
-                    Icon(Icons.check, color: AppColors.success, size: 16),
-                ],
-              ),
-            ),
-          ),
-        ],
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceLight,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.meeting_room_outlined,
-                  size: 16, color: AppColors.primaryCyan),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  selectedUnit == null
-                      ? 'All units'
-                      : '${selectedUnit.label} + property-wide docs',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(Icons.expand_more, size: 18, color: AppColors.primaryCyan),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1423,17 +1335,26 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 6),
+        // Filename is the only elastic part of the line: the page number and
+        // unit badge keep their space, so "p.X" can never be squeezed out.
         child: Row(
           children: [
-            Flexible(
+            Expanded(
               child: Text(
-                '${citation.filename} · p.${citation.page ?? '—'}',
+                citation.filename,
                 style: GoogleFonts.ibmPlexMono(
                   fontSize: 11,
                   color: AppColors.textMuted,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              ' · p.${citation.page ?? '—'}',
+              style: GoogleFonts.ibmPlexMono(
+                fontSize: 11,
+                color: AppColors.textMuted,
               ),
             ),
             if (displayUnitLabel != null) ...[
@@ -1446,12 +1367,17 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Text(
-                  displayUnitLabel.toUpperCase(),
-                  style: AppTextStyles.labelSmall.copyWith(
-                    color: AppColors.textMuted,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 9,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 110),
+                  child: Text(
+                    displayUnitLabel.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 9,
+                    ),
                   ),
                 ),
               ),
@@ -1466,16 +1392,18 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   // CHAT INTERFACE
   // ══════════════════════════════════════════════════════
   Widget _buildChatInterface() {
-    final showEmptyPrompt = _messages.isEmpty && !_isThinking;
+    // The empty-state prompt overlays the whole chat area; once the input is
+    // focused the keyboard shrinks that area until the prompt would sit on
+    // top of the input box, so hide it while typing.
+    final showEmptyPrompt =
+        _messages.isEmpty && !_isThinking && !_chatInputFocusNode.hasFocus;
 
     return Stack(
       children: [
         Column(
           children: [
             Expanded(
-              child: _isThinking
-                  ? _buildThinkingState()
-                  : Container(
+              child: Container(
                       decoration: BoxDecoration(
                         color: AppColors.paper,
                         border:
@@ -1485,6 +1413,10 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                         currentUser: _currentUser,
                         onSend: _onSendMessage,
                         messages: _messages,
+                        // While waiting for the answer the AI shows as
+                        // "typing" (animated dots in a bubble) instead of a
+                        // full-screen spinner.
+                        typingUsers: _isThinking ? [_aiUser] : const [],
                         messageOptions: MessageOptions(
                           showTime: false,
                           containerColor: AppColors.surfaceLight,
@@ -1515,13 +1447,35 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                             final citations =
                                 message.customProperties?['citations']
                                     as List<Citation>?;
-                            if (citations == null || citations.isEmpty) {
+                            final quickReplies =
+                                message.customProperties?['quickReplies']
+                                    as List<String>?;
+                            // Chips only stay live on the newest message
+                            // while its checkpoint is still unanswered.
+                            final showQuickReplies = quickReplies != null &&
+                                quickReplies.isNotEmpty &&
+                                _awaitingUserAction &&
+                                _messages.isNotEmpty &&
+                                identical(_messages.first, message);
+                            final hasCitations =
+                                citations != null && citations.isNotEmpty;
+                            if (!hasCitations && !showQuickReplies) {
                               return const SizedBox.shrink();
                             }
-                            return _buildRelevanceMeter(citations);
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (hasCitations)
+                                  _buildRelevanceMeter(citations),
+                                if (showQuickReplies)
+                                  _buildQuickReplyChips(quickReplies),
+                              ],
+                            );
                           },
                         ),
                         inputOptions: InputOptions(
+                          focusNode: _chatInputFocusNode,
                           cursorStyle: CursorStyle(color: AppColors.registry),
                           inputMaxLines: 4,
                           inputDecoration: InputDecoration(
@@ -1566,7 +1520,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
             ),
           ],
         ),
-        if (showEmptyPrompt) _buildEmptyState(),
+        if (showEmptyPrompt) IgnorePointer(child: _buildEmptyState()),
       ],
     );
   }
@@ -1618,7 +1572,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   }
 
   Future<void> _onSendMessage(ChatMessage message) async {
-    if (_selectedPropertyId == null) return;
+    if (_selectedPropertyId == null || _isThinking) return;
 
     setState(() {
       _messages.insert(0, message);
@@ -1633,11 +1587,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         categories: _categories,
         unitOptions: _pendingUnitOptions,
       );
-      if (userAction != null &&
-          userAction.startsWith('unit:') &&
-          userAction != 'unit:all') {
-        _syncUnitFilterFromAction(userAction.substring('unit:'.length));
-      }
       final answer = await askAction(
         propertyId: _selectedPropertyId!,
         question: message.text,
@@ -1662,21 +1611,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     }
   }
 
-  /// Keep the header unit filter in sync with a unit chosen in chat, so the
-  /// Docs tab and follow-up questions stay scoped to the same unit.
-  void _syncUnitFilterFromAction(String unitId) {
-    if (_selectedPropertyId == null) return;
-    final units =
-        ref.read(unitsForPropertyStreamProvider(_selectedPropertyId!)).value ??
-            const <Unit>[];
-    for (final unit in units) {
-      if (unit.id == unitId) {
-        ref.read(selectedDocumindUnitProvider.notifier).select(unit);
-        break;
-      }
-    }
-  }
-
   void _consumeAnswer(DocuMindAnswer answer, String sourceQuestion) {
     _lastQuestion = sourceQuestion;
     _docuMindSessionId = answer.sessionId ?? _docuMindSessionId;
@@ -1689,6 +1623,11 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       answer: answer,
       categoryLabelResolver: _getCategoryLabel,
     );
+    final quickReplies = buildDocuMindQuickReplies(answer);
+    final customProperties = <String, dynamic>{
+      if (answer.citations.isNotEmpty) 'citations': answer.citations,
+      if (quickReplies.isNotEmpty) 'quickReplies': quickReplies,
+    };
 
     setState(() {
       _messages.insert(
@@ -1698,13 +1637,59 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
           createdAt: DateTime.now(),
           text: responseText,
           isMarkdown: true,
-          customProperties: answer.citations.isNotEmpty
-              ? {'citations': answer.citations}
-              : null,
+          customProperties: customProperties.isEmpty ? null : customProperties,
         ),
       );
       _isThinking = false;
     });
+  }
+
+  /// Checkpoint quick replies: tapping a chip sends its text as a normal
+  /// user message, so the transcript shows the choice and the reply flows
+  /// through the same mapDocuMindUserAction path as a typed answer.
+  Widget _buildQuickReplyChips(List<String> replies) {
+    return Container(
+      margin: const EdgeInsets.only(top: 6, bottom: 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: replies.map((reply) {
+          return InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _sendQuickReply(reply),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.registry.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.registry.withValues(alpha: 0.45),
+                ),
+              ),
+              child: Text(
+                reply,
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.registry,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  void _sendQuickReply(String reply) {
+    if (_isThinking) return;
+    _onSendMessage(
+      ChatMessage(
+        user: _currentUser,
+        createdAt: DateTime.now(),
+        text: reply,
+      ),
+    );
   }
 
   // Helper methods
@@ -1852,21 +1837,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     );
   }
 
-  Widget _buildThinkingState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(color: AppColors.primaryCyan),
-          const SizedBox(height: 16),
-          Text(
-            'DocuMind is thinking...',
-            style: AppTextStyles.bodyMedium,
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Result of the upload unit-picker dialog. Wrapping the unit lets the

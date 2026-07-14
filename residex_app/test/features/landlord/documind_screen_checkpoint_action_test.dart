@@ -377,7 +377,7 @@ void main() {
     expect(find.text('UNIT A'), findsOneWidget);
   });
 
-  testWidgets('DocuMind sends unit action and syncs unit filter after unit checkpoint', (tester) async {
+  testWidgets('DocuMind sends unit action after unit checkpoint', (tester) async {
     final capturedUserActions = <String?>[];
     var callCount = 0;
 
@@ -494,10 +494,5 @@ void main() {
     expect(capturedUserActions.length, 2);
     expect(capturedUserActions[0], isNull);
     expect(capturedUserActions[1], 'unit:unit-A');
-
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(DocuMindScreen)),
-    );
-    expect(container.read(selectedDocumindUnitProvider)?.id, 'unit-A');
   });
 }

@@ -9,6 +9,7 @@ class DocuMindState(TypedDict, total=False):
     user_input: str
     explicit_categories: List[str]
     available_categories: List[str]
+    available_units: List[Dict[str, Any]]
     user_action: str
     recent_turns: List[Dict[str, Any]]
     property_name: str
@@ -21,6 +22,14 @@ class DocuMindState(TypedDict, total=False):
     predicted_categories: List[str]
     prediction_confidence: float
     prediction_reason: str
+
+    # LLM search routing for units: a validated unit id (or None), the name of
+    # a referenced-but-nonexistent unit, and whether the router actually made
+    # a unit decision (False -> the service falls back to deterministic label
+    # matching).
+    routed_unit_id: str
+    unknown_unit_mention: str
+    unit_routing_decided: bool
 
     action: str
     assistant_message: str
@@ -115,11 +124,16 @@ class DocuMindGraphOrchestrator:
                 "predicted_categories": explicit_categories,
                 "prediction_confidence": 1.0,
                 "prediction_reason": "User provided explicit categories",
+                "routed_unit_id": None,
+                "unknown_unit_mention": None,
+                "unit_routing_decided": False,
             }
 
         prediction = self._category_predictor.predict(
             question=state.get("user_input", ""),
             available_categories=state.get("available_categories", []),
+            available_units=state.get("available_units", []),
+            recent_turns=state.get("recent_turns", []),
         )
 
         return {
@@ -127,13 +141,14 @@ class DocuMindGraphOrchestrator:
             "predicted_categories": prediction.get("predicted_categories", []),
             "prediction_confidence": prediction.get("confidence", 0.0),
             "prediction_reason": prediction.get("reason", ""),
+            "routed_unit_id": prediction.get("unit_id"),
+            "unknown_unit_mention": prediction.get("unknown_unit"),
+            "unit_routing_decided": prediction.get("unit_decided", False),
         }
 
     async def _decide_action_node(self, state: DocuMindState) -> DocuMindState:
         user_action = (state.get("user_action") or "").strip().lower()
         explicit = state.get("explicit_categories", [])
-        predicted = state.get("predicted_categories", [])
-        available = state.get("available_categories", [])
 
         if explicit:
             return {**state, "action": "retrieve"}
@@ -150,9 +165,11 @@ class DocuMindGraphOrchestrator:
         if user_action == "confirm":
             return {**state, "action": "retrieve"}
 
-        if available:
-            return {**state, "action": "ask_confirmation"}
-
+        # Fresh questions go straight to retrieval: predicted categories scope
+        # the search when the predictor is confident and the whole corpus is
+        # searched otherwise (decided in the service). Confirming a category on
+        # every question added friction without improving answers, so the
+        # ask_confirmation path now only serves legacy checkpoint resumes.
         return {**state, "action": "retrieve"}
 
     async def _prepare_confirmation_node(self, state: DocuMindState) -> DocuMindState:

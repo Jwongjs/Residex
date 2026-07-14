@@ -3,7 +3,6 @@ import 'dart:io';
 import '../../data/datasources/documind_remote_datasource.dart';
 import '../../data/repositories/documind_repository_impl.dart';
 import '../../domain/entities/documind_document.dart';
-import '../../domain/entities/unit.dart';
 import '../../domain/repositories/documind_repository.dart';
 import '../../domain/usecases/upload_document.dart';
 import '../../domain/usecases/ask_documind_question.dart';
@@ -53,33 +52,16 @@ final currentLandlordIdProvider = Provider<String>((ref) {
   return currentUser?.uid ?? 'guest';
 });
 
-/// Currently selected unit filter for Documind (null = all units).
-/// Scopes both the Docs list and chat retrieval to that unit's documents
-/// plus property-wide documents. The screen resets this when the selected
-/// property changes.
-class SelectedDocumindUnitNotifier extends Notifier<Unit?> {
-  @override
-  Unit? build() => null;
-
-  void select(Unit? unit) => state = unit;
-}
-
-final selectedDocumindUnitProvider =
-    NotifierProvider<SelectedDocumindUnitNotifier, Unit?>(
-  SelectedDocumindUnitNotifier.new,
-);
-
-/// Document list provider (auto-refresh on property or unit-filter change)
+/// Document list provider (auto-refresh on property change). The Docs tab
+/// is a category file manager and always shows the whole property.
 final documindDocumentsProvider = FutureProvider.family<List<DocuMindDocument>, String>(
   (ref, propertyId) async {
     final landlordId = ref.watch(currentLandlordIdProvider);
-    final selectedUnit = ref.watch(selectedDocumindUnitProvider);
     final useCase = ref.watch(listDocumentsUseCaseProvider);
 
     return await useCase(
       landlordId: landlordId,
       propertyId: propertyId,
-      unitId: selectedUnit?.id,
     );
   },
 );
@@ -140,19 +122,15 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
   }) async {
     final landlordId = ref.read(currentLandlordIdProvider);
     final useCase = ref.read(askDocuMindQuestionUseCaseProvider);
-    // Read the unit filter here rather than widening the action's function
-    // type: the checkpoint widget tests override this provider with a
-    // matching signature, and chat scoping should always follow the
-    // header's current unit selection anyway.
-    final selectedUnit = ref.read(selectedDocumindUnitProvider);
 
+    // No client-side unit scoping: the backend's search router infers the
+    // unit from the question and the recent conversation.
     return await useCase(
       landlordId: landlordId,
       propertyId: propertyId,
       question: question,
       topK: topK,
       categories: categories,
-      unitId: selectedUnit?.id,
       sessionId: sessionId,
       conversationTurn: conversationTurn,
       userAction: userAction,
