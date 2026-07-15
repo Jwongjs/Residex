@@ -1,7 +1,7 @@
 # DocuMind Fact Extraction & Expiry Intelligence — Design Spec
 
 **Date:** 2026-07-06
-**Status:** Draft (pending user review)
+**Status:** SUPERSEDED by [`2026-07-15-documind-financial-intelligence-design.md`](2026-07-15-documind-financial-intelligence-design.md) (2026-07-15) — extraction machinery absorbed there with an expanded 7-category taxonomy (warranty removed), OCR, and the finance engine layered on top. Line anchors below are stale (pre-`6e69601`); do not implement from this document.
 **Origin:** [`docs/2026-07-06-documind-unit-scoping-and-product-evaluation.md`](../../2026-07-06-documind-unit-scoping-and-product-evaluation.md) §3, "The single highest-leverage next step".
 **Relationship:** Expands and supersedes the Phase 5 sketch in [`2026-07-06-documind-unit-intelligence-design.md`](2026-07-06-documind-unit-intelligence-design.md). Independent of that spec's other phases (1–4 and 6) — no ordering dependency either way.
 
