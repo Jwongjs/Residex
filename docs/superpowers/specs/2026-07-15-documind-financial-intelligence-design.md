@@ -161,6 +161,23 @@ The new taxonomy and OCR strengthen chat rather than compete with it: loan agree
 
 **Demo beat (dashboard → chat → evidence):** the Finance tab surfaces Shaftbury's thin margin → ask "why is Shaftbury so low?" → narrated answer (maintenance fees & sinking fund RM 19,090 in 2026), cited → tap the citation → the statement PDF. The dashboard surfaces the anomaly; the chatbot explains it; the document proves it.
 
+## Recorded architecture decisions (2026-07-16)
+
+### Is the finance branch "tool calling"?
+
+Yes in spirit, no in mechanism — and the distinction is deliberate. In classic model-directed tool calling (`bind_tools`), the LLM sees tool schemas, decides at runtime whether/how to call, receives results back, and may loop — the model owns control flow, bringing extra round trips, per-hop cost, and failure modes (wrong tool, malformed arguments, non-terminating loops). Here the decision and the execution are separated: the conversation router makes one schema-constrained classification (`finance_question`, year), then **LangGraph deterministically executes the engine on that branch** — the LLM never chooses to call it and never computes. A second call narrates the result. Honest description: **structured tool use without a free-running agent loop** — fixed graph, bounded at 2 LLM calls, deterministic arithmetic. For presentation purposes it may be framed as tool calling (the search router is already described as "the tool call that parameterizes the search"); the control flow belongs to the graph, not the model.
+
+### LLM provider strategy: single provider (Gemini), swap-ready by construction
+
+Considered and deferred (2026-07-16): offloading low-complexity stages (the two routers) to a second provider such as Groq Llama 3.3 70B. Rationale for deferring:
+
+- **Cost doesn't favor it:** router calls are input-heavy with tiny outputs; Gemini 2.5 Flash input ($0.30/1M) undercuts Groq Llama 3.3 70B (~$0.59/1M in, $0.79/1M out), and free-tier usage makes current cost effectively RM 0.
+- **Groq's real advantage is latency**, which only matters if profiling shows the router calls dominate perceived chat slowness — not currently a complaint.
+- **Hidden costs are real:** second API key/SDK, second set of failure modes and rate limits, and the routers' defensive parsing is tuned against Gemini's output habits — a new model re-opens that testing.
+- **Two stages can't move regardless:** OCR requires native PDF/multimodal input (Gemini-only without adding a PDF→image dependency), and fact extraction feeds tax figures, so it stays on the strongest cheap model.
+
+The door stays open at zero cost: every LLM helper is constructor-injected (`CategoryPredictor(llm)`, `ConversationRouter(llm)`, `FactExtractor(llm)`), so moving any single stage to another provider later is a one-line dependency-injection change per helper — a configuration decision, not a refactor. Revisit only on measured latency or real-scale cost pressure.
+
 ## Flutter surfacing
 
 **Navigation:** 4th bottom tab "Finance" (icon glyph, no emoji) between Documind and Portfolio; new folder `3-Finance/`. `IndexedStack` gains the screen; dashboard callbacks pattern (`onOpenDocumind`) extends if cross-tab hops are needed.
