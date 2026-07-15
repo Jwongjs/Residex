@@ -148,6 +148,19 @@ Rented months = months matched by rule 1 or 2. Property-wide invoices/leases (no
 
 The conversation router (`conversation_router.py`) gains a `finance_question` intent (profit/loss/income/expense/tax-total questions). The graph takes a finance branch: skip retrieval, call the finance engine for the requested year (the router echoes a 4-digit year when the question names one — "profit in 2025" — else current year), and hand the computed JSON to the answer LLM with the instruction to *narrate, never recompute* — including the estimate label and top caveat. Two LLM calls total (router + narration), zero retrieval. Document questions are unaffected (still 3 calls).
 
+## Role of the DocuMind chatbot (product framing)
+
+The finance engine does not sideline the chatbot; it splits the Intelligence layer into two faces fed by one extraction pipeline:
+
+- **Glance (push):** the Finance tab and expiry tile answer the questions every landlord has on a schedule — P/L, statutory income, upcoming end dates — precomputed, deterministic, zero LLM.
+- **Ask (pull):** DocuMind answers the unplanned long tail in seconds, with citations — clause-level questions the engine cannot see ("what's the notice period on Unit A's tenancy?", "does the fire policy cover the water heater?", "can I settle the USJ loan early without penalty?"), arbitrary cross-document slices ("what did I spend on Unit A in March?"), and explanations of the engine's own numbers ("why is my statutory income lower than my net P/L?") via the finance branch — narrating, never recomputing.
+
+The new taxonomy and OCR strengthen chat rather than compete with it: loan agreements and policy wordings are exactly the dense documents nobody reads, and every scanned bill becomes chat-searchable through the same ingest. Unit intelligence (phrasing-driven scoping, conversational continuity, unknown-unit honesty, unit-badged citations) remains chat's differentiator; the SETUP_AND_TEST_GUIDE's description of those mechanics stays the *tester* framing, while the product framing is:
+
+> **"The Finance tab automates the answers every landlord needs every year. DocuMind answers everything else — any clause, any bill, any unit — in seconds, with the source cited."**
+
+**Demo beat (dashboard → chat → evidence):** the Finance tab surfaces Shaftbury's thin margin → ask "why is Shaftbury so low?" → narrated answer (maintenance fees & sinking fund RM 19,090 in 2026), cited → tap the citation → the statement PDF. The dashboard surfaces the anomaly; the chatbot explains it; the document proves it.
+
 ## Flutter surfacing
 
 **Navigation:** 4th bottom tab "Finance" (icon glyph, no emoji) between Documind and Portfolio; new folder `3-Finance/`. `IndexedStack` gains the screen; dashboard callbacks pattern (`onOpenDocumind`) extends if cross-tab hops are needed.
