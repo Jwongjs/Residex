@@ -1,5 +1,12 @@
 # DocuMind Fact Extraction & Expiry Intelligence Implementation Plan
 
+> **SUPERSEDED (2026-07-16) — DO NOT EXECUTE.** This plan was never executed and is replaced by the financial-intelligence plans, which absorb its extraction machinery under the 7-category taxonomy (warranty removed) and redesign its Flutter surfacing (`selectedDocumindUnitProvider` no longer exists; tap-through now uses `documindNavTargetProvider`):
+> - [`2026-07-16-documind-plan-a-taxonomy-ocr-extraction.md`](2026-07-16-documind-plan-a-taxonomy-ocr-extraction.md) (FactExtractor, ingest hook, API passthrough)
+> - [`2026-07-16-documind-plan-b-finance-engine.md`](2026-07-16-documind-plan-b-finance-engine.md) (finance engine + chat)
+> - [`2026-07-16-documind-plan-c-finance-tab.md`](2026-07-16-documind-plan-c-finance-tab.md) (Finance tab, expiry tile)
+>
+> Line anchors below are stale (pre-`6e69601`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** At ingest, extract category-specific structured facts (dates + amounts) from lease/warranty/insurance PDFs and surface them per unit and as an "Upcoming expiries" dashboard tile — turning the unit↔document link from a list filter into queryable knowledge.
