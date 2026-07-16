@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import '1-Dashboard/landlord_dashboard_screen.dart';
 import '2-Documind/documind_screen.dart';
+import '3-Finance/finance_screen.dart';
 import '4-Portfolio/landlord_portfolio_screen.dart';
 import '../widgets/navigation/custom_bottom_nav_bar.dart';
 import '../../../../core/theme/app_colors.dart';
 
-/// Landlord Home Screen with 3-tab bottom navigation.
+/// Landlord Home Screen with 4-tab bottom navigation.
 ///
 /// Navigation Tabs:
 /// 1. Dashboard - overview, recent Documind activity
 /// 2. Documind - AI document Q&A (flagship feature)
-/// 3. Portfolio - property management
+/// 3. Finance - the deterministic finance engine's figures per year
+/// 4. Portfolio - property management
 class LandlordHomeScreen extends StatefulWidget {
   const LandlordHomeScreen({super.key});
 
@@ -34,6 +36,11 @@ class _LandlordHomeScreenState extends State<LandlordHomeScreen> {
       color: AppColors.registry,
     ),
     NavTab(
+      icon: Icons.payments_outlined,
+      label: 'Finance',
+      color: AppColors.registry,
+    ),
+    NavTab(
       icon: Icons.business_outlined,
       label: 'Portfolio',
       color: AppColors.registry,
@@ -46,9 +53,10 @@ class _LandlordHomeScreenState extends State<LandlordHomeScreen> {
     _screens = [
       LandlordDashboardScreen(
         onOpenDocumind: () => setState(() => _currentIndex = 1),
-        onOpenPortfolio: () => setState(() => _currentIndex = 2),
+        onOpenPortfolio: () => setState(() => _currentIndex = 3),
       ),
       const DocuMindScreen(),
+      const FinanceScreen(),
       const LandlordPortfolioScreen(),
     ];
   }
