@@ -17,10 +17,12 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
             doc_id="doc-123",
             landlord_id="landlord-1",
             property_id="property-1",
-            category="warranty",
-            filename="warranty.pdf",
+            category="lease",
+            filename="lease.pdf",
             status="indexed",
             chunks_indexed=12,
+            extracted_facts={"monthly_rent": 1500.0, "lease_end": "2026-09-01"},
+            facts_confidence=0.9,
         )
 
         with patch("api.rex_routes.documind_service.ingest_document", new=AsyncMock(return_value=mocked_upload_response)) as mocked_ingest:
@@ -29,9 +31,9 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
                 data={
                     "landlord_id": "landlord-1",
                     "property_id": "property-1",
-                    "category": "warranty",
+                    "category": "lease",
                 },
-                files={"file": ("warranty.pdf", b"%PDF-1.4 test content", "application/pdf")},
+                files={"file": ("lease.pdf", b"%PDF-1.4 test content", "application/pdf")},
             )
 
             call_kwargs = mocked_ingest.await_args.kwargs
@@ -40,8 +42,10 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         self.assertEqual(response.json()["doc_id"], "doc-123")
         self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
         self.assertEqual(call_kwargs["property_id"], "property-1")
-        self.assertEqual(call_kwargs["category"], "warranty")
-        self.assertEqual(call_kwargs["file"].filename, "warranty.pdf")
+        self.assertEqual(call_kwargs["category"], "lease")
+        self.assertEqual(call_kwargs["file"].filename, "lease.pdf")
+        self.assertEqual(response.json()["extracted_facts"]["monthly_rent"], 1500.0)
+        self.assertEqual(response.json()["facts_confidence"], 0.9)
 
     def test_documind_upload_returns_422_when_missing_file(self):
         response = self.client.post(

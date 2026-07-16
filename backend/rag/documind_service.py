@@ -28,6 +28,7 @@ import firebase_admin
 from firebase_admin import storage as firebase_storage
 from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
+from rag.fact_extractor import FactExtractor
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
 from rag.retriever import HybridRetriever
@@ -180,6 +181,7 @@ class DocuMindService:
             self._llm,
             allowed_categories=sorted(ALLOWED_CATEGORIES),
         )
+        self._fact_extractor = FactExtractor(self._llm)
         self._graph_orchestrator = DocuMindGraphOrchestrator(
             conversation_router=self._conversation_router,
             category_predictor=self._category_predictor,
@@ -400,7 +402,20 @@ class DocuMindService:
             # Commit all chunks at once
             batch.commit()
             print(f"✅ Batch wrote {len(chunk_documents)} chunks to Firestore")
-            
+
+            # Fact extraction (best-effort, one LLM call over the leading
+            # text). Failure must never block indexing.
+            extracted_facts = None
+            facts_confidence = None
+            try:
+                full_text = "\n".join(page.page_content or "" for page in pages)
+                facts = self._fact_extractor.extract(category, full_text)
+                if facts:
+                    facts_confidence = facts.pop("confidence", None)
+                    extracted_facts = facts or None
+            except Exception as e:
+                print(f"⚠️ Fact extraction failed (non-blocking): {e}")
+
             # Step 5.5: Upload original PDF to Firebase Storage
             storage_path = f"documind/{landlord_id}/{property_id}/{doc_id}.pdf"
             blob = self.storage_bucket.blob(storage_path)
@@ -420,6 +435,9 @@ class DocuMindService:
                 'file_size': file_size,
                 'storage_path': storage_path,
                 'status': 'indexed',
+                'extracted_facts': extracted_facts,
+                'facts_confidence': facts_confidence,
+                'facts_extracted_at': firestore.SERVER_TIMESTAMP if extracted_facts else None,
                 'uploaded_at': firestore.SERVER_TIMESTAMP,
             })
             
@@ -433,6 +451,8 @@ class DocuMindService:
                 filename=file.filename,
                 status="indexed",
                 chunks_indexed=len(chunk_documents),
+                extracted_facts=extracted_facts,
+                facts_confidence=facts_confidence,
             )
         
         except Exception as e:
@@ -1035,6 +1055,8 @@ class DocuMindService:
                 file_size=data.get('file_size'),
                 unit_id=data.get('unit_id'),
                 unit_label=data.get('unit_label'),
+                extracted_facts=data.get('extracted_facts'),
+                facts_confidence=data.get('facts_confidence'),
             ))
         
         print(f"✅ Listed {len(documents)} documents")

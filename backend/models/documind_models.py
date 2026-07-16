@@ -12,6 +12,8 @@ class DocUploadResponse(BaseModel):
     filename: str
     status: str  # "indexed"
     chunks_indexed: int
+    extracted_facts: Optional[dict] = None
+    facts_confidence: Optional[float] = None
 
 
 class AskRequest(BaseModel):
@@ -127,6 +129,8 @@ class DocumentInfo(BaseModel):
     file_size: int | None = None  # In bytes
     unit_id: str | None = None  # None = property-wide document
     unit_label: str | None = None  # Denormalized label for display
+    extracted_facts: Optional[dict] = None
+    facts_confidence: Optional[float] = None
 
 
 class DocListResponse(BaseModel):

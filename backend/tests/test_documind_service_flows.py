@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 from models.documind_models import AskRequest
 from rag.documind_service import DocuMindService, resolve_unit_mention
+from rag.fact_extractor import FactExtractor
 
 
 class _LLMResponse:
@@ -357,6 +358,7 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service._conversation_store = fake_store
     service._graph_orchestrator = fake_graph
     service._hybrid_retriever = _FakeHybridRetriever(fake_db)
+    service._fact_extractor = FactExtractor(fake_llm)
     return service
 
 
@@ -1273,6 +1275,105 @@ class CategoryAliasReadPathTests(unittest.IsolatedAsyncioTestCase):
         )
         response = await service.list_documents("l1", "p1")
         self.assertEqual(response.documents[0].category, "rental_invoice")
+
+
+class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
+    def _upload_file(self):
+        class _FakeUploadFile:
+            filename = "lease.pdf"
+
+            async def read(self):
+                return b"%PDF-1.4 fake content"
+
+        return _FakeUploadFile()
+
+    def _patched_loader_page(self, text="Tenancy agreement: rent RM 1,500 monthly."):
+        fake_page = MagicMock()
+        fake_page.page_content = text
+        fake_page.metadata = {"page": 0}
+        return fake_page
+
+    async def test_extraction_failure_never_blocks_ingest(self):
+        fake_db = _FakeDB()
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        class _RaisingExtractor:
+            def extract(self, category, text):
+                raise RuntimeError("extractor exploded")
+
+        service._fact_extractor = _RaisingExtractor()
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            loader_mock.return_value.load.return_value = [self._patched_loader_page()]
+
+            response = await service.ingest_document(
+                landlord_id="l1", property_id="p1", category="lease", file=self._upload_file(),
+            )
+
+        self.assertEqual(response.status, "indexed")
+        self.assertIsNone(response.extracted_facts)
+        stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
+        self.assertIsNone(stored["extracted_facts"])
+        self.assertIsNone(stored["facts_confidence"])
+
+    async def test_successful_extraction_lands_in_metadata_and_response(self):
+        fake_db = _FakeDB()
+        fake_llm = _FakeLLM("monthly_rent=1500;lease_start=2025-09-01;lease_end=2026-09-01;confidence=0.9")
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), fake_llm
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            loader_mock.return_value.load.return_value = [self._patched_loader_page()]
+
+            response = await service.ingest_document(
+                landlord_id="l1", property_id="p1", category="lease", file=self._upload_file(),
+            )
+
+        expected_facts = {
+            "monthly_rent": 1500.0,
+            "lease_start": "2025-09-01",
+            "lease_end": "2026-09-01",
+        }
+        self.assertEqual(response.extracted_facts, expected_facts)
+        self.assertEqual(response.facts_confidence, 0.9)
+        stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
+        self.assertEqual(stored["extracted_facts"], expected_facts)
+        self.assertEqual(stored["facts_confidence"], 0.9)
+        self.assertIsNotNone(stored["facts_extracted_at"])
+
+    async def test_list_documents_passes_extraction_fields_through(self):
+        fake_db = _FakeDB(docs=[
+            {
+                "doc_id": "d1", "landlord_id": "l1", "property_id": "p1",
+                "category": "tax", "filename": "quitrent.pdf", "chunks_indexed": 1,
+                "file_size": 50, "uploaded_at": datetime(2026, 1, 1),
+                "extracted_facts": {"amount": 460.63, "period_year": 2026, "subtype": "quit_rent"},
+                "facts_confidence": 0.9,
+            },
+            {
+                "doc_id": "d2", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "old.pdf", "chunks_indexed": 1,
+                "file_size": 50, "uploaded_at": datetime(2025, 1, 1),
+            },
+        ])
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        response = await service.list_documents("l1", "p1")
+        by_id = {d.doc_id: d for d in response.documents}
+        self.assertEqual(by_id["d1"].extracted_facts["subtype"], "quit_rent")
+        self.assertEqual(by_id["d1"].facts_confidence, 0.9)
+        self.assertIsNone(by_id["d2"].extracted_facts)
+        self.assertIsNone(by_id["d2"].facts_confidence)
 
 
 if __name__ == "__main__":
