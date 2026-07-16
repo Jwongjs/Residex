@@ -6,6 +6,7 @@ import '../../../domain/entities/unit.dart';
 import '../../providers/property_providers.dart';
 import '../../providers/unit_providers.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
+import 'guided_document_checklist_sheet.dart';
 
 /// Add/Edit property dialog.
 ///
@@ -136,6 +137,16 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
             isOccupied: false,
             createdAt: DateTime.now(),
           ));
+        }
+
+        if (mounted) {
+          // Guided, skippable document checklist (spec): offer the key
+          // finance documents right after creation; nothing blocks.
+          await showGuidedDocumentChecklist(
+            context,
+            propertyId: propertyId,
+            propertyName: property.name,
+          );
         }
       }
 
