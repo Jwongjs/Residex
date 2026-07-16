@@ -303,6 +303,41 @@ class DocuMindService:
             print(f"⚠️ Could not fetch property name: {e}")
         return property_name
 
+    def _narrate_finance_summary(self, question: str, property_name: str, summary) -> str:
+        """Turn the engine's computed JSON into a chat answer. The LLM narrates
+        only — on any failure a deterministic headline line stands in, so the
+        numbers shown are always the engine's."""
+        totals = summary.totals
+        top_caveat = summary.caveats[0] if summary.caveats else ""
+        prompt = f"""You are DocuMind, answering a landlord's finance question.
+
+**Question:** {question}
+**Currently selected property (context only — figures below cover the whole portfolio):** {property_name}
+
+**Computed figures for {summary.year} (authoritative):**
+{summary.model_dump_json(indent=2)}
+
+Rules:
+1. Answer using ONLY the figures above, quoted exactly as given. NEVER recompute, derive, add, or estimate any number yourself.
+2. If a figure the user wants is not present above, say it is not computed rather than deriving it.
+3. When mentioning statutory rental income, always attach: "{totals.statutory_note}".
+4. Include this caveat once: {top_caveat}
+5. Amounts are in RM. Be concise; short bullet points are fine.
+
+**Your Answer:**"""
+        try:
+            response = self.llm.invoke(prompt)
+            return response.content.strip()
+        except Exception as e:
+            print(f"❌ Finance narration failed: {e}")
+            return (
+                f"For {summary.year}: gross rent RM {totals.received_rent:,.2f}, "
+                f"direct expenses RM {totals.direct_expenses:,.2f}, "
+                f"net P/L RM {totals.net_pl:,.2f}. "
+                f"Statutory rental income: RM {totals.statutory_rental_income:,.2f} "
+                f"({totals.statutory_note})."
+            )
+
     def _list_property_units(self, property_id: str) -> List[Dict]:
         """Unit ids + labels for a property. Empty on lookup failure so a
         units outage degrades to unscoped search instead of blocking."""
@@ -593,6 +628,46 @@ class DocuMindService:
                 property_name=property_name,
                 searched_categories=[],
                 category_filter_mode="conversation",
+                needs_category_clarification=False,
+                clarification_prompt=None,
+                clarification_options=[],
+                session_id=session_id,
+                conversation_turn=turn_number,
+                user_action_required=False,
+                predicted_categories=[],
+                action_reason=graph_state.get("intent_reason"),
+            )
+
+        # Finance branch: skip retrieval entirely — the deterministic engine
+        # computes, the LLM only narrates (2 LLM calls total incl. the router).
+        if graph_action == "finance":
+            requested_year = graph_state.get("finance_year") or datetime.now().year
+            try:
+                summary = await self.get_finance_summary(payload.landlord_id, requested_year)
+                answer = self._narrate_finance_summary(payload.question, property_name, summary)
+            except Exception as e:
+                print(f"❌ Finance summary failed: {e}")
+                answer = (
+                    "I couldn't compute your rental finances just now. "
+                    "Please try again in a moment."
+                )
+            self._conversation_store.append_turn(
+                session_id,
+                {
+                    "turn": turn_number,
+                    "question": payload.question,
+                    "intent": "finance_question",
+                    "action": "finance",
+                    "answer": answer,
+                },
+            )
+            return AskResponse(
+                answer=answer,
+                confidence=0.9,
+                citations=[],
+                property_name=property_name,
+                searched_categories=[],
+                category_filter_mode="finance",
                 needs_category_clarification=False,
                 clarification_prompt=None,
                 clarification_options=[],

@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
-from models.documind_models import AskRequest
+from models.documind_models import AskRequest, FinanceSummaryResponse, FinanceTotals
 from rag.documind_service import DocuMindService, resolve_unit_mention
 from rag.fact_extractor import FactExtractor
 
@@ -1512,6 +1512,98 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         summary = await service.get_finance_summary("l1", 2025)
         self.assertEqual(summary.properties, [])
         self.assertEqual(summary.totals.net_pl, 0.0)
+
+
+def _fake_finance_summary():
+    return FinanceSummaryResponse(
+        year=2025,
+        totals=FinanceTotals(
+            received_rent=219000.0,
+            derived_rent=0.0,
+            direct_expenses=158893.42,
+            net_pl=60106.58,
+            statutory_rental_income=60106.58,
+            statutory_note="Estimate — for your tax agent",
+        ),
+        expense_breakdown={"loan": 97000.0},
+        properties=[],
+        caveats=["Income assumes rent billed equals rent received — invoices are the ledger, payment is not confirmed."],
+        missing_categories={},
+    )
+
+
+class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
+    def _finance_graph(self, year=2025):
+        return _FakeGraphOrchestrator({
+            "action": "finance",
+            "finance_year": year,
+            "intent": "finance_question",
+            "intent_reason": "asks for computed profit",
+        })
+
+    async def test_finance_action_narrates_engine_output(self):
+        fake_db = _FakeDB(docs=[{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1", "category": "lease"}])
+        narration = "Your 2025 statutory rental income is RM 60,106.58 (Estimate — for your tax agent)."
+        service = _build_service(
+            fake_db, _FakeConversationStore(), self._finance_graph(), _FakeLLM(narration)
+        )
+        service.get_finance_summary = AsyncMock(return_value=_fake_finance_summary())
+
+        response = await service.ask_documind(
+            AskRequest(landlord_id="l1", property_id="p1", question="how much profit did I make in 2025?")
+        )
+
+        service.get_finance_summary.assert_awaited_once_with("l1", 2025)
+        self.assertEqual(response.answer, narration)
+        self.assertEqual(response.category_filter_mode, "finance")
+        self.assertEqual(response.citations, [])
+        self.assertFalse(response.user_action_required)
+
+    async def test_finance_year_defaults_to_current_year(self):
+        fake_db = _FakeDB(docs=[{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1", "category": "lease"}])
+        service = _build_service(
+            fake_db, _FakeConversationStore(), self._finance_graph(year=None), _FakeLLM("Narrated.")
+        )
+        service.get_finance_summary = AsyncMock(return_value=_fake_finance_summary())
+
+        await service.ask_documind(
+            AskRequest(landlord_id="l1", property_id="p1", question="how is my rental doing?")
+        )
+
+        awaited_year = service.get_finance_summary.await_args.args[1]
+        self.assertEqual(awaited_year, datetime.now().year)
+
+    async def test_narration_failure_falls_back_to_deterministic_line(self):
+        class _RaisingLLM:
+            def invoke(self, prompt):
+                raise RuntimeError("llm down")
+
+        fake_db = _FakeDB(docs=[{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1", "category": "lease"}])
+        service = _build_service(
+            fake_db, _FakeConversationStore(), self._finance_graph(), _RaisingLLM()
+        )
+        service.get_finance_summary = AsyncMock(return_value=_fake_finance_summary())
+
+        response = await service.ask_documind(
+            AskRequest(landlord_id="l1", property_id="p1", question="profit in 2025?")
+        )
+
+        self.assertIn("60,106.58", response.answer)
+        self.assertIn("Estimate — for your tax agent", response.answer)
+
+    async def test_engine_failure_returns_apology_not_exception(self):
+        fake_db = _FakeDB(docs=[{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1", "category": "lease"}])
+        service = _build_service(
+            fake_db, _FakeConversationStore(), self._finance_graph(), _FakeLLM("unused")
+        )
+        service.get_finance_summary = AsyncMock(side_effect=RuntimeError("firestore down"))
+
+        response = await service.ask_documind(
+            AskRequest(landlord_id="l1", property_id="p1", question="profit in 2025?")
+        )
+
+        self.assertIn("couldn't compute", response.answer)
+        self.assertEqual(response.citations, [])
 
 
 if __name__ == "__main__":
