@@ -10,6 +10,7 @@ import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
 import '../2-Documind/documind_screen.dart' show isAllowedUploadFilename;
 import '../2-Documind/documind_upload_summary.dart';
+import 'unit_finance_detail_screen.dart';
 
 /// Shared upload affordance: pick a PDF and file it under [category] for
 /// [propertyId], property-wide. Reused by the drill-down screen and the
@@ -338,15 +339,14 @@ class FinanceScreen extends ConsumerWidget {
             const Divider(height: 20, color: AppColors.hairline),
             ...block.units.map((unit) => InkWell(
                   onTap: () {
-                    // Task 3 wires this to UnitFinanceDetailScreen:
-                    // Navigator.of(context).push(MaterialPageRoute(
-                    //   builder: (_) => UnitFinanceDetailScreen(
-                    //     propertyId: block.propertyId,
-                    //     propertyName: block.name,
-                    //     unit: unit,
-                    //     year: summary.year,
-                    //   ),
-                    // ));
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => UnitFinanceDetailScreen(
+                        propertyId: block.propertyId,
+                        propertyName: block.name,
+                        unit: unit,
+                        year: summary.year,
+                      ),
+                    ));
                   },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
