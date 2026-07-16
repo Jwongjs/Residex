@@ -91,13 +91,29 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
           return _buildNoPropertiesState();
         }
 
+        final navTarget = ref.watch(documindNavTargetProvider);
+
         if (_selectedPropertyId == null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
+            ref.read(documindNavTargetProvider.notifier).state = null;
             setState(() {
-              _selectedPropertyId = properties.first.id;
+              _selectedPropertyId =
+                  (navTarget != null && properties.any((p) => p.id == navTarget))
+                      ? navTarget
+                      : properties.first.id;
             });
           });
           return _buildLoadingState();
+        }
+
+        if (navTarget != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ref.read(documindNavTargetProvider.notifier).state = null;
+            if (navTarget != _selectedPropertyId &&
+                properties.any((p) => p.id == navTarget)) {
+              _switchToProperty(navTarget, properties);
+            }
+          });
         }
 
         return _buildMainUI(properties);
@@ -105,6 +121,28 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       loading: () => _buildLoadingState(),
       error: (error, stack) => _buildErrorState(error.toString()),
     );
+  }
+
+  /// Property switch: reset the conversation and greet on the new property.
+  /// Used by the header dropdown and the dashboard expiry-tile tap-through.
+  void _switchToProperty(String propertyId, List<Property> properties) {
+    setState(() {
+      _selectedPropertyId = propertyId;
+      _selectedCategory = null;
+      _showChatInterface = true;
+      _messages.clear();
+      _docuMindSessionId = null;
+      _docuMindConversationTurn = 1;
+      _awaitingUserAction = false;
+      _messages.add(
+        ChatMessage(
+          user: _aiUser,
+          createdAt: DateTime.now(),
+          text:
+              'Switched to ${_getPropertyName(properties, propertyId)}. How can I help?',
+        ),
+      );
+    });
   }
 
   Widget _buildMainUI(List<Property> properties) {
@@ -178,25 +216,8 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
               Expanded(
                 child: PopupMenuButton<String>(
                   tooltip: 'Switch Property',
-                  onSelected: (propertyId) {
-                    setState(() {
-                      _selectedPropertyId = propertyId;
-                      _selectedCategory = null;
-                      _showChatInterface = true;
-                      _messages.clear();
-                      _docuMindSessionId = null;
-                      _docuMindConversationTurn = 1;
-                      _awaitingUserAction = false;
-                      _messages.add(
-                        ChatMessage(
-                          user: _aiUser,
-                          createdAt: DateTime.now(),
-                          text:
-                              'Switched to ${_getPropertyName(properties, propertyId)}. How can I help?',
-                        ),
-                      );
-                    });
-                  },
+                  onSelected: (propertyId) =>
+                      _switchToProperty(propertyId, properties),
                   itemBuilder: (context) => properties.map((property) {
                     return PopupMenuItem<String>(
                       value: property.id,

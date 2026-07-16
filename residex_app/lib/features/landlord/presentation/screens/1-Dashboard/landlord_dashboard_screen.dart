@@ -5,6 +5,8 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/router/app_router.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
 import '../../providers/property_providers.dart';
+import '../../providers/documind_provider.dart';
+import '../../providers/upcoming_expiries.dart';
 import '../../../domain/entities/property.dart';
 import '../../../../../core/theme/app_dimensions.dart';
 import '../../../../../core/widgets/residex_logo.dart';
@@ -131,6 +133,7 @@ class LandlordDashboardScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
             _buildStatTileRow(stats),
+            _buildExpiryTile(context, ref),
             const SizedBox(height: 20),
             _buildDocumindEntryCard(context),
             const SizedBox(height: 24),
@@ -197,6 +200,76 @@ class LandlordDashboardScreen extends ConsumerWidget {
             label,
             style: AppTextStyles.labelSmall.copyWith(letterSpacing: 1.2),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpiryTile(BuildContext context, WidgetRef ref) {
+    final entries = ref.watch(upcomingExpiriesProvider).value ?? const [];
+    if (entries.isEmpty) return const SizedBox.shrink();
+    final today = DateTime.now();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.hairline),
+        boxShadow: AppShadows.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'UPCOMING EXPIRIES',
+            style: AppTextStyles.labelSmall.copyWith(letterSpacing: 1.2),
+          ),
+          const SizedBox(height: 8),
+          ...entries.take(3).map((entry) {
+            final days = daysUntil(entry.date, today);
+            final urgency = days <= 30
+                ? AppColors.error
+                : days <= 60
+                    ? AppColors.catUpkeep
+                    : AppColors.ink;
+            final scope = entry.unitLabel ?? 'Property-wide';
+            return InkWell(
+              onTap: () {
+                ref.read(documindNavTargetProvider.notifier).state =
+                    entry.propertyId;
+                onOpenDocumind();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      entry.category == 'lease'
+                          ? Icons.description_outlined
+                          : Icons.security_outlined,
+                      size: 18,
+                      color: urgency,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '$scope · ${entry.kind} ${formatExpiryDate(entry.date)}',
+                        style: AppTextStyles.bodyMedium,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      days == 0 ? 'today' : 'in $days days',
+                      style:
+                          AppTextStyles.labelSmall.copyWith(color: urgency),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
         ],
       ),
     );

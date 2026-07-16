@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart'; // StateProvider is legacy in Riverpod 3.x
 import 'dart:io';
 import '../../data/datasources/documind_remote_datasource.dart';
 import '../../data/repositories/documind_repository_impl.dart';
@@ -52,6 +53,11 @@ final currentLandlordIdProvider = Provider<String>((ref) {
   final currentUser = ref.watch(firebaseAuthStateProvider).value;
   return currentUser?.uid ?? 'guest';
 });
+
+/// Cross-tab navigation target: set a propertyId here before switching to
+/// the Documind tab and the chat opens on that property (expiry-tile
+/// tap-through). Consumed and cleared by DocuMindScreen.
+final documindNavTargetProvider = StateProvider<String?>((ref) => null);
 
 /// Document list provider (auto-refresh on property change). The Docs tab
 /// is a category file manager and always shows the whole property.
