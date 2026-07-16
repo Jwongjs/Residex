@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../../../../../core/constants/api_constants.dart';
+import '../../domain/entities/finance_summary.dart';
 import '../models/documind_models.dart';
+import '../models/finance_summary_model.dart';
 
 /// Remote data source for DocuMind API
 class DocuMindRemoteDataSource {
@@ -248,6 +250,26 @@ class DocuMindRemoteDataSource {
       print('❌ DataSource: Unassign error: $e');
       rethrow;
     }
+  }
+
+  /// Deterministic finance summary for one landlord and calendar year.
+  Future<FinanceSummary> getFinanceSummary({
+    required String landlordId,
+    required int year,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindFinanceSummary}')
+        .replace(queryParameters: {
+      'landlord_id': landlordId,
+      'year': '$year',
+    });
+
+    final response = await httpClient.get(uri);
+
+    if (response.statusCode == 200) {
+      return FinanceSummaryModel.fromJson(
+          json.decode(response.body) as Map<String, dynamic>);
+    }
+    throw Exception('Finance summary failed: ${response.body}');
   }
 
   /// Get a short-lived signed URL to view a document's original PDF

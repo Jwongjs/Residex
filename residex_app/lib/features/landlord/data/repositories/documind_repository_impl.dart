@@ -1,5 +1,6 @@
 import 'dart:io';
 import '../../domain/entities/documind_document.dart';
+import '../../domain/entities/finance_summary.dart';
 import '../../domain/repositories/documind_repository.dart';
 import '../datasources/documind_remote_datasource.dart';
 
@@ -176,5 +177,13 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
       propertyId: propertyId,
       docId: docId,
     );
+  }
+
+  @override
+  Future<FinanceSummary> getFinanceSummary({
+    required String landlordId,
+    required int year,
+  }) {
+    return remoteDataSource.getFinanceSummary(landlordId: landlordId, year: year);
   }
 }

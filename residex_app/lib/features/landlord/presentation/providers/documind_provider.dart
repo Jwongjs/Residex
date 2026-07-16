@@ -9,6 +9,7 @@ import '../../domain/usecases/ask_documind_question.dart';
 import '../../domain/usecases/list_documents.dart';
 import '../../domain/usecases/get_document_view_url.dart';
 import '../../../shared/presentation/providers/auth_providers.dart';
+import 'finance_providers.dart';
 
 // ========== DEPENDENCY INJECTION ==========
 
@@ -97,6 +98,10 @@ final uploadDocumentActionProvider = Provider<Future<DocuMindDocument> Function(
     // Invalidate document list to trigger refresh
     ref.invalidate(documindDocumentsProvider(propertyId));
 
+    // Finance figures and year options are folds over the documents.
+    ref.invalidate(financeSummaryProvider);
+    ref.invalidate(financeYearsProvider);
+
     return result;
   };
 });
@@ -165,6 +170,10 @@ final deleteDocumentActionProvider = Provider<
 
     // ✅ Invalidate provider to refresh document list
     ref.invalidate(documindDocumentsProvider(propertyId));
+
+    // Finance figures and year options are folds over the documents.
+    ref.invalidate(financeSummaryProvider);
+    ref.invalidate(financeYearsProvider);
   };
 });
 

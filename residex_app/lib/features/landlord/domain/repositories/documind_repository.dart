@@ -1,5 +1,6 @@
 import 'dart:io';
 import '../entities/documind_document.dart';
+import '../entities/finance_summary.dart';
 
 /// Abstract interface for DocuMind operations
 /// 
@@ -63,5 +64,11 @@ abstract class DocuMindRepository {
     required String landlordId,
     required String propertyId,
     required String docId,
+  });
+
+  /// Deterministic finance summary for one landlord and calendar year.
+  Future<FinanceSummary> getFinanceSummary({
+    required String landlordId,
+    required int year,
   });
 }

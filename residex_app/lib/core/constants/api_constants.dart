@@ -14,4 +14,5 @@ class ApiConstants {
   static const String documindUnassignUnit = '/api/rex/documind/documents/unassign-unit';
   static String documindViewUrl(String docId) => '/api/rex/documind/documents/$docId/view-url';
   static String documindPropertyDocs(String propertyId) => '/api/rex/documind/properties/$propertyId/documents';
+  static const String documindFinanceSummary = '/api/rex/documind/finance/summary';
 }
