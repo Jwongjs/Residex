@@ -14,6 +14,7 @@ class PropertyModel extends Property {
     required super.type,
     required super.purchasePrice,
     required super.currentValue,
+    super.ownershipShare = 1.0,
     super.photos,
     required super.createdAt,
     super.updatedAt,
@@ -29,6 +30,7 @@ class PropertyModel extends Property {
       type: property.type,
       purchasePrice: property.purchasePrice,
       currentValue: property.currentValue,
+      ownershipShare: property.ownershipShare,
       photos: property.photos,
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,
@@ -45,6 +47,7 @@ class PropertyModel extends Property {
       type: type,
       purchasePrice: purchasePrice,
       currentValue: currentValue,
+      ownershipShare: ownershipShare,
       photos: photos,
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -70,6 +73,9 @@ class PropertyModel extends Property {
       // ✅ FIXED: Safe numeric parsing with fallback
       purchasePrice: _parseDouble(json['purchasePrice']),
       currentValue: _parseDouble(json['currentValue']),
+      ownershipShare: json['ownership_share'] != null
+          ? _parseDouble(json['ownership_share'])
+          : 1.0,
       photos: (json['photos'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
@@ -96,6 +102,7 @@ class PropertyModel extends Property {
       'type': type.toJson(),
       'purchasePrice': purchasePrice,
       'currentValue': currentValue,
+      'ownership_share': ownershipShare,
       'photos': photos,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,

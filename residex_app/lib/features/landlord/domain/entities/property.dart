@@ -92,6 +92,12 @@ class Property {
   final PropertyType type;
   final double purchasePrice;
   final double currentValue;
+
+  /// The landlord's share of this property (0-1). Co-ownership is the norm
+  /// in the reference data; the finance engine scales the statutory figure
+  /// by this. 1.0 = solely owned.
+  final double ownershipShare;
+
   final List<String> photos;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -104,6 +110,7 @@ class Property {
     required this.type,
     required this.purchasePrice,
     required this.currentValue,
+    this.ownershipShare = 1.0,
     this.photos = const [],
     required this.createdAt,
     this.updatedAt,
@@ -133,6 +140,7 @@ class Property {
     PropertyType? type,
     double? purchasePrice,
     double? currentValue,
+    double? ownershipShare,
     List<String>? photos,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -145,6 +153,7 @@ class Property {
       type: type ?? this.type,
       purchasePrice: purchasePrice ?? this.purchasePrice,
       currentValue: currentValue ?? this.currentValue,
+      ownershipShare: ownershipShare ?? this.ownershipShare,
       photos: photos ?? this.photos,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

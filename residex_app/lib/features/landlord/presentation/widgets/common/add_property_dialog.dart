@@ -32,6 +32,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   final _zipCodeController = TextEditingController();
   final _purchasePriceController = TextEditingController();
   final _currentValueController = TextEditingController();
+  final _ownershipShareController = TextEditingController(text: '100');
   final _totalUnitsController = TextEditingController();
   
   PropertyType _selectedType = PropertyType.apartment;
@@ -51,6 +52,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       _zipCodeController.text = property.address.zipCode;
       _purchasePriceController.text = property.purchasePrice.toString();
       _currentValueController.text = property.currentValue.toString();
+      _ownershipShareController.text =
+          (property.ownershipShare * 100).toStringAsFixed(0);
       _selectedType = property.type;
     }
   }
@@ -64,6 +67,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     _zipCodeController.dispose();
     _purchasePriceController.dispose();
     _currentValueController.dispose();
+    _ownershipShareController.dispose();
     _totalUnitsController.dispose();
     super.dispose();
   }
@@ -88,6 +92,9 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         country: 'USA', // Default to USA
       );
 
+      final ownershipShare =
+          double.parse(_ownershipShareController.text) / 100.0;
+
       final controller = ref.read(propertyControllerProvider);
       final existing = widget.property;
 
@@ -100,6 +107,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           type: _selectedType,
           purchasePrice: double.parse(_purchasePriceController.text),
           currentValue: double.parse(_currentValueController.text),
+          ownershipShare: ownershipShare,
         );
         await controller.updateProperty(updatedProperty);
       } else {
@@ -111,6 +119,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           type: _selectedType,
           purchasePrice: double.parse(_purchasePriceController.text),
           currentValue: double.parse(_currentValueController.text),
+          ownershipShare: ownershipShare,
           photos: [],
           createdAt: DateTime.now(),
         );
@@ -135,8 +144,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_isEditMode
-                ? '✅ Property updated successfully!'
-                : '✅ Property added successfully!'),
+                ? 'Property updated successfully'
+                : 'Property added successfully'),
             backgroundColor: AppColors.success,
             duration: const Duration(seconds: 2),
           ),
@@ -311,6 +320,14 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: _ownershipShareController,
+                        label: 'My share of this property (%)',
+                        hint: '100 if solely owned',
+                        keyboardType: TextInputType.number,
+                        validator: _validateSharePercent,
                       ),
                       const SizedBox(height: 20),
 
@@ -493,6 +510,14 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     final number = int.tryParse(value);
     if (number == null) return 'Must be a whole number';
     if (number <= 0) return 'Must be greater than 0';
+    return null;
+  }
+
+  String? _validateSharePercent(String? value) {
+    if (value == null || value.isEmpty) return 'Required';
+    final number = double.tryParse(value);
+    if (number == null) return 'Must be a number';
+    if (number <= 0 || number > 100) return 'Between 1 and 100';
     return null;
   }
 }
