@@ -133,7 +133,7 @@ void main() {
           propertyName: 'Maple Residency',
           categoryFilterMode: 'clarification',
           userActionRequired: true,
-          clarificationOptions: const ['lease', 'warranty'],
+          clarificationOptions: const ['lease', 'upkeep'],
           predictedCategories: const ['lease'],
           sessionId: 'session-2',
           conversationTurn: 1,
@@ -142,12 +142,12 @@ void main() {
       }
 
       return DocuMindAnswer(
-        answer: 'Understood. Switching to warranty category.',
+        answer: 'Understood. Switching to upkeep category.',
         confidence: 0.9,
         citations: const [],
         propertyName: 'Maple Residency',
         categoryFilterMode: 'clarification_selected',
-        searchedCategories: const ['warranty'],
+        searchedCategories: const ['upkeep'],
         userActionRequired: false,
         sessionId: 'session-2',
         conversationTurn: 2,
@@ -197,14 +197,14 @@ void main() {
       ChatMessage(
         user: ChatUser(id: 'test-user'),
         createdAt: DateTime.now(),
-        text: 'warranty',
+        text: 'upkeep',
       ),
     );
     await tester.pumpAndSettle();
 
     expect(capturedUserActions.length, 2);
     expect(capturedUserActions[0], isNull);
-    expect(capturedUserActions[1], 'override:warranty');
+    expect(capturedUserActions[1], 'override:upkeep');
   });
 
   testWidgets('DocuMind sends cancel as userAction after checkpoint prompt', (tester) async {

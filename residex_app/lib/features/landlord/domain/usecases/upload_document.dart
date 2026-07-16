@@ -22,7 +22,7 @@ class UploadDocument {
     String? unitLabel,
   }) async {
     // ✅ Business validation (domain layer)
-    final validCategories = ['lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'];
+    final validCategories = ['lease', 'insurance', 'loan', 'tax', 'upkeep', 'maintenance', 'rental_invoice'];
     if (!validCategories.contains(category)) {
       throw ArgumentError('Invalid category: $category');
     }

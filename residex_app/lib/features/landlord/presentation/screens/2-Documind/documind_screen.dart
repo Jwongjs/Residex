@@ -14,6 +14,7 @@ import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
 import 'documind_chat_logic.dart';
 import 'document_viewer_screen.dart';
+import 'documind_upload_summary.dart';
 import 'unit_label_resolver.dart';
 
 /// DocuMind Screen - Property Document Management + Q&A
@@ -42,13 +43,15 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   bool _awaitingUserAction = false;
   List<UnitOption> _pendingUnitOptions = const [];
 
-  // Document categories (backend-supported)
+  // Document categories (backend-supported, financial-intelligence taxonomy)
   final List<String> _categories = [
     'lease',
-    'warranty',
     'insurance',
-    'utility',
-    'receipt'
+    'loan',
+    'tax',
+    'upkeep',
+    'maintenance',
+    'rental_invoice',
   ];
 
   // Focus of the chat input. The empty-state overlay hides while it has
@@ -1099,7 +1102,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         // Simulate progress (if needed)
         setState(() => _uploadProgress = 0.3);
 
-        await uploadAction(
+        final uploaded = await uploadAction(
           propertyId: _selectedPropertyId!,
           category: category,
           file: File(selectedFile.path!),
@@ -1118,7 +1121,10 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
             _isUploading = false;
             _uploadProgress = 0.0;
           });
-          _showSnackBar('Document uploaded successfully!');
+          _showSnackBar(
+            uploadFactSummary(category, uploaded.extractedFacts) ??
+                'Document uploaded successfully!',
+          );
         }
       } catch (e) {
         if (mounted) {
@@ -1696,10 +1702,12 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   String _getCategoryLabel(String category) {
     final labels = {
       'lease': 'Tenancy Agreements',
-      'warranty': 'Warranties',
       'insurance': 'Insurance Policies',
-      'utility': 'Utility Bills',
-      'receipt': 'Receipts & Invoices',
+      'loan': 'Loans & Financing',
+      'tax': 'Property Taxes',
+      'upkeep': 'Upkeep & Repairs',
+      'maintenance': 'Maintenance Fees',
+      'rental_invoice': 'Rental Invoices',
       'other': 'Other Documents',
     };
     return labels[category] ?? category.toUpperCase();
@@ -1708,10 +1716,12 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   Icon _getCategoryIcon(String category) {
     final iconMap = {
       'lease': Icons.description_outlined,
-      'warranty': Icons.verified_user_outlined,
       'insurance': Icons.security_outlined,
-      'utility': Icons.bolt_outlined,
-      'receipt': Icons.receipt_long_outlined,
+      'loan': Icons.account_balance_outlined,
+      'tax': Icons.account_balance_wallet_outlined,
+      'upkeep': Icons.build_outlined,
+      'maintenance': Icons.apartment_outlined,
+      'rental_invoice': Icons.receipt_long_outlined,
       'other': Icons.folder_outlined,
     };
 
@@ -1721,10 +1731,12 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   Color _getCategoryColor(String category) {
     final colorMap = {
       'lease': AppColors.catLease,
-      'warranty': AppColors.catWarranty,
       'insurance': AppColors.catInsurance,
-      'utility': AppColors.catUtility,
-      'receipt': AppColors.catReceipt,
+      'loan': AppColors.catLoan,
+      'tax': AppColors.catTax,
+      'upkeep': AppColors.catUpkeep,
+      'maintenance': AppColors.catMaintenance,
+      'rental_invoice': AppColors.catInvoice,
       'other': AppColors.catOther,
     };
     return colorMap[category] ?? AppColors.catOther;

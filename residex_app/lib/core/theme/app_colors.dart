@@ -18,8 +18,14 @@ class AppColors {
 
   // === DOCUMENT CATEGORY COLORS (muted, documentary hues) ===
   static const Color catLease = registry; // deep green
-  static const Color catWarranty = Color(0xFF44519E); // indigo
   static const Color catInsurance = Color(0xFF8C3A32); // oxblood
+  static const Color catLoan = Color(0xFF44519E); // indigo
+  static const Color catTax = Color(0xFF365B6D); // steel blue
+  static const Color catUpkeep = Color(0xFF96690F); // ochre
+  static const Color catMaintenance = Color(0xFF4E6151); // sage
+  static const Color catInvoice = Color(0xFF6E4A8C); // plum
+  // Legacy tokens kept: non-category uses (property color cycling) reference them.
+  static const Color catWarranty = Color(0xFF44519E); // indigo
   static const Color catUtility = Color(0xFF96690F); // ochre
   static const Color catReceipt = Color(0xFF6E4A8C); // plum
   static const Color catOther = slate;

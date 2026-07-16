@@ -15,6 +15,13 @@ class DocuMindDocument {
   /// renamed/deleted — accepted trade-off).
   final String? unitLabel;
 
+  /// Structured facts captured by backend fact extraction at ingest;
+  /// null when extraction produced nothing.
+  final Map<String, dynamic>? extractedFacts;
+
+  /// Extractor's self-reported confidence (0.0-1.0).
+  final double? factsConfidence;
+
   DocuMindDocument({
     required this.docId,
     required this.landlordId,
@@ -25,6 +32,8 @@ class DocuMindDocument {
     required this.uploadedAt,
     this.unitId,
     this.unitLabel,
+    this.extractedFacts,
+    this.factsConfidence,
   });
 }
 

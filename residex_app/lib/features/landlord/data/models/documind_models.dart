@@ -13,6 +13,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
     required super.uploadedAt,
     super.unitId,
     super.unitLabel,
+    super.extractedFacts,
+    super.factsConfidence,
   });
 
   /// Create from Firestore document
@@ -31,6 +33,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
       uploadedAt: _parseTimestamp(data['uploaded_at']),
       unitId: data['unit_id'] as String?,
       unitLabel: data['unit_label'] as String?,
+      extractedFacts: (data['extracted_facts'] as Map<String, dynamic>?),
+      factsConfidence: (data['facts_confidence'] as num?)?.toDouble(),
     );
   }
 
@@ -46,6 +50,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
       uploadedAt: _parseTimestamp(json['uploaded_at']),
       unitId: json['unit_id'] as String?,
       unitLabel: json['unit_label'] as String?,
+      extractedFacts: (json['extracted_facts'] as Map<String, dynamic>?),
+      factsConfidence: (json['facts_confidence'] as num?)?.toDouble(),
     );
   }
 
@@ -61,6 +67,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
       'uploaded_at': Timestamp.fromDate(uploadedAt),
       'unit_id': unitId,
       'unit_label': unitLabel,
+      'extracted_facts': extractedFacts,
+      'facts_confidence': factsConfidence,
     };
   }
 
@@ -76,6 +84,8 @@ class DocuMindDocumentModel extends DocuMindDocument {
       uploadedAt: uploadedAt,
       unitId: unitId,
       unitLabel: unitLabel,
+      extractedFacts: extractedFacts,
+      factsConfidence: factsConfidence,
     );
   }
 
