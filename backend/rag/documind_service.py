@@ -33,24 +33,42 @@ from rag.graph_orchestrator import DocuMindGraphOrchestrator
 from rag.retriever import HybridRetriever
 
 EMBED_DIM = 768 # Default to 768 if not set
-ALLOWED_CATEGORIES = {"lease", "warranty", "insurance", "utility", "receipt"}
-CATEGORY_KEYWORDS = {
-    "lease": [
-        "lease", "tenancy", "tenant", "rent", "rental", "deposit", "landlord", "agreement", "renewal", "termination"
-    ],
-    "warranty": [
-        "warranty", "covered", "coverage", "claim", "expiry", "expire", "guarantee", "appliance", "manufacturer"
-    ],
-    "insurance": [
-        "insurance", "policy", "premium", "insurer", "deductible", "claim", "coverage", "liability", "endorsement"
-    ],
-    "utility": [
-        "utility", "utilities", "electric", "electricity", "water", "gas", "bill", "meter", "kwh", "usage"
-    ],
-    "receipt": [
-        "receipt", "invoice", "invoices", "payment", "repair", "maintenance", "vendor", "purchase", "cost"
-    ],
+# 7-category taxonomy (2026-07 financial-intelligence spec). Documents stored
+# before the rename keep their legacy category strings; LEGACY_CATEGORY_ALIASES
+# maps them at every read and expand_categories_for_query() widens stored-name
+# queries. No data migration.
+ALLOWED_CATEGORIES = {
+    "lease", "insurance", "loan", "tax", "upkeep", "maintenance", "rental_invoice",
 }
+CATEGORY_ORDER = [
+    "lease", "insurance", "loan", "tax", "upkeep", "maintenance", "rental_invoice",
+]
+LEGACY_CATEGORY_ALIASES = {
+    "utility": "upkeep",
+    "receipt": "rental_invoice",
+    "warranty": "upkeep",
+}
+
+
+def normalize_category(category: Optional[str]) -> Optional[str]:
+    """Stored/legacy category -> current taxonomy name (read-time alias)."""
+    if not category:
+        return category
+    lowered = category.strip().lower()
+    return LEGACY_CATEGORY_ALIASES.get(lowered, lowered)
+
+
+def expand_categories_for_query(categories: List[str]) -> List[str]:
+    """Current-taxonomy filter -> every stored name it must match, including
+    legacy spellings (chunks written pre-rename still carry 'utility' etc.)."""
+    expanded: List[str] = []
+    for category in categories:
+        if category not in expanded:
+            expanded.append(category)
+        for legacy, current in LEGACY_CATEGORY_ALIASES.items():
+            if current == category and legacy not in expanded:
+                expanded.append(legacy)
+    return expanded
 
 # Question-side unit reference resolution. Matching is deterministic and
 # label-driven: "unit a" resolves to "Unit A-12-03" only when exactly one
@@ -210,17 +228,6 @@ class DocuMindService:
             print("✅ Gemini LLM ready")
         return self._llm
 
-    def _detect_categories_from_question(self, question: str) -> List[str]:
-        """Infer likely document categories from question keywords."""
-        lowered_question = (question or "").lower()
-        detected = []
-
-        for category, keywords in CATEGORY_KEYWORDS.items():
-            if any(keyword in lowered_question for keyword in keywords):
-                detected.append(category)
-
-        return detected[:10]
-
     def _list_available_categories(self, landlord_id: str, property_id: str) -> List[str]:
         """List categories that have uploaded docs for this landlord/property."""
         try:
@@ -320,6 +327,12 @@ class DocuMindService:
         """
         Ingest document into Firestore with vector embeddings.
         """
+        category = normalize_category(category)
+        if category not in ALLOWED_CATEGORIES:
+            raise ValueError(
+                f"Unsupported category '{category}'. Allowed: {', '.join(CATEGORY_ORDER)}"
+            )
+
         doc_id = str(uuid.uuid4())
         
         # Step 1: Save file temporarily

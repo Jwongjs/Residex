@@ -364,7 +364,7 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_empty_prediction_checkpoint_offers_all_available_categories(self):
         fake_db = _FakeDB(docs=[
             {"doc_id": "doc-1", "landlord_id": "l1", "property_id": "p1", "category": "lease"},
-            {"doc_id": "doc-2", "landlord_id": "l1", "property_id": "p1", "category": "warranty"},
+            {"doc_id": "doc-2", "landlord_id": "l1", "property_id": "p1", "category": "insurance"},
         ])
         fake_store = _FakeConversationStore()
         fake_graph = _FakeGraphOrchestrator({
@@ -381,7 +381,7 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         response = await service.ask_documind(payload)
 
         self.assertTrue(response.needs_category_clarification)
-        self.assertEqual(response.clarification_options, ["lease", "warranty"])
+        self.assertEqual(response.clarification_options, ["lease", "insurance"])
         self.assertEqual(response.predicted_categories, [])
 
     async def test_ask_confirmation_returns_checkpoint_response(self):
@@ -485,14 +485,14 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_override_category_uses_override_in_retrieval(self):
         fake_db = _FakeDB(
-            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "warranty"}],
+            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "upkeep"}],
             chunks=[
                 {
                     "doc_id": "d2",
-                    "filename": "warranty.pdf",
-                    "category": "warranty",
+                    "filename": "upkeep.pdf",
+                    "category": "upkeep",
                     "page": 1,
-                    "text": "Warranty coverage starts from installation date.",
+                    "text": "Aircon servicing coverage starts from installation date.",
                     "landlord_id": "l1",
                     "property_id": "p1",
                 }
@@ -502,7 +502,7 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         fake_store.pending["session-2"] = {
             "question": "What is covered?",
             "predicted_categories": ["lease"],
-            "available_categories": ["lease", "warranty"],
+            "available_categories": ["lease", "upkeep"],
         }
         fake_graph = _FakeGraphOrchestrator(
             {
@@ -517,9 +517,9 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(
             landlord_id="l1",
             property_id="p1",
-            question="choose warranty",
+            question="choose upkeep",
             session_id="session-2",
-            user_action="override:warranty",
+            user_action="override:upkeep",
         )
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock:
@@ -527,8 +527,8 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
             response = await service.ask_documind(payload)
 
         self.assertEqual(response.category_filter_mode, "clarification_selected")
-        self.assertEqual(response.searched_categories, ["warranty"])
-        self.assertEqual(fake_db.last_chunk_category_filter, ("==", "warranty"))
+        self.assertEqual(response.searched_categories, ["upkeep"])
+        self.assertEqual(fake_db.last_chunk_category_filter, ("==", "upkeep"))
 
     async def test_citations_and_context_carry_unit_fields(self):
         fake_db = _FakeDB(
@@ -1164,6 +1164,56 @@ class UnitMentionResolutionTests(unittest.TestCase):
         units = [{"unit_id": "unit-AB", "label": "Unit AB-2"}]
         result = resolve_unit_mention("rent for unit a?", units)
         self.assertEqual(result["kind"], "unknown")
+
+
+class CategoryTaxonomyIngestTests(unittest.IsolatedAsyncioTestCase):
+    def _upload_file(self):
+        class _FakeUploadFile:
+            filename = "doc.pdf"
+
+            async def read(self):
+                return b"%PDF-1.4 fake content"
+
+        return _FakeUploadFile()
+
+    async def test_ingest_rejects_unknown_category(self):
+        service = _build_service(
+            _FakeDB(), _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        with self.assertRaises(ValueError):
+            await service.ingest_document(
+                landlord_id="l1",
+                property_id="p1",
+                category="bank-statement",
+                file=self._upload_file(),
+            )
+
+    async def test_ingest_normalizes_legacy_category_before_storing(self):
+        fake_db = _FakeDB()
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            fake_page = MagicMock()
+            fake_page.page_content = "TNB electricity bill for the unit's aircon repair"
+            fake_page.metadata = {"page": 0}
+            loader_mock.return_value.load.return_value = [fake_page]
+
+            response = await service.ingest_document(
+                landlord_id="l1",
+                property_id="p1",
+                category="utility",
+                file=self._upload_file(),
+            )
+
+        self.assertEqual(response.category, "upkeep")
+        stored_doc = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
+        self.assertEqual(stored_doc["category"], "upkeep")
+        self.assertTrue(all(c["category"] == "upkeep" for c in fake_db.chunks))
 
 
 if __name__ == "__main__":

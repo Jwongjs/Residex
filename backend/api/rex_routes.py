@@ -18,20 +18,25 @@ async def documind_upload(
     """
     Upload a PDF document for a property.
 
-    Category options: 'lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'
+    Category options: 'lease', 'insurance', 'loan', 'tax', 'upkeep',
+    'maintenance', 'rental_invoice' (legacy names utility/receipt/warranty are
+    accepted and stored under their new equivalents)
 
     unit_id/unit_label are optional: omit them for property-wide documents
     (insurance, tax, building warranty); set them to scope the document to a
     single unit (a lease). unit_label is denormalized for display.
     """
-    return await documind_service.ingest_document(
-        landlord_id=landlord_id,
-        property_id=property_id,
-        category=category,
-        file=file,
-        unit_id=unit_id,
-        unit_label=unit_label,
-    )
+    try:
+        return await documind_service.ingest_document(
+            landlord_id=landlord_id,
+            property_id=property_id,
+            category=category,
+            file=file,
+            unit_id=unit_id,
+            unit_label=unit_label,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/documind/ask", response_model=AskResponse)
