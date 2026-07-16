@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 from models.documind_models import AskRequest
 from rag.documind_service import DocuMindService, resolve_unit_mention
@@ -133,6 +133,8 @@ class _FakeCollectionQuery:
             rows = self._db.docs
         elif self._name == "documind_chunks":
             rows = self._db.chunks
+        elif self._name == "properties":
+            rows = self._db.properties_rows
         else:
             rows = []
 
@@ -264,6 +266,7 @@ class _FakeDB:
         self.docs = docs or []
         self.units = units or []
         self.chunks = chunks or []
+        self.properties_rows = []
         self.property_name = property_name
         self.last_chunk_category_filter = None
 
@@ -1456,6 +1459,59 @@ class OcrIngestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.chunks_indexed, 0)
         stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
         self.assertEqual(stored["chunks_indexed"], 0)
+
+
+class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_get_finance_summary_folds_firestore_docs(self):
+        fake_db = _FakeDB(docs=[
+            {
+                "doc_id": "inv-1", "landlord_id": "l1", "property_id": "p1",
+                "category": "rental_invoice", "filename": "inv.pdf",
+                "uploaded_at": datetime(2025, 3, 2),
+                "extracted_facts": {"amount": 2000.0, "period_month": "2025-03"},
+            },
+            {
+                # Legacy category: must fold as an upkeep expense (alias)
+                "doc_id": "upk-1", "landlord_id": "l1", "property_id": "p1",
+                "category": "utility", "filename": "aircon.pdf",
+                "uploaded_at": datetime(2025, 4, 12),
+                "extracted_facts": {"amount": 300.0, "service_date": "2025-04-10"},
+            },
+            {
+                # Pre-feature doc without facts: silently skipped
+                "doc_id": "old-1", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "old.pdf",
+                "uploaded_at": datetime(2024, 1, 1),
+            },
+        ])
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "Kiara Court", "ownership_share": 0.5},
+        ]
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        self.assertEqual(summary.year, 2025)
+        block = summary.properties[0]
+        self.assertEqual(block.name, "Kiara Court")
+        self.assertEqual(block.ownership_share, 0.5)
+        self.assertEqual(block.received_rent, 2000.0)
+        self.assertEqual(block.direct_expenses, 300.0)
+        self.assertEqual(block.rental_income_or_loss, 1700.0)
+        self.assertEqual(block.expense_lines[0].category, "upkeep")
+        # statutory: 0.5 * (2000 - 300 * (1 rented month / 12)) = 987.50
+        self.assertEqual(summary.totals.statutory_rental_income, 987.5)
+
+    async def test_get_finance_summary_no_properties_is_empty(self):
+        fake_db = _FakeDB()
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        summary = await service.get_finance_summary("l1", 2025)
+        self.assertEqual(summary.properties, [])
+        self.assertEqual(summary.totals.net_pl, 0.0)
 
 
 if __name__ == "__main__":

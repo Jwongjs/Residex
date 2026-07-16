@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 
 class DocUploadResponse(BaseModel):
@@ -145,3 +145,67 @@ class UnassignUnitRequest(BaseModel):
     landlord_id: str
     property_id: str
     unit_id: str
+
+
+# ========== FINANCE SUMMARY MODELS ==========
+
+class MonthIncome(BaseModel):
+    """One month of one unit's income."""
+    month: int  # 1-12
+    source: str  # actual | derived | vacant
+    amount: float
+
+
+class ExpenseLine(BaseModel):
+    """One deductible expense, traceable to its source document."""
+    doc_id: str
+    category: str
+    subtype: Optional[str] = None
+    description: Optional[str] = None
+    amount: float
+    date: Optional[str] = None
+    unit_id: Optional[str] = None  # None = property-level expense
+
+
+class UnitFinance(BaseModel):
+    """One unit's year: monthly income strip + its own expenses."""
+    unit_id: Optional[str] = None  # None = synthetic whole-property line
+    label: str
+    rented_months: int
+    contribution: float  # income minus unit-scoped expenses
+    months: List[MonthIncome]
+    missing_invoice_months: List[int] = Field(default_factory=list)
+    expense_lines: List[ExpenseLine] = Field(default_factory=list)
+
+
+class PropertyFinance(BaseModel):
+    """Per-property annual block (mirrors the reference sheet)."""
+    property_id: str
+    name: str
+    ownership_share: float = 1.0
+    received_rent: float
+    derived_rent: float
+    direct_expenses: float
+    rental_income_or_loss: float
+    units: List[UnitFinance]
+    expense_lines: List[ExpenseLine]  # all lines, itemized
+    property_expense_lines: List[ExpenseLine]  # the property-level subset
+
+
+class FinanceTotals(BaseModel):
+    received_rent: float
+    derived_rent: float
+    direct_expenses: float
+    net_pl: float
+    statutory_rental_income: float
+    statutory_note: str
+
+
+class FinanceSummaryResponse(BaseModel):
+    """GET /api/rex/documind/finance/summary"""
+    year: int
+    totals: FinanceTotals
+    expense_breakdown: Dict[str, float]
+    properties: List[PropertyFinance]
+    caveats: List[str]
+    missing_categories: Dict[str, List[str]]

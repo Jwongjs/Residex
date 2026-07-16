@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -90,6 +90,21 @@ async def list_documents(
       → Returns unit_9's documents plus property-wide documents
     """
     return await documind_service.list_documents(landlord_id, property_id, unit_id)
+
+
+@router.get("/documind/finance/summary", response_model=FinanceSummaryResponse)
+async def finance_summary(
+    landlord_id: str = Query(..., description="Landlord ID"),
+    year: int = Query(..., ge=2000, le=2100, description="Calendar year (YA)"),
+):
+    """
+    Deterministic finance summary for one landlord and calendar year.
+
+    Zero LLM: extracted facts are folded fresh on every request (compute-on-
+    read). Statutory Rental Income is an estimate for the landlord's tax
+    agent and always ships with its caveats.
+    """
+    return await documind_service.get_finance_summary(landlord_id, year)
 
 @router.delete("/documind/documents/{doc_id}")
 async def delete_document(

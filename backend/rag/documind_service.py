@@ -5,7 +5,7 @@ import tempfile
 from typing import Dict, List, Optional
 from fastapi import UploadFile
 from models.documind_models import *
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 from dotenv import load_dotenv
 load_dotenv()  
@@ -34,6 +34,7 @@ from rag.pdf_ocr import PdfOcr
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
 from rag.retriever import HybridRetriever
+from rag.finance_engine import compute_finance_summary
 
 EMBED_DIM = 768 # Default to 768 if not set
 OCR_TEXT_THRESHOLD = 200  # chars; below this a PDF is treated as scanned
@@ -321,6 +322,33 @@ class DocuMindService:
             ]
         except Exception as e:
             print(f"⚠️ Unit lookup failed for property {property_id}: {e}")
+            return []
+
+    def _list_landlord_properties(self, landlord_id: str) -> List[Dict]:
+        """Property ids/names/ownership shares for a landlord. The properties
+        collection is Flutter-owned (field 'landlordId'); ownership_share is
+        optional and defaults to 1.0. Empty on lookup failure."""
+        try:
+            snapshots = (
+                self.db.collection('properties')
+                .where(filter=FieldFilter('landlordId', '==', landlord_id))
+                .stream()
+            )
+            results = []
+            for snap in snapshots:
+                data = snap.to_dict() or {}
+                try:
+                    share = float(data.get('ownership_share') or 1.0)
+                except (TypeError, ValueError):
+                    share = 1.0
+                results.append({
+                    "property_id": snap.id,
+                    "name": data.get('name') or snap.id,
+                    "ownership_share": share,
+                })
+            return results
+        except Exception as e:
+            print(f"⚠️ Property lookup failed for landlord {landlord_id}: {e}")
             return []
 
     async def ingest_document(
@@ -1087,7 +1115,42 @@ class DocuMindService:
             total_count=len(documents),
             filtered_by_property=property_id
         )
-        
+
+    async def get_finance_summary(self, landlord_id: str, year: int) -> FinanceSummaryResponse:
+        """One Firestore fold, zero LLM: fetch the landlord's documents,
+        properties, and units, then run the pure engine. Categories are
+        alias-normalized before the fold."""
+        documents = []
+        query = self.db.collection('documind_docs').where(
+            filter=FieldFilter('landlord_id', '==', landlord_id)
+        )
+        for snap in query.stream():
+            data = snap.to_dict() or {}
+            documents.append({
+                "doc_id": data.get("doc_id") or snap.id,
+                "property_id": data.get("property_id"),
+                "unit_id": data.get("unit_id"),
+                "unit_label": data.get("unit_label"),
+                "category": normalize_category(data.get("category")),
+                "extracted_facts": data.get("extracted_facts"),
+                "uploaded_at": data.get("uploaded_at"),
+            })
+
+        properties = self._list_landlord_properties(landlord_id)
+        units_by_property = {
+            prop["property_id"]: self._list_property_units(prop["property_id"])
+            for prop in properties
+        }
+
+        summary = compute_finance_summary(
+            year=year,
+            today=date.today(),
+            documents=documents,
+            properties=properties,
+            units_by_property=units_by_property,
+        )
+        return FinanceSummaryResponse(**summary)
+
     async def delete_document(
         self, 
         landlord_id: str, 
