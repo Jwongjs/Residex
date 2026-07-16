@@ -160,11 +160,13 @@ Respond exactly in this format:
         except Exception:
             lowered = (question or "").lower()
             fallback_keywords = {
-                "lease": ["lease", "tenant", "pets", "rent", "deposit"],
-                "warranty": ["warranty", "covered", "claim", "expiry"],
+                "lease": ["lease", "tenant", "tenancy", "rent", "deposit", "pets"],
                 "insurance": ["insurance", "policy", "premium", "liability"],
-                "utility": ["utility", "electric", "water", "gas", "bill"],
-                "receipt": ["receipt", "invoice", "payment", "repair", "maintenance"],
+                "loan": ["loan", "mortgage", "interest", "bank", "financing"],
+                "tax": ["tax", "assessment", "cukai", "quit rent", "parcel rent", "taksiran"],
+                "upkeep": ["repair", "upkeep", "servicing", "plumbing", "aircon", "fix"],
+                "maintenance": ["maintenance", "management", "sinking fund", "service charge"],
+                "rental_invoice": ["invoice", "receipt", "payment", "rental invoice"],
             }
 
             scored = []

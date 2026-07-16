@@ -238,12 +238,12 @@ class DocuMindService:
             found_categories = set()
             for doc in docs_query.stream():
                 data = doc.to_dict() or {}
-                category = data.get('category')
+                category = normalize_category(data.get('category'))
                 if category in ALLOWED_CATEGORIES:
                     found_categories.add(category)
 
             ordered = [
-                category for category in ["lease", "warranty", "insurance", "utility", "receipt"]
+                category for category in CATEGORY_ORDER
                 if category in found_categories
             ]
             return ordered
@@ -265,10 +265,12 @@ class DocuMindService:
 
         aliases = {
             "lease": ["lease", "tenancy", "tenancy agreement", "rental agreement", "agreement"],
-            "warranty": ["warranty", "guarantee", "appliance warranty"],
             "insurance": ["insurance", "policy"],
-            "utility": ["utility", "utilities", "bill", "bills"],
-            "receipt": ["receipt", "invoice", "invoices"],
+            "loan": ["loan", "mortgage", "financing", "interest statement"],
+            "tax": ["tax", "assessment", "cukai", "quit rent", "parcel rent", "taksiran"],
+            "upkeep": ["upkeep", "repair", "servicing", "service", "utility", "warranty"],
+            "maintenance": ["maintenance", "management fee", "sinking fund"],
+            "rental_invoice": ["rental invoice", "rent invoice", "invoice", "invoices", "receipt"],
         }
 
         for category, values in aliases.items():
@@ -798,7 +800,7 @@ class DocuMindService:
                 landlord_id=payload.landlord_id,
                 property_id=payload.property_id,
                 top_k=payload.top_k,
-                categories=selected_categories or None,
+                categories=expand_categories_for_query(selected_categories) if selected_categories else None,
                 unit_id=effective_unit_id,
             )
             print(f"✅ Retrieved {len(retrieved_chunks)} chunks (hybrid dense+rerank)")
@@ -870,7 +872,7 @@ class DocuMindService:
                 best_citation_by_page[page_key] = {
                     'doc_id': chunk['doc_id'],
                     'filename': chunk['filename'],
-                    'category': chunk['category'],
+                    'category': normalize_category(chunk['category']),
                     'page': display_page,
                     'snippet': chunk['text'][:200],
                     'score': chunk_score,
@@ -898,13 +900,14 @@ class DocuMindService:
         prompt = f"""You are DocuMind, an AI assistant specialized in property document management.
 
     **Your Purpose:**
-    You help landlords understand their property documents across 6 categories:
-    - Tenancy Agreements (lease terms, tenant details, rent schedules)
-    - Warranties (appliance coverage, expiry dates, claim procedures)
-    - Insurance Policies (coverage types, premiums, policy numbers)
-    - Utility Bills (electricity, water, gas usage and costs)
-    - Receipts & Invoices (maintenance costs, repairs, purchases)
-    - Other Documents (general property records)
+    You help landlords understand their property documents across 7 categories:
+    - Tenancy Agreements (lease terms, tenant details, rent, deposits, renewals)
+    - Insurance Policies (coverage, premiums, policy periods)
+    - Loans (loan agreements, bank interest statements)
+    - Property Taxes (assessment tax, quit rent, parcel rent)
+    - Upkeep (landlord-paid repairs and servicing)
+    - Maintenance (management fees and sinking fund)
+    - Rental Invoices (monthly rent billed to tenants)
 
     **User Question:**
     {working_question}
@@ -919,7 +922,7 @@ class DocuMindService:
     {context_text}
 
     **Instructions:**
-    1. **IF** the question is about property documents (lease, warranty, insurance, utilities, receipts, other):
+    1. **IF** the question is about property documents (lease, insurance, loan, tax, upkeep, maintenance, rental invoices):
     - Answer based ONLY on the context above
     - Do NOT cite sources or mention filenames/pages — the app displays sources separately
     - Format dates clearly (e.g., "15 March 2026")
@@ -1025,7 +1028,7 @@ class DocuMindService:
                 doc_id=doc.id,
                 landlord_id=data.get('landlord_id'),
                 property_id=data.get('property_id'),
-                category=data.get('category'),
+                category=normalize_category(data.get('category')),
                 filename=data.get('filename'),
                 uploaded_at=uploaded_at,
                 chunks_indexed=data.get('chunks_indexed'),

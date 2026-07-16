@@ -13,7 +13,7 @@ class ConversationRouter:
     def _default_conversation_reply(property_name: Optional[str]) -> str:
         base = (
             "Hey! If you have anything that needs help with on property documents "
-            "(leases, warranties, insurance, utilities, receipts), please let me know."
+            "(leases, insurance, loans, taxes, upkeep, maintenance, rental invoices), please let me know."
         )
         if property_name and property_name != "Unknown Property":
             return f"For {property_name}, {base}"
@@ -63,7 +63,7 @@ Input: {text}
 Determine whether retrieval should be triggered now.
 
 Rules:
-- If user asks about property documents, tenancy, rent terms, warranties, insurance, utilities, receipts, rules/clauses, obligations -> rag_needed=true and intent=document_question.
+- If user asks about property documents, tenancy, rent terms, insurance, loans, property taxes, upkeep/repairs, maintenance fees, rental invoices, rules/clauses, obligations -> rag_needed=true and intent=document_question.
 - If user is chatting, greeting, random social text, or not asking for document facts -> rag_needed=false and intent=conversation.
 - If uncertain between conversation/document_question, prefer rag_needed=true.
 
@@ -114,7 +114,7 @@ intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-
             }
         except Exception:
             document_keywords = [
-                "lease", "rent", "tenant", "warranty", "insurance", "utility", "receipt", "invoice", "property", "pets", "allowed", "clause", "agreement"
+                "lease", "rent", "tenant", "insurance", "loan", "interest", "tax", "cukai", "upkeep", "repair", "maintenance", "invoice", "receipt", "property", "pets", "allowed", "clause", "agreement"
             ]
             if any(token in normalized for token in document_keywords):
                 return {

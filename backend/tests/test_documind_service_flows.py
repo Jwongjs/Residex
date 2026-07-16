@@ -528,7 +528,9 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.category_filter_mode, "clarification_selected")
         self.assertEqual(response.searched_categories, ["upkeep"])
-        self.assertEqual(fake_db.last_chunk_category_filter, ("==", "upkeep"))
+        self.assertEqual(
+            fake_db.last_chunk_category_filter, ("in", ["upkeep", "utility", "warranty"])
+        )
 
     async def test_citations_and_context_carry_unit_fields(self):
         fake_db = _FakeDB(
@@ -1214,6 +1216,63 @@ class CategoryTaxonomyIngestTests(unittest.IsolatedAsyncioTestCase):
         stored_doc = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
         self.assertEqual(stored_doc["category"], "upkeep")
         self.assertTrue(all(c["category"] == "upkeep" for c in fake_db.chunks))
+
+
+class CategoryAliasReadPathTests(unittest.IsolatedAsyncioTestCase):
+    async def test_available_categories_normalize_legacy_names(self):
+        fake_db = _FakeDB(docs=[
+            {"doc_id": "d1", "landlord_id": "l1", "property_id": "p1", "category": "utility"},
+            {"doc_id": "d2", "landlord_id": "l1", "property_id": "p1", "category": "receipt"},
+            {"doc_id": "d3", "landlord_id": "l1", "property_id": "p1", "category": "lease"},
+        ])
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        self.assertEqual(
+            service._list_available_categories("l1", "p1"),
+            ["lease", "upkeep", "rental_invoice"],
+        )
+
+    async def test_legacy_chunks_match_new_filter_and_citations_normalize(self):
+        fake_db = _FakeDB(
+            docs=[{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1", "category": "utility"}],
+            chunks=[{
+                "doc_id": "d1", "landlord_id": "l1", "property_id": "p1",
+                "category": "utility", "filename": "aircon.pdf", "chunk_index": 0,
+                "text": "Aircon servicing invoice RM 180 dated 12 March 2026", "page": 0,
+            }],
+        )
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": ["upkeep"],
+            "prediction_confidence": 0.9,
+            "prediction_reason": "repair question",
+            "intent": "document_question",
+        })
+        service = _build_service(
+            fake_db, _FakeConversationStore(), fake_graph, _FakeLLM("Serviced on 12 March 2026.")
+        )
+        response = await service.ask_documind(
+            AskRequest(landlord_id="l1", property_id="p1", question="when was the aircon serviced?")
+        )
+        self.assertEqual(
+            service._hybrid_retriever.calls[0]["categories"],
+            ["upkeep", "utility", "warranty"],
+        )
+        self.assertEqual(response.searched_categories, ["upkeep"])
+        self.assertEqual(response.citations[0].category, "upkeep")
+
+    async def test_list_documents_returns_normalized_categories(self):
+        fake_db = _FakeDB(docs=[{
+            "doc_id": "d1", "landlord_id": "l1", "property_id": "p1",
+            "category": "receipt", "filename": "inv.pdf", "chunks_indexed": 2,
+            "file_size": 100, "uploaded_at": datetime(2026, 1, 1),
+        }])
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        response = await service.list_documents("l1", "p1")
+        self.assertEqual(response.documents[0].category, "rental_invoice")
 
 
 if __name__ == "__main__":

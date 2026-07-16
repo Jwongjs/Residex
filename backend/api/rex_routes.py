@@ -55,10 +55,10 @@ async def documind_ask(payload: AskRequest):
       - override:<category>
 
     Optional category filtering is supported via `payload.categories`.
-    Allowed categories: 'lease', 'warranty', 'insurance', 'utility', 'receipt', 'other'
+    Allowed categories: 'lease', 'insurance', 'loan', 'tax', 'upkeep', 'maintenance', 'rental_invoice'
 
     Examples:
-    - categories=['warranty'] -> search only warranty documents
+    - categories=['upkeep'] -> search only upkeep documents
     - categories=['lease', 'insurance'] -> search across selected categories
     - categories omitted/null -> orchestration predicts categories and may request user confirmation
     - session_id provided -> continues prior conversation memory
