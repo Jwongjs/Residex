@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import re
 from typing import Dict, Any, List, Optional
+
+_YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
+
+
+def _extract_year(text: str) -> Optional[int]:
+    match = _YEAR_PATTERN.search(text or "")
+    return int(match.group(1)) if match else None
 
 
 class ConversationRouter:
@@ -33,6 +41,7 @@ class ConversationRouter:
                 "confidence": 0.0,
                 "reason": "Empty query",
                 "assistant_reply": self._default_conversation_reply(property_name),
+                "year": None,
             }
 
         try:
@@ -63,12 +72,14 @@ Input: {text}
 Determine whether retrieval should be triggered now.
 
 Rules:
+- If user asks for COMPUTED money totals across their records — rental profit/loss, rental income for a year, total expenses, statutory or tax-declarable rental income, "how much did I make/spend" -> intent=finance_question and rag_needed=false.
 - If user asks about property documents, tenancy, rent terms, insurance, loans, property taxes, upkeep/repairs, maintenance fees, rental invoices, rules/clauses, obligations -> rag_needed=true and intent=document_question.
 - If user is chatting, greeting, random social text, or not asking for document facts -> rag_needed=false and intent=conversation.
 - If uncertain between conversation/document_question, prefer rag_needed=true.
+- year: echo the 4-digit year when the question names one (e.g. "profit in 2025"), else none.
 
 Respond in this exact format:
-intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-1.0>;reason=<short reason>;assistant_reply=<short user-facing reply when rag_needed=false, else empty>
+intent=<conversation|document_question|finance_question>;rag_needed=<true|false>;confidence=<0.0-1.0>;reason=<short reason>;year=<4-digit year or none>;assistant_reply=<short user-facing reply when rag_needed=false and intent=conversation, else empty>
 """.strip()
             response = self._llm.invoke(prompt)
             content = str(response.content).strip()
@@ -78,12 +89,17 @@ intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-
             confidence = 0.5
             reason = "Fallback parse"
             assistant_reply = self._default_conversation_reply(property_name)
+            year: Optional[int] = None
 
             for part in content.split(";"):
                 if part.startswith("intent="):
                     value = part.replace("intent=", "").strip().lower()
-                    if value in {"conversation", "document_question"}:
+                    if value in {"conversation", "document_question", "finance_question"}:
                         intent = value
+                elif part.startswith("year="):
+                    raw = part.replace("year=", "").strip().lower()
+                    if raw.isdigit() and len(raw) == 4:
+                        year = int(raw)
                 elif part.startswith("rag_needed="):
                     raw = part.replace("rag_needed=", "").strip().lower()
                     rag_needed = raw == "true"
@@ -102,6 +118,9 @@ intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-
 
             if intent == "document_question":
                 rag_needed = True
+            if intent == "finance_question":
+                rag_needed = False
+                assistant_reply = ""
             if rag_needed:
                 assistant_reply = ""
 
@@ -111,10 +130,26 @@ intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-
                 "confidence": confidence,
                 "reason": reason,
                 "assistant_reply": assistant_reply,
+                "year": year,
             }
         except Exception:
+            finance_keywords = [
+                "profit", "statutory", "net income", "p/l",
+                "total expenses", "how much did i make", "how much did i earn",
+            ]
+            if any(token in normalized for token in finance_keywords):
+                return {
+                    "intent": "finance_question",
+                    "rag_needed": False,
+                    "confidence": 0.55,
+                    "reason": "Finance keyword fallback",
+                    "assistant_reply": "",
+                    "year": _extract_year(normalized),
+                }
             document_keywords = [
-                "lease", "rent", "tenant", "insurance", "loan", "interest", "tax", "cukai", "upkeep", "repair", "maintenance", "invoice", "receipt", "property", "pets", "allowed", "clause", "agreement"
+                "lease", "rent", "tenant", "insurance", "loan", "interest", "tax",
+                "cukai", "upkeep", "repair", "maintenance", "invoice", "receipt",
+                "property", "pets", "allowed", "clause", "agreement",
             ]
             if any(token in normalized for token in document_keywords):
                 return {
@@ -123,6 +158,7 @@ intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-
                     "confidence": 0.55,
                     "reason": "Keyword fallback",
                     "assistant_reply": "",
+                    "year": None,
                 }
             return {
                 "intent": "conversation",
@@ -130,4 +166,5 @@ intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-
                 "confidence": 0.55,
                 "reason": "Safe conversational fallback",
                 "assistant_reply": self._default_conversation_reply(property_name),
+                "year": None,
             }

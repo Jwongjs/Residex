@@ -18,6 +18,7 @@ class DocuMindState(TypedDict, total=False):
     rag_needed: bool
     intent_confidence: float
     intent_reason: str
+    finance_year: int
 
     predicted_categories: List[str]
     prediction_confidence: float
@@ -50,6 +51,7 @@ class DocuMindGraphOrchestrator:
         graph.add_node("prepare_confirmation", self._prepare_confirmation_node)
         graph.add_node("prepare_cancel", self._prepare_cancel_node)
         graph.add_node("prepare_retrieve", self._prepare_retrieve_node)
+        graph.add_node("prepare_finance", self._prepare_finance_node)
 
         graph.set_entry_point("route_conversation")
 
@@ -58,6 +60,7 @@ class DocuMindGraphOrchestrator:
             self._route_after_conversation,
             {
                 "conversation": "respond_conversation",
+                "finance": "prepare_finance",
                 "predict": "predict_categories",
             },
         )
@@ -78,6 +81,7 @@ class DocuMindGraphOrchestrator:
         graph.add_edge("prepare_confirmation", END)
         graph.add_edge("prepare_cancel", END)
         graph.add_edge("prepare_retrieve", END)
+        graph.add_edge("prepare_finance", END)
 
         return graph.compile()
 
@@ -108,6 +112,7 @@ class DocuMindGraphOrchestrator:
             "intent_confidence": result["confidence"],
             "intent_reason": result["reason"],
             "assistant_message": result.get("assistant_reply", ""),
+            "finance_year": result.get("year"),
         }
 
     async def _respond_conversation_node(self, state: DocuMindState) -> DocuMindState:
@@ -201,7 +206,12 @@ class DocuMindGraphOrchestrator:
     async def _prepare_retrieve_node(self, state: DocuMindState) -> DocuMindState:
         return state
 
+    async def _prepare_finance_node(self, state: DocuMindState) -> DocuMindState:
+        return {**state, "action": "finance"}
+
     def _route_after_conversation(self, state: DocuMindState) -> str:
+        if state.get("intent") == "finance_question":
+            return "finance"
         if state.get("rag_needed", False):
             return "predict"
         intent = state.get("intent")
