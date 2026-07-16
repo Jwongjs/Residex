@@ -13,6 +13,7 @@ load_dotenv()
 # LangChain core
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 
 # Gemini embeddings & LLM
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
@@ -29,11 +30,13 @@ from firebase_admin import storage as firebase_storage
 from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
 from rag.fact_extractor import FactExtractor
+from rag.pdf_ocr import PdfOcr
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
 from rag.retriever import HybridRetriever
 
 EMBED_DIM = 768 # Default to 768 if not set
+OCR_TEXT_THRESHOLD = 200  # chars; below this a PDF is treated as scanned
 # 7-category taxonomy (2026-07 financial-intelligence spec). Documents stored
 # before the rename keep their legacy category strings; LEGACY_CATEGORY_ALIASES
 # maps them at every read and expand_categories_for_query() widens stored-name
@@ -182,6 +185,7 @@ class DocuMindService:
             allowed_categories=sorted(ALLOWED_CATEGORIES),
         )
         self._fact_extractor = FactExtractor(self._llm)
+        self._pdf_ocr = PdfOcr(self._llm)
         self._graph_orchestrator = DocuMindGraphOrchestrator(
             conversation_router=self._conversation_router,
             category_predictor=self._category_predictor,
@@ -352,7 +356,21 @@ class DocuMindService:
             # Step 2: Load PDF and extract text
             loader = PyPDFLoader(temp_path)
             pages = loader.load()
-            
+
+            # OCR fallback: a scanned PDF yields (near-)empty text. Send the
+            # PDF bytes to Gemini for transcription so the document becomes
+            # searchable and extractable. Best-effort — on failure we continue
+            # with whatever text exists (possibly none).
+            total_text = sum(len((page.page_content or "").strip()) for page in pages)
+            if total_text < OCR_TEXT_THRESHOLD:
+                transcripts = self._pdf_ocr.transcribe(content)
+                if transcripts:
+                    pages = [
+                        Document(page_content=text, metadata={"page": index})
+                        for index, text in enumerate(transcripts)
+                    ]
+                    print(f"🔍 OCR fallback transcribed {len(pages)} page(s)")
+
             # Step 3: Chunk text
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
@@ -391,8 +409,11 @@ class DocuMindService:
             print(f"✅ Generated {len(chunk_documents)} embeddings")
             
             if len(chunk_documents) == 0:
-                raise ValueError("No chunks could be processed from the document")
-            
+                # Scanned document whose OCR fallback also produced nothing:
+                # keep the document (Storage + metadata, 0 chunks) so it still
+                # lists and can be re-uploaded; there is just nothing to search.
+                print("⚠️ No text extracted; indexing metadata with 0 chunks")
+
             # Step 5: Batch write chunks to Firestore
             batch = self.db.batch()
             for chunk_doc in chunk_documents:

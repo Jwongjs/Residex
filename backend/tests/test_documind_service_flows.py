@@ -350,6 +350,19 @@ class _FakeHybridRetriever:
         return rows[:top_k]
 
 
+class _FakePdfOcr:
+    """Stands in for PdfOcr: returns canned transcripts (None = OCR failed
+    or produced nothing) and counts invocations."""
+
+    def __init__(self, transcripts=None):
+        self.transcripts = transcripts
+        self.calls = 0
+
+    def transcribe(self, pdf_bytes):
+        self.calls += 1
+        return self.transcripts
+
+
 def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service = DocuMindService.__new__(DocuMindService)
     service._db = fake_db
@@ -359,6 +372,7 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service._graph_orchestrator = fake_graph
     service._hybrid_retriever = _FakeHybridRetriever(fake_db)
     service._fact_extractor = FactExtractor(fake_llm)
+    service._pdf_ocr = _FakePdfOcr()
     return service
 
 
@@ -1374,6 +1388,74 @@ class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(by_id["d1"].facts_confidence, 0.9)
         self.assertIsNone(by_id["d2"].extracted_facts)
         self.assertIsNone(by_id["d2"].facts_confidence)
+
+
+class OcrIngestTests(unittest.IsolatedAsyncioTestCase):
+    def _upload_file(self):
+        class _FakeUploadFile:
+            filename = "scanned.pdf"
+
+            async def read(self):
+                return b"%PDF-1.4 fake scanned content"
+
+        return _FakeUploadFile()
+
+    def _page(self, text):
+        fake_page = MagicMock()
+        fake_page.page_content = text
+        fake_page.metadata = {"page": 0}
+        return fake_page
+
+    async def _ingest(self, service, pages):
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            loader_mock.return_value.load.return_value = pages
+            return await service.ingest_document(
+                landlord_id="l1", property_id="p1", category="upkeep", file=self._upload_file(),
+            )
+
+    async def test_scanned_pdf_triggers_ocr_and_indexes_transcript(self):
+        fake_db = _FakeDB()
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        service._storage_bucket = _FakeStorageBucket()
+        service._pdf_ocr = _FakePdfOcr(transcripts=[
+            "INVOIS: Servis penyaman udara RM 180, 12 Mac 2026",
+        ])
+
+        response = await self._ingest(service, [self._page("")])
+
+        self.assertEqual(service._pdf_ocr.calls, 1)
+        self.assertGreater(response.chunks_indexed, 0)
+        self.assertIn("penyaman udara", fake_db.chunks[0]["text"])
+
+    async def test_digital_pdf_never_triggers_ocr(self):
+        service = _build_service(
+            _FakeDB(), _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        long_text = "This tenancy agreement is made between the landlord and tenant. " * 10
+        await self._ingest(service, [self._page(long_text)])
+
+        self.assertEqual(service._pdf_ocr.calls, 0)
+
+    async def test_ocr_failure_still_indexes_with_zero_chunks(self):
+        fake_db = _FakeDB()
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        service._storage_bucket = _FakeStorageBucket()
+        service._pdf_ocr = _FakePdfOcr(transcripts=None)
+
+        response = await self._ingest(service, [self._page("")])
+
+        self.assertEqual(response.status, "indexed")
+        self.assertEqual(response.chunks_indexed, 0)
+        stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
+        self.assertEqual(stored["chunks_indexed"], 0)
 
 
 if __name__ == "__main__":
