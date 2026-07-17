@@ -61,4 +61,16 @@ void main() {
     expect(isAllowedUploadFilename('doc.docx'), isFalse);
     expect(isAllowedUploadFilename('lease.pdf'), isTrue);
   });
+
+  test('stored categories collapse into three display folders', () {
+    expect(displayCategoryFor('lease'), 'lease');
+    expect(displayCategoryFor('rental_invoice'), 'rental_invoice');
+    expect(displayCategoryFor('receipt'), 'rental_invoice'); // legacy alias
+    for (final stored in [
+      'insurance', 'loan', 'tax', 'upkeep', 'maintenance',
+      'utility', 'warranty', 'expenses',
+    ]) {
+      expect(displayCategoryFor(stored), 'expenses', reason: stored);
+    }
+  });
 }

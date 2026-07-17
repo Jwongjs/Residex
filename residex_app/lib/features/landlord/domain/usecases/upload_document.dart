@@ -22,7 +22,7 @@ class UploadDocument {
     String? unitLabel,
   }) async {
     // ✅ Business validation (domain layer)
-    final validCategories = ['lease', 'insurance', 'loan', 'tax', 'upkeep', 'maintenance', 'rental_invoice'];
+    final validCategories = ['lease', 'insurance', 'loan', 'tax', 'upkeep', 'maintenance', 'rental_invoice', 'expenses'];
     if (!validCategories.contains(category)) {
       throw ArgumentError('Invalid category: $category');
     }
@@ -32,8 +32,12 @@ class UploadDocument {
       throw ArgumentError('File too large (max 10 MB)');
     }
 
-    if (!file.path.toLowerCase().endsWith('.pdf')) {
-      throw ArgumentError('Only PDF files are supported');
+    // Backend ingests PDFs plus JPG/PNG photos (Gemini transcription); keep
+    // this domain guard in sync with the picker's allowedUploadExtensions.
+    const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png'];
+    final lowerPath = file.path.toLowerCase();
+    if (!allowedExtensions.any(lowerPath.endsWith)) {
+      throw ArgumentError('Only PDF, JPG or PNG files are supported');
     }
 
     print('✅ UseCase: Upload validation passed');

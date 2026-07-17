@@ -43,15 +43,13 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   bool _awaitingUserAction = false;
   List<UnitOption> _pendingUnitOptions = const [];
 
-  // Document categories (backend-supported, financial-intelligence taxonomy)
+  // Display folders (stored categories collapse via displayCategoryFor;
+  // uploads from the Expenses folder send category 'expenses' so the
+  // backend runs line-item extraction).
   final List<String> _categories = [
     'lease',
-    'insurance',
-    'loan',
-    'tax',
-    'upkeep',
-    'maintenance',
     'rental_invoice',
+    'expenses',
   ];
 
   // Focus of the chat input. The empty-state overlay hides while it has
@@ -478,7 +476,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     return documentsAsync.when(
       data: (allDocuments) {
         final categoryDocs = allDocuments
-            .where((doc) => doc.category == _selectedCategory)
+            .where((doc) => displayCategoryFor(doc.category) == _selectedCategory)
             .toList();
 
         if (categoryDocs.isEmpty) {
@@ -1717,6 +1715,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       'upkeep': 'Upkeep & Repairs',
       'maintenance': 'Maintenance Fees',
       'rental_invoice': 'Rental Invoices',
+      'expenses': 'Expenses',
       'other': 'Other Documents',
     };
     return labels[category] ?? category.toUpperCase();
@@ -1731,6 +1730,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       'upkeep': Icons.build_outlined,
       'maintenance': Icons.apartment_outlined,
       'rental_invoice': Icons.receipt_long_outlined,
+      'expenses': Icons.account_balance_wallet_outlined,
       'other': Icons.folder_outlined,
     };
 
@@ -1746,6 +1746,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       'upkeep': AppColors.catUpkeep,
       'maintenance': AppColors.catMaintenance,
       'rental_invoice': AppColors.catInvoice,
+      'expenses': AppColors.catMaintenance,
       'other': AppColors.catOther,
     };
     return colorMap[category] ?? AppColors.catOther;
@@ -1876,6 +1877,21 @@ const Set<String> allowedUploadExtensions = {'.pdf', '.jpg', '.jpeg', '.png'};
 bool isAllowedUploadFilename(String filename) {
   final lower = filename.toLowerCase();
   return allowedUploadExtensions.any(lower.endsWith);
+}
+
+/// Folder the DocuMind UI files a stored category under. Documents keep
+/// their granular backend category (no migration); only the presentation
+/// collapses money-out paperwork into one Expenses folder.
+String displayCategoryFor(String category) {
+  switch (category) {
+    case 'lease':
+      return 'lease';
+    case 'rental_invoice':
+    case 'receipt':
+      return 'rental_invoice';
+    default:
+      return 'expenses';
+  }
 }
 
 /// Option order for the upload unit-picker dialog. A null entry is the
