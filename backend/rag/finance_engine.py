@@ -11,6 +11,19 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from rag.fact_extractor import EXPENSE_SUBTYPE_CATEGORY
+
+_EXPENSE_LINE_LABELS = {
+    "loan_interest": "Loan interest",
+    "assessment_tax": "Assessment tax",
+    "quit_rent": "Quit rent",
+    "parcel_rent": "Parcel rent",
+    "maintenance": "Maintenance fees",
+    "sinking_fund": "Sinking fund",
+    "insurance_premium": "Insurance premium",
+    "upkeep": "Upkeep",
+}
+
 # Categories that feed the fold; also the per-property completeness report.
 FINANCE_CATEGORIES = ["rental_invoice", "loan", "tax", "upkeep", "maintenance", "insurance"]
 
@@ -139,11 +152,35 @@ def _expense_lines(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[str,
     service_date's year; maintenance by period_start's year (fallback
     period_end); insurance premium by policy_start's year (fallback
     policy_end); lease renewal_fee only when subtype=renewal, by
-    lease_start's year."""
+    lease_start's year. Combined 'expenses' documents contribute one line
+    per validated item, mapped to its finance category via
+    EXPENSE_SUBTYPE_CATEGORY; a line belongs to the year when its
+    period_year matches or its date falls in the year."""
     lines: List[Dict[str, Any]] = []
     for doc in prop_docs:
         facts = doc["extracted_facts"]
         category = doc.get("category")
+        if category == "expenses":
+            for item in (facts.get("expense_lines") or []):
+                if not isinstance(item, dict):
+                    continue
+                subtype = item.get("subtype")
+                mapped = EXPENSE_SUBTYPE_CATEGORY.get(subtype)
+                amount = _amount(item, "amount")
+                ym = _ym(item.get("date"))
+                in_year = item.get("period_year") == year or (ym is not None and ym[0] == year)
+                if mapped is None or amount is None or not in_year:
+                    continue
+                lines.append({
+                    "doc_id": doc["doc_id"],
+                    "category": mapped,
+                    "subtype": subtype,
+                    "description": item.get("description") or _EXPENSE_LINE_LABELS[subtype],
+                    "amount": _round2(amount),
+                    "date": item.get("date") or str(item.get("period_year") or year),
+                    "unit_id": doc.get("unit_id"),
+                })
+            continue
         entry = None  # (amount, description, date_str)
         if category == "loan":
             amount = _amount(facts, "interest_paid")

@@ -264,3 +264,55 @@ class GoldenReferenceSheetTest(unittest.TestCase):
         self.assertEqual(result["totals"]["statutory_rental_income"], 60106.58)
         self.assertEqual(result["totals"]["net_pl"], 60106.58)
         self.assertIn(STATUTORY_NOTE, result["totals"]["statutory_note"])
+
+
+class TestCombinedExpensesDocument(unittest.TestCase):
+    def _summary(self, docs):
+        return compute_finance_summary(
+            year=2025,
+            today=date(2026, 7, 18),
+            documents=docs,
+            properties=[{"property_id": "p1", "name": "Test Property"}],
+            units_by_property={},
+        )
+
+    def test_lines_map_to_breakdown_categories_and_filter_by_year(self):
+        docs = [{
+            "doc_id": "d-exp",
+            "property_id": "p1",
+            "unit_id": None,
+            "category": "expenses",
+            "extracted_facts": {
+                "expense_lines": [
+                    {"subtype": "maintenance", "amount": 4200.0, "period_year": 2025},
+                    {"subtype": "sinking_fund", "amount": 840.0, "period_year": 2025},
+                    {"subtype": "insurance_premium", "amount": 1800.0, "date": "2025-03-01"},
+                    {"subtype": "quit_rent", "amount": 316.87, "period_year": 2025},
+                    {"subtype": "quit_rent", "amount": 316.87, "period_year": 2024},
+                ],
+                "policy_end": "2026-03-01",
+            },
+        }]
+        summary = self._summary(docs)
+        self.assertEqual(summary["expense_breakdown"]["maintenance"], 5040.0)
+        self.assertEqual(summary["expense_breakdown"]["insurance"], 1800.0)
+        self.assertEqual(summary["expense_breakdown"]["tax"], 316.87)
+        self.assertEqual(summary["totals"]["direct_expenses"], 7156.87)
+
+    def test_malformed_lines_are_skipped_silently(self):
+        docs = [{
+            "doc_id": "d-bad",
+            "property_id": "p1",
+            "unit_id": None,
+            "category": "expenses",
+            "extracted_facts": {
+                "expense_lines": [
+                    {"subtype": "unknown_thing", "amount": 10.0, "period_year": 2025},
+                    {"subtype": "maintenance", "period_year": 2025},
+                    "not-a-dict",
+                    {"subtype": "maintenance", "amount": 100.0, "period_year": 2025},
+                ],
+            },
+        }]
+        summary = self._summary(docs)
+        self.assertEqual(summary["totals"]["direct_expenses"], 100.0)
