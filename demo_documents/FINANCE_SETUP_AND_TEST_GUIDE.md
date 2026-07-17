@@ -26,7 +26,7 @@ tests are retained here (§9) since Damai is multi-unit.
 | Property | Setting | Ownership | Units | Role in the demo |
 |---|---|---|---|---|
 | **Damai Residence** (KL) | Multi-unit residential condo | **50%** (co-owned) | 3 units | per-unit income, unit-scoped expenses, ownership scaling, renewal fee, actual-vs-derived months |
-| **Ayer 8** (Melaka) | Single-unit commercial shoplot | **100%** (sole) | 1 unit "Shoplot" | whole-property let, income derived purely from the lease, reproduces the golden-test figures |
+| **Ayer 8** (Putrajaya) | Single-unit commercial shoplot | **100%** (sole) | 1 unit "Shoplot" | whole-property let, income derived purely from the lease, reproduces the golden-test figures |
 
 Two properties are deliberately enough: together they exercise both scoping modes
 (per-unit vs whole-property), co-ownership vs sole ownership, invoiced (actual) vs
@@ -94,7 +94,7 @@ Use **fresh** properties so old uploads don't double-count. (If you already have
    `Unit A-12-03`, `Unit B-08-11`, `Unit C-05-07` (labels must match — the chat
    router matches unit references against them, and per-unit finance keys on them).
 3. **Create "Ayer 8"**:
-   - Type: Commercial. Address: any Melaka address.
+   - Type: Commercial. Address: any Putrajaya address.
    - **My share: `100`** (default). **Number of units: `1`** → rename it `Shoplot`.
 4. Upload every PDF via the **DocuMind → Docs** tab per the matrices below. The
    upload snackbar should confirm the captured fact, e.g.
