@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
@@ -8,6 +7,7 @@ import '../../../domain/entities/finance_summary.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
+import '../../widgets/common/upload_source_sheet.dart';
 import '../2-Documind/documind_screen.dart' show isAllowedUploadFilename;
 import '../2-Documind/documind_upload_summary.dart';
 import 'unit_finance_detail_screen.dart';
@@ -21,13 +21,12 @@ Future<void> uploadDocumentForCategory(
   required String propertyId,
   required String category,
 }) async {
-  final result = await FilePicker.platform.pickFiles(type: FileType.any);
-  if (result == null) return;
-  final picked = result.files.single;
-  if (!isAllowedUploadFilename(picked.name) || picked.path == null) {
+  final picked = await showUploadSourceSheet(context);
+  if (picked == null) return;
+  if (!isAllowedUploadFilename(picked.name)) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Only PDF files are supported.')),
+        const SnackBar(content: Text('Only PDF, JPG or PNG files are supported.')),
       );
     }
     return;
@@ -37,7 +36,7 @@ Future<void> uploadDocumentForCategory(
     final uploaded = await uploadAction(
       propertyId: propertyId,
       category: category,
-      file: File(picked.path!),
+      file: File(picked.path),
     );
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

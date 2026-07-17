@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:dash_chat_2/dash_chat_2.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -12,6 +11,7 @@ import '../../providers/unit_providers.dart';
 import '../../../domain/entities/documind_document.dart';
 import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
+import '../../widgets/common/upload_source_sheet.dart';
 import 'documind_chat_logic.dart';
 import 'document_viewer_screen.dart';
 import 'documind_upload_summary.dart';
@@ -1047,7 +1047,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                               style: AppTextStyles.bodyMedium),
                           if (isLease)
                             Text(
-                              'Leases usually belong to a specific unit',
+                              'Tenancy agreements usually belong to a specific unit',
                               style: AppTextStyles.bodySmall
                                   .copyWith(color: AppColors.textMuted),
                             ),
@@ -1087,74 +1087,62 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       return;
     }
 
-    final result = await FilePicker.platform.pickFiles(
-      // Use any-file picker for better cloud provider compatibility (e.g., Google Drive),
-      // then enforce extension checks locally.
-      type: FileType.any,
-    );
+    final picked = await showUploadSourceSheet(context);
+    if (picked == null) return;
 
-    if (result != null) {
-      final selectedFile = result.files.single;
+    if (!isAllowedUploadFilename(picked.name)) {
+      _showSnackBar('Only PDF, JPG or PNG files are supported.', isError: true);
+      return;
+    }
 
-      if (!isAllowedUploadFilename(selectedFile.name)) {
-        _showSnackBar('Only PDF files are supported.', isError: true);
-        return;
-      }
+    // Ask which unit this document belongs to (skipped when the property
+    // has no units). Null result = user cancelled the dialog.
+    final unitChoice = await _pickUploadUnit(category: category);
+    if (unitChoice == null) return;
 
-      if (selectedFile.path == null) {
-        _showSnackBar('Unable to access selected file path.', isError: true);
-        return;
-      }
+    // Show loading state
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0.0;
+    });
 
-      // Ask which unit this document belongs to (skipped when the property
-      // has no units). Null result = user cancelled the dialog.
-      final unitChoice = await _pickUploadUnit(category: category);
-      if (unitChoice == null) return;
+    try {
+      final uploadAction = ref.read(uploadDocumentActionProvider);
 
-      // Show loading state
-      setState(() {
-        _isUploading = true;
-        _uploadProgress = 0.0;
-      });
+      // Simulate progress (if needed)
+      setState(() => _uploadProgress = 0.3);
 
-      try {
-        final uploadAction = ref.read(uploadDocumentActionProvider);
+      final uploaded = await uploadAction(
+        propertyId: _selectedPropertyId!,
+        category: category,
+        file: File(picked.path),
+        unitId: unitChoice.unit?.id,
+        unitLabel: unitChoice.unit?.label,
+      );
 
-        // Simulate progress (if needed)
-        setState(() => _uploadProgress = 0.3);
+      // Complete progress
+      setState(() => _uploadProgress = 1.0);
 
-        final uploaded = await uploadAction(
-          propertyId: _selectedPropertyId!,
-          category: category,
-          file: File(selectedFile.path!),
-          unitId: unitChoice.unit?.id,
-          unitLabel: unitChoice.unit?.label,
+      // Wait a moment to show completion, then hide
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+        _showSnackBar(
+          uploadFactSummary(category, uploaded.extractedFacts) ??
+              'Document uploaded successfully!',
         );
-
-        // Complete progress
-        setState(() => _uploadProgress = 1.0);
-
-        // Wait a moment to show completion, then hide
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        if (mounted) {
-          setState(() {
-            _isUploading = false;
-            _uploadProgress = 0.0;
-          });
-          _showSnackBar(
-            uploadFactSummary(category, uploaded.extractedFacts) ??
-                'Document uploaded successfully!',
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _isUploading = false;
-            _uploadProgress = 0.0;
-          });
-          _showSnackBar('Upload failed: ${e.toString()}', isError: true);
-        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+        _showSnackBar('Upload failed: ${e.toString()}', isError: true);
       }
     }
   }
@@ -1881,10 +1869,14 @@ class _UploadUnitChoice {
   const _UploadUnitChoice(this.unit);
 }
 
-/// The backend ingest is PyPDFLoader-only and stores application/pdf, so
-/// the picker must reject anything but PDF up front (DOCX is future work).
-bool isAllowedUploadFilename(String filename) =>
-    filename.toLowerCase().endsWith('.pdf');
+/// The backend ingests PDFs plus JPG/PNG photos (Gemini transcription), so
+/// the picker accepts exactly those extensions (DOCX is future work).
+const Set<String> allowedUploadExtensions = {'.pdf', '.jpg', '.jpeg', '.png'};
+
+bool isAllowedUploadFilename(String filename) {
+  final lower = filename.toLowerCase();
+  return allowedUploadExtensions.any(lower.endsWith);
+}
 
 /// Option order for the upload unit-picker dialog. A null entry is the
 /// "Whole property" option. Leases lead with units (a lease almost always

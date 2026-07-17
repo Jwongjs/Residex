@@ -53,4 +53,12 @@ void main() {
       expect(isAllowedUploadFilename('lease.txt'), isFalse);
     });
   });
+
+  test('image filenames are allowed for upload', () {
+    expect(isAllowedUploadFilename('receipt.JPG'), isTrue);
+    expect(isAllowedUploadFilename('scan.jpeg'), isTrue);
+    expect(isAllowedUploadFilename('bill.png'), isTrue);
+    expect(isAllowedUploadFilename('doc.docx'), isFalse);
+    expect(isAllowedUploadFilename('lease.pdf'), isTrue);
+  });
 }
