@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -35,6 +35,25 @@ async def documind_upload(
             unit_id=unit_id,
             unit_label=unit_label,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/documind/documents/{doc_id}/facts", response_model=FactsUpdateResponse)
+async def update_document_facts(doc_id: str, payload: FactsUpdateRequest):
+    """
+    Replace a document's reviewed expense lines (Expenses uploads).
+
+    Subtypes are whitelist-validated server-side; a body with no valid
+    line returns 400 and the stored facts stay untouched.
+    """
+    try:
+        result = await documind_service.update_expense_lines(
+            doc_id=doc_id,
+            landlord_id=payload.landlord_id,
+            lines=[line.model_dump() for line in payload.expense_lines],
+        )
+        return FactsUpdateResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

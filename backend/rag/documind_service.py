@@ -2,7 +2,7 @@ import os
 import re
 import uuid
 import tempfile
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from fastapi import UploadFile
 from models.documind_models import *
 from datetime import datetime, timedelta, date
@@ -29,7 +29,7 @@ import firebase_admin
 from firebase_admin import storage as firebase_storage
 from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
-from rag.fact_extractor import FactExtractor
+from rag.fact_extractor import FactExtractor, validate_expense_lines
 from rag.pdf_ocr import PdfOcr
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
@@ -593,6 +593,32 @@ Rules:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
                 print(f"🗑️ Cleaned up temp file: {temp_path}")
+
+    async def update_expense_lines(
+        self, doc_id: str, landlord_id: str, lines: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Replace a document's expense_lines after user review. Validation
+        reuses the extractor whitelist, so the API can never store a subtype
+        the finance engine doesn't understand."""
+        cleaned = validate_expense_lines(lines)
+        if not cleaned:
+            raise ValueError(
+                "No valid expense lines. Each line needs a known subtype and an amount."
+            )
+        doc_ref = self.db.collection('documind_docs').document(doc_id)
+        snapshot = doc_ref.get()
+        if not snapshot.exists:
+            raise ValueError("Document not found.")
+        data = snapshot.to_dict() or {}
+        if data.get("landlord_id") != landlord_id:
+            raise ValueError("Document not found.")
+        facts = dict(data.get("extracted_facts") or {})
+        facts["expense_lines"] = cleaned
+        doc_ref.update({
+            "extracted_facts": facts,
+            "facts_extracted_at": firestore.SERVER_TIMESTAMP,
+        })
+        return {"doc_id": doc_id, "extracted_facts": facts}
 
     async def ask_documind(self, payload: AskRequest) -> AskResponse:
         """

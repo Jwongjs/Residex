@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 
 class DocUploadResponse(BaseModel):
@@ -209,3 +209,21 @@ class FinanceSummaryResponse(BaseModel):
     properties: List[PropertyFinance]
     caveats: List[str]
     missing_categories: Dict[str, List[str]]
+
+
+class ExpenseLineEdit(BaseModel):
+    subtype: str
+    amount: float
+    description: Optional[str] = None
+    date: Optional[str] = None
+    period_year: Optional[int] = None
+
+
+class FactsUpdateRequest(BaseModel):
+    landlord_id: str
+    expense_lines: List[ExpenseLineEdit]
+
+
+class FactsUpdateResponse(BaseModel):
+    doc_id: str
+    extracted_facts: Dict[str, Any]
