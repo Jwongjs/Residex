@@ -29,19 +29,24 @@ def _first_pages(pdf_bytes: bytes, max_pages: int) -> bytes:
 
 
 class PdfOcr:
-    """Gemini-native OCR fallback for scanned PDFs.
+    """Gemini-native transcription for scanned PDFs and photo uploads.
 
-    The Gemini API reads PDF bytes directly (258 tokens/page) — no Tesseract
-    or image-conversion dependency. Best-effort by contract: any failure
-    returns None and the caller continues with whatever text it has.
+    The Gemini API reads PDF or image bytes directly (258 tokens/page) — no
+    Tesseract or image-conversion dependency. Best-effort by contract: any
+    failure returns None and the caller continues with whatever text it has.
+    Page capping applies to PDFs only; an image is a single page.
     """
 
     def __init__(self, llm):
         self._llm = llm
 
-    def transcribe(self, pdf_bytes: bytes) -> Optional[List[str]]:
+    def transcribe(
+        self, data: bytes, mime_type: str = "application/pdf"
+    ) -> Optional[List[str]]:
         try:
-            payload = _first_pages(pdf_bytes, MAX_OCR_PAGES)
+            payload = data
+            if mime_type == "application/pdf":
+                payload = _first_pages(data, MAX_OCR_PAGES)
             prompt = (
                 "Transcribe ALL text in this scanned document, page by page, "
                 "top to bottom. Preserve amounts, dates, names and reference "
@@ -52,7 +57,7 @@ class PdfOcr:
                 {"type": "text", "text": prompt},
                 {
                     "type": "media",
-                    "mime_type": "application/pdf",
+                    "mime_type": mime_type,
                     "data": base64.b64encode(payload).decode("ascii"),
                 },
             ])
@@ -64,5 +69,5 @@ class PdfOcr:
             pages = [part for part in pages if part]
             return pages or None
         except Exception as e:
-            print(f"⚠️ OCR fallback failed (non-blocking): {e}")
+            print(f"OCR fallback failed (non-blocking): {e}")
             return None

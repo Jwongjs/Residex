@@ -1,3 +1,4 @@
+import base64
 import io
 import unittest
 
@@ -60,3 +61,41 @@ class PdfOcrTests(unittest.TestCase):
     def test_first_pages_garbage_bytes_fall_back_to_original(self):
         garbage = b"not a pdf at all"
         self.assertEqual(_first_pages(garbage, MAX_OCR_PAGES), garbage)
+
+
+class _MimeCapturingLlm:
+    """Records the media part of the last invoke() message."""
+
+    def __init__(self, content="line one"):
+        self.media = None
+        self._content = content
+
+    def invoke(self, messages):
+        for part in messages[0].content:
+            if isinstance(part, dict) and part.get("type") == "media":
+                self.media = part
+
+        class _R:
+            pass
+
+        r = _R()
+        r.content = self._content
+        return r
+
+
+class TestTranscribeMimeTypes(unittest.TestCase):
+    def test_default_mime_is_pdf(self):
+        llm = _MimeCapturingLlm()
+        PdfOcr(llm).transcribe(b"%PDF-fake")
+        self.assertEqual(llm.media["mime_type"], "application/pdf")
+
+    def test_image_mime_passes_through_without_page_capping(self):
+        llm = _MimeCapturingLlm()
+        raw = b"\x89PNG-fake-bytes"
+        result = PdfOcr(llm).transcribe(raw, mime_type="image/png")
+        self.assertEqual(llm.media["mime_type"], "image/png")
+        # Image bytes must reach the LLM unmodified (no pypdf page slicing).
+        self.assertEqual(
+            llm.media["data"], base64.b64encode(raw).decode("ascii")
+        )
+        self.assertEqual(result, ["line one"])
