@@ -2,7 +2,7 @@ import os
 import re
 import uuid
 import tempfile
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from fastapi import UploadFile
 from models.documind_models import *
 from datetime import datetime, timedelta, date
@@ -38,6 +38,23 @@ from rag.finance_engine import compute_finance_summary
 
 EMBED_DIM = 768 # Default to 768 if not set
 OCR_TEXT_THRESHOLD = 200  # chars; below this a PDF is treated as scanned
+
+UPLOAD_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+
+
+def resolve_upload_kind(filename: Optional[str]) -> Tuple[str, str]:
+    """(extension, content_type) for an upload; ValueError for anything the
+    ingestion pipeline can't read."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    content_type = UPLOAD_CONTENT_TYPES.get(ext)
+    if content_type is None:
+        raise ValueError("Unsupported file type. Upload a PDF or a JPG/PNG image.")
+    return ext, content_type
 # 7-category taxonomy (2026-07 financial-intelligence spec) plus the
 # 'expenses' ingestion bucket (2026-07-18): combined statements upload as
 # 'expenses' and carry line items instead of one amount. Documents stored
@@ -424,6 +441,8 @@ Rules:
                 f"Unsupported category '{category}'. Allowed: {', '.join(CATEGORY_ORDER)}"
             )
 
+        ext, content_type = resolve_upload_kind(file.filename)
+
         doc_id = str(uuid.uuid4())
         
         # Step 1: Save file temporarily
@@ -436,23 +455,29 @@ Rules:
             
             print(f"📄 Saved temp file: {temp_path}")
             
-            # Step 2: Load PDF and extract text
-            loader = PyPDFLoader(temp_path)
-            pages = loader.load()
-
-            # OCR fallback: a scanned PDF yields (near-)empty text. Send the
-            # PDF bytes to Gemini for transcription so the document becomes
-            # searchable and extractable. Best-effort — on failure we continue
-            # with whatever text exists (possibly none).
-            total_text = sum(len((page.page_content or "").strip()) for page in pages)
-            if total_text < OCR_TEXT_THRESHOLD:
-                transcripts = self._pdf_ocr.transcribe(content)
+            if content_type == "application/pdf":
+                # Step 2a: text-layer extraction, OCR fallback for scans.
+                loader = PyPDFLoader(temp_path)
+                pages = loader.load()
+                total_text = sum(len((page.page_content or "").strip()) for page in pages)
+                if total_text < OCR_TEXT_THRESHOLD:
+                    transcripts = self._pdf_ocr.transcribe(content)
+                    if transcripts:
+                        pages = [
+                            Document(page_content=text, metadata={"page": index})
+                            for index, text in enumerate(transcripts)
+                        ]
+                        print(f"OCR fallback transcribed {len(pages)} page(s)")
+            else:
+                # Step 2b: images have no text layer — transcribe directly.
+                pages = []
+                transcripts = self._pdf_ocr.transcribe(content, mime_type=content_type)
                 if transcripts:
                     pages = [
                         Document(page_content=text, metadata={"page": index})
                         for index, text in enumerate(transcripts)
                     ]
-                    print(f"🔍 OCR fallback transcribed {len(pages)} page(s)")
+                    print(f"Transcribed image upload ({len(pages)} block(s))")
 
             # Step 3: Chunk text
             text_splitter = RecursiveCharacterTextSplitter(
@@ -520,10 +545,10 @@ Rules:
             except Exception as e:
                 print(f"⚠️ Fact extraction failed (non-blocking): {e}")
 
-            # Step 5.5: Upload original PDF to Firebase Storage
-            storage_path = f"documind/{landlord_id}/{property_id}/{doc_id}.pdf"
+            # Step 5.5: Upload original file to Firebase Storage
+            storage_path = f"documind/{landlord_id}/{property_id}/{doc_id}{ext}"
             blob = self.storage_bucket.blob(storage_path)
-            blob.upload_from_string(content, content_type="application/pdf")
+            blob.upload_from_string(content, content_type=content_type)
 
             # Step 6: Store document metadata
             file_size = os.path.getsize(temp_path)

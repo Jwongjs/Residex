@@ -548,7 +548,8 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.category_filter_mode, "clarification_selected")
         self.assertEqual(response.searched_categories, ["upkeep"])
         self.assertEqual(
-            fake_db.last_chunk_category_filter, ("in", ["upkeep", "utility", "warranty"])
+            fake_db.last_chunk_category_filter,
+            ("in", ["upkeep", "utility", "warranty", "expenses"]),
         )
 
     async def test_citations_and_context_carry_unit_fields(self):
@@ -1276,7 +1277,7 @@ class CategoryAliasReadPathTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             service._hybrid_retriever.calls[0]["categories"],
-            ["upkeep", "utility", "warranty"],
+            ["upkeep", "utility", "warranty", "expenses"],
         )
         self.assertEqual(response.searched_categories, ["upkeep"])
         self.assertEqual(response.citations[0].category, "upkeep")

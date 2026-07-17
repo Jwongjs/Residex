@@ -16,7 +16,7 @@ async def documind_upload(
     unit_label: str | None = Form(None),
 ):
     """
-    Upload a PDF document for a property.
+    Upload a document (PDF, or JPG/PNG photo) for a property.
 
     Category options: 'lease', 'insurance', 'loan', 'tax', 'upkeep',
     'maintenance', 'rental_invoice' (legacy names utility/receipt/warranty are
