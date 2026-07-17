@@ -38,21 +38,27 @@ from rag.finance_engine import compute_finance_summary
 
 EMBED_DIM = 768 # Default to 768 if not set
 OCR_TEXT_THRESHOLD = 200  # chars; below this a PDF is treated as scanned
-# 7-category taxonomy (2026-07 financial-intelligence spec). Documents stored
-# before the rename keep their legacy category strings; LEGACY_CATEGORY_ALIASES
-# maps them at every read and expand_categories_for_query() widens stored-name
-# queries. No data migration.
+# 7-category taxonomy (2026-07 financial-intelligence spec) plus the
+# 'expenses' ingestion bucket (2026-07-18): combined statements upload as
+# 'expenses' and carry line items instead of one amount. Documents stored
+# before either rename keep their category strings; LEGACY_CATEGORY_ALIASES
+# maps them at every read and expand_categories_for_query() widens
+# stored-name queries. No data migration.
 ALLOWED_CATEGORIES = {
     "lease", "insurance", "loan", "tax", "upkeep", "maintenance", "rental_invoice",
+    "expenses",
 }
 CATEGORY_ORDER = [
     "lease", "insurance", "loan", "tax", "upkeep", "maintenance", "rental_invoice",
+    "expenses",
 ]
 LEGACY_CATEGORY_ALIASES = {
     "utility": "upkeep",
     "receipt": "rental_invoice",
     "warranty": "upkeep",
 }
+# Granular stored names the Expenses bucket groups at display/query time.
+EXPENSE_GROUP = ["insurance", "loan", "tax", "upkeep", "maintenance"]
 
 
 def normalize_category(category: Optional[str]) -> Optional[str]:
@@ -64,15 +70,29 @@ def normalize_category(category: Optional[str]) -> Optional[str]:
 
 
 def expand_categories_for_query(categories: List[str]) -> List[str]:
-    """Current-taxonomy filter -> every stored name it must match, including
-    legacy spellings (chunks written pre-rename still carry 'utility' etc.)."""
+    """Current-taxonomy filter -> every stored name it must match: legacy
+    spellings (chunks written pre-rename still carry 'utility' etc.) and the
+    expenses group in both directions — an 'expenses' filter matches granular
+    docs, and a granular filter matches combined 'expenses' statements."""
     expanded: List[str] = []
+
+    def _add(name: str) -> None:
+        if name not in expanded:
+            expanded.append(name)
+
     for category in categories:
-        if category not in expanded:
-            expanded.append(category)
+        _add(category)
         for legacy, current in LEGACY_CATEGORY_ALIASES.items():
-            if current == category and legacy not in expanded:
-                expanded.append(legacy)
+            if current == category:
+                _add(legacy)
+        if category == "expenses":
+            for granular in EXPENSE_GROUP:
+                _add(granular)
+                for legacy, current in LEGACY_CATEGORY_ALIASES.items():
+                    if current == granular:
+                        _add(legacy)
+        elif category in EXPENSE_GROUP:
+            _add("expenses")
     return expanded
 
 # Question-side unit reference resolution. Matching is deterministic and
