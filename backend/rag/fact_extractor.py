@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import date
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 MAX_INPUT_CHARS = 8000
 
@@ -111,6 +112,66 @@ _FIELD_HINTS: Dict[str, str] = {
     ),
 }
 
+# Canonical expense-line subtypes -> the finance category each amount rolls
+# into. Single source of truth: extraction and the PATCH API validate against
+# the keys; the finance engine maps breakdown rows with the values.
+EXPENSE_SUBTYPE_CATEGORY: Dict[str, str] = {
+    "loan_interest": "loan",
+    "assessment_tax": "tax",
+    "quit_rent": "tax",
+    "parcel_rent": "tax",
+    "maintenance": "maintenance",
+    "sinking_fund": "maintenance",
+    "insurance_premium": "insurance",
+    "upkeep": "upkeep",
+}
+
+# Classification is a lookup against this table, not model judgment — the
+# Malay/English wording landlords actually see on Malaysian bills.
+_EXPENSE_SYNONYMS = (
+    "- loan_interest: housing loan interest, interest charged, faedah pinjaman\n"
+    "- assessment_tax: assessment, cukai pintu, cukai taksiran\n"
+    "- quit_rent: quit rent, cukai tanah\n"
+    "- parcel_rent: parcel rent, cukai petak\n"
+    "- maintenance: service charge, caj perkhidmatan, management fee, "
+    "maintenance fee, caj penyelenggaraan\n"
+    "- sinking_fund: sinking fund, kumpulan wang penjelas\n"
+    "- insurance_premium: insurance premium, fire policy, houseowner policy, "
+    "takaful contribution\n"
+    "- upkeep: repairs, servicing, plumbing or electrical works, Indah Water, "
+    "utility bills paid by the owner"
+)
+
+
+def validate_expense_lines(lines: Any) -> List[Dict[str, Any]]:
+    """Whitelist-validated copy of expense line items; invalid entries are
+    dropped, never guessed. Shared by extraction and the facts PATCH API."""
+    if not isinstance(lines, list):
+        return []
+    cleaned: List[Dict[str, Any]] = []
+    for line in lines:
+        if not isinstance(line, dict):
+            continue
+        subtype = str(line.get("subtype") or "").strip().lower().replace(" ", "_")
+        if subtype not in EXPENSE_SUBTYPE_CATEGORY:
+            continue
+        amount = FactExtractor._coerce("expenses", "amount", str(line.get("amount", "")))
+        if amount is None:
+            continue
+        entry: Dict[str, Any] = {"subtype": subtype, "amount": amount}
+        description = str(line.get("description") or "").strip()
+        if description:
+            entry["description"] = description[:200]
+        date_value = FactExtractor._coerce("expenses", "date", str(line.get("date", "")))
+        if date_value is not None:
+            entry["date"] = date_value
+        year_value = FactExtractor._coerce("expenses", "year", str(line.get("period_year", "")))
+        if year_value is not None:
+            entry["period_year"] = year_value
+        cleaned.append(entry)
+    return cleaned
+
+
 _AMOUNT_STRIP = re.compile(r"[^0-9.\-]")
 _SKIP_VALUES = {"", "none", "null", "unknown", "n/a", "na", "-"}
 
@@ -130,11 +191,13 @@ class FactExtractor:
     def extract(self, category: str, text: str) -> Optional[Dict[str, Any]]:
         """Validated facts (plus a 'confidence' key when provided) or None.
         Never raises on LLM or parse trouble."""
-        fields = _FIELD_TYPES.get(category)
-        if not fields:
-            return None
         cleaned = (text or "").strip()
         if not cleaned:
+            return None
+        if category == "expenses":
+            return self._extract_expense_lines(cleaned[:MAX_INPUT_CHARS])
+        fields = _FIELD_TYPES.get(category)
+        if not fields:
             return None
 
         try:
@@ -142,7 +205,7 @@ class FactExtractor:
             response = self._llm.invoke(prompt)
             content = str(response.content).strip()
         except Exception as e:
-            print(f"⚠️ Fact extraction LLM call failed: {e}")
+            print(f"Fact extraction LLM call failed: {e}")
             return None
 
         facts = self._parse(category, fields, content)
@@ -175,6 +238,65 @@ Rules:
 Respond with ONLY one line of semicolon-separated key=value pairs, e.g.:
 amount=460.63;period_year=2026;confidence=0.9
 """.strip()
+
+    def _extract_expense_lines(self, text: str) -> Optional[Dict[str, Any]]:
+        """JSON line-item extraction for combined expense documents."""
+        prompt = f"""
+You are extracting expense line items from a Malaysian landlord's property
+expense document (bill, statement or receipt). One document may contain
+several distinct charge types.
+
+Document text (may be truncated):
+{text}
+
+Allowed subtypes and the wording that maps to each (classify strictly by
+this table):
+{_EXPENSE_SYNONYMS}
+
+Rules:
+- Extract ONLY charges billed TO the property owner. Ignore amounts the
+  owner bills to a tenant, and ignore totals that duplicate itemised lines.
+- One object per distinct charge. NEVER invent amounts.
+- Dates must be ISO YYYY-MM-DD; period_year a 4-digit year. Include
+  whichever the document states.
+- If an insurance premium appears, also report policy_start and policy_end.
+
+Respond with ONLY a JSON object, no markdown fences, shaped exactly like:
+{{"lines": [{{"subtype": "maintenance", "description": "Service charge Jan-Mar",
+ "amount": 1050.00, "date": "2025-01-01", "period_year": 2025}}],
+ "policy_start": null, "policy_end": null, "confidence": 0.9}}
+""".strip()
+        try:
+            response = self._llm.invoke(prompt)
+            content = str(response.content).strip()
+        except Exception as e:
+            print(f"Expense-line extraction LLM call failed: {e}")
+            return None
+
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        try:
+            payload = json.loads(content[start:end + 1])
+        except ValueError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        lines = validate_expense_lines(payload.get("lines"))
+        if not lines:
+            return None
+        facts: Dict[str, Any] = {"expense_lines": lines}
+        for key in ("policy_start", "policy_end"):
+            value = self._coerce("expenses", "date", str(payload.get(key) or ""))
+            if value is not None:
+                facts[key] = value
+        try:
+            facts["confidence"] = max(0.0, min(1.0, float(payload.get("confidence"))))
+        except (TypeError, ValueError):
+            pass
+        return facts
 
     def _parse(self, category: str, fields: Dict[str, str], content: str) -> Dict[str, Any]:
         facts: Dict[str, Any] = {}

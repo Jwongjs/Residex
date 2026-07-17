@@ -1,6 +1,6 @@
 import unittest
 
-from rag.fact_extractor import FactExtractor
+from rag.fact_extractor import FactExtractor, EXPENSE_SUBTYPE_CATEGORY, validate_expense_lines
 
 
 class _LLMResponse:
@@ -95,3 +95,57 @@ class FactExtractorTests(unittest.TestCase):
         llm = _FakeLLM("amount=100;service_date=2026-03-12;confidence=0.9")
         FactExtractor(llm).extract("upkeep", "x" * 20000)
         self.assertLess(len(llm.last_prompt), 12000)
+
+
+class _FakeExpensesLlm:
+    def __init__(self, content):
+        self._content = content
+
+    def invoke(self, prompt):
+        class _R:
+            pass
+
+        r = _R()
+        r.content = self._content
+        return r
+
+
+class TestExpenseLineExtraction(unittest.TestCase):
+    def test_combined_statement_yields_validated_lines(self):
+        payload = (
+            '```json\n'
+            '{"lines": ['
+            '{"subtype": "maintenance", "description": "Service charge Q1", "amount": "RM 1,050.00", "period_year": 2025},'
+            '{"subtype": "sinking_fund", "amount": 210.0, "period_year": 2025},'
+            '{"subtype": "insurance_premium", "amount": 1800.0, "date": "2025-03-01"},'
+            '{"subtype": "quit_rent", "amount": 316.87, "period_year": 2025},'
+            '{"subtype": "made_up_charge", "amount": 999.0}'
+            '], "policy_end": "2026-03-01", "confidence": 0.9}\n```'
+        )
+        facts = FactExtractor(_FakeExpensesLlm(payload)).extract("expenses", "statement text")
+        self.assertEqual(len(facts["expense_lines"]), 4)  # bogus subtype dropped
+        self.assertEqual(facts["expense_lines"][0]["amount"], 1050.0)  # currency stripped
+        self.assertEqual(facts["policy_end"], "2026-03-01")
+        self.assertEqual(facts["confidence"], 0.9)
+
+    def test_no_valid_lines_returns_none(self):
+        facts = FactExtractor(
+            _FakeExpensesLlm('{"lines": [{"subtype": "nonsense", "amount": 10}]}')
+        ).extract("expenses", "text")
+        self.assertIsNone(facts)
+
+    def test_unparseable_json_returns_none(self):
+        facts = FactExtractor(_FakeExpensesLlm("not json at all")).extract("expenses", "text")
+        self.assertIsNone(facts)
+
+
+class TestValidateExpenseLines(unittest.TestCase):
+    def test_bad_dates_and_years_are_dropped_from_the_line_not_the_list(self):
+        cleaned = validate_expense_lines([
+            {"subtype": "upkeep", "amount": 150, "date": "31/12/2025", "period_year": "20255"},
+        ])
+        self.assertEqual(cleaned, [{"subtype": "upkeep", "amount": 150.0}])
+
+    def test_every_subtype_maps_to_a_finance_category(self):
+        for subtype, category in EXPENSE_SUBTYPE_CATEGORY.items():
+            self.assertIn(category, {"loan", "tax", "maintenance", "insurance", "upkeep"})
