@@ -295,6 +295,24 @@ class DocuMindRemoteDataSource {
       throw Exception('Failed to get view URL: ${response.body}');
     }
   }
+
+  /// Replace a document's reviewed expense lines.
+  Future<void> updateExpenseLines({
+    required String landlordId,
+    required String docId,
+    required List<Map<String, dynamic>> lines,
+  }) async {
+    final uri = Uri.parse(
+        '${ApiConstants.baseUrl}${ApiConstants.documindUpdateFacts(docId)}');
+    final response = await httpClient.patch(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'landlord_id': landlordId, 'expense_lines': lines}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update expense lines: ${response.body}');
+    }
+  }
 }
 
 /// Thrown when a cited document no longer exists (e.g. deleted, or predates

@@ -227,3 +227,26 @@ final documindGetViewUrlActionProvider = Provider<
     );
   };
 });
+
+/// Save user-reviewed expense lines for an uploaded Expenses document.
+final updateExpenseLinesActionProvider = Provider<Future<void> Function({
+  required String docId,
+  required List<Map<String, dynamic>> lines,
+})>((ref) {
+  return ({
+    required String docId,
+    required List<Map<String, dynamic>> lines,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.updateExpenseLines(
+      landlordId: landlordId,
+      docId: docId,
+      lines: lines,
+    );
+    // Facts changed: documents, figures and year options are folds over them.
+    ref.invalidate(documindDocumentsProvider);
+    ref.invalidate(financeSummaryProvider);
+    ref.invalidate(financeYearsProvider);
+  };
+});

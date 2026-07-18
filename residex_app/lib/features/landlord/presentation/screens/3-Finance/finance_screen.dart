@@ -7,6 +7,7 @@ import '../../../domain/entities/finance_summary.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
+import '../../widgets/common/expense_lines_review_sheet.dart';
 import '../../widgets/common/upload_source_sheet.dart';
 import '../2-Documind/documind_screen.dart' show isAllowedUploadFilename;
 import '../2-Documind/documind_upload_summary.dart';
@@ -43,6 +44,17 @@ Future<void> uploadDocumentForCategory(
         content: Text(uploadFactSummary(category, uploaded.extractedFacts) ??
             'Document uploaded.'),
       ));
+      final lines = uploaded.extractedFacts?['expense_lines'];
+      if (category == 'expenses' && lines is List && lines.isNotEmpty) {
+        await showExpenseLinesReviewSheet(
+          context,
+          docId: uploaded.docId,
+          initialLines: [
+            for (final line in lines)
+              if (line is Map) Map<String, dynamic>.from(line),
+          ],
+        );
+      }
     }
   } catch (e) {
     if (context.mounted) {

@@ -11,6 +11,7 @@ import '../../providers/unit_providers.dart';
 import '../../../domain/entities/documind_document.dart';
 import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
+import '../../widgets/common/expense_lines_review_sheet.dart';
 import '../../widgets/common/upload_source_sheet.dart';
 import 'documind_chat_logic.dart';
 import 'document_viewer_screen.dart';
@@ -1133,6 +1134,17 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
           uploadFactSummary(category, uploaded.extractedFacts) ??
               'Document uploaded successfully!',
         );
+        final lines = uploaded.extractedFacts?['expense_lines'];
+        if (category == 'expenses' && lines is List && lines.isNotEmpty) {
+          await showExpenseLinesReviewSheet(
+            context,
+            docId: uploaded.docId,
+            initialLines: [
+              for (final line in lines)
+                if (line is Map) Map<String, dynamic>.from(line),
+            ],
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
