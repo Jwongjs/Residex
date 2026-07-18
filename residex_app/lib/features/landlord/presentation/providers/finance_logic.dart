@@ -55,6 +55,18 @@ List<int> financeYearOptions(List<DocuMindDocument> docs, int currentYear) {
     if (periodYear is int && periodYear > 1990 && periodYear < 2200) {
       years.add(periodYear);
     }
+    final lines = facts['expense_lines'];
+    if (lines is List) {
+      for (final line in lines) {
+        if (line is Map) {
+          addFromDateString(line['date']);
+          final lineYear = line['period_year'];
+          if (lineYear is int && lineYear > 1990 && lineYear < 2200) {
+            years.add(lineYear);
+          }
+        }
+      }
+    }
   }
 
   final sorted = years.toList()..sort((a, b) => b.compareTo(a));

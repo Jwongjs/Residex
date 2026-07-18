@@ -12,7 +12,7 @@ void main() {
   test('lease facts produce rent + end date line', () {
     expect(
       uploadFactSummary('lease', {'monthly_rent': 1500.0, 'lease_end': '2026-09-01'}),
-      'Lease recorded — RM 1500.00/mo, ends 2026-09-01',
+      'Tenancy recorded — RM 1500.00/mo, ends 2026-09-01',
     );
   });
 
@@ -30,5 +30,22 @@ void main() {
 
   test('facts without a summarizable field return null', () {
     expect(uploadFactSummary('upkeep', const {'description': 'aircon'}), isNull);
+  });
+
+  test('expenses facts produce count + total line', () {
+    expect(
+      uploadFactSummary('expenses', {
+        'expense_lines': [
+          {'subtype': 'maintenance', 'amount': 4200.0},
+          {'subtype': 'sinking_fund', 'amount': 840.0},
+        ],
+      }),
+      '2 expenses recorded — RM 5040.00 total',
+    );
+  });
+
+  test('expenses facts without lines fall back to generic message', () {
+    expect(uploadFactSummary('expenses', {'expense_lines': []}), isNull);
+    expect(uploadFactSummary('expenses', {'other': 1}), isNull);
   });
 }

@@ -11,9 +11,9 @@ String? uploadFactSummary(String category, Map<String, dynamic>? facts) {
     case 'lease':
       final end = facts['lease_end'];
       final rent = money(facts['monthly_rent']);
-      if (rent != null && end is String) return 'Lease recorded — $rent/mo, ends $end';
-      if (end is String) return 'Lease recorded — ends $end';
-      if (rent != null) return 'Lease recorded — $rent/mo';
+      if (rent != null && end is String) return 'Tenancy recorded — $rent/mo, ends $end';
+      if (end is String) return 'Tenancy recorded — ends $end';
+      if (rent != null) return 'Tenancy recorded — $rent/mo';
       return null;
     case 'rental_invoice':
       final amount = money(facts['amount']);
@@ -50,6 +50,18 @@ String? uploadFactSummary(String category, Map<String, dynamic>? facts) {
       if (premium != null && end is String) return 'Policy recorded — $premium, expires $end';
       if (end is String) return 'Policy recorded — expires $end';
       return premium != null ? 'Policy recorded — $premium' : null;
+    case 'expenses':
+      final lines = facts['expense_lines'];
+      if (lines is List && lines.isNotEmpty) {
+        var total = 0.0;
+        for (final line in lines) {
+          final amount = line is Map ? line['amount'] : null;
+          if (amount is num) total += amount;
+        }
+        final noun = lines.length == 1 ? 'expense' : 'expenses';
+        return '${lines.length} $noun recorded — RM ${total.toStringAsFixed(2)} total';
+      }
+      return null;
   }
   return null;
 }
