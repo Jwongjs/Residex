@@ -53,6 +53,20 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     'expenses',
   ];
 
+  // Granular category vocabulary the chat checkpoint can override to. Unlike
+  // the collapsed folder list, this stays granular so a user correcting the
+  // predicted category can still name any backend category (e.g. "upkeep").
+  static const List<String> _overrideCategories = [
+    'lease',
+    'insurance',
+    'loan',
+    'tax',
+    'upkeep',
+    'maintenance',
+    'rental_invoice',
+    'expenses',
+  ];
+
   // Focus of the chat input. The empty-state overlay hides while it has
   // focus — the keyboard signal can't come from viewInsets because the
   // Scaffold consumes those before this subtree reads them.
@@ -1609,7 +1623,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       final userAction = mapDocuMindUserAction(
         awaitingUserAction: _awaitingUserAction,
         messageText: message.text,
-        categories: _categories,
+        categories: _overrideCategories,
         unitOptions: _pendingUnitOptions,
       );
       final answer = await askAction(
