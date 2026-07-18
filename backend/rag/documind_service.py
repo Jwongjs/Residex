@@ -213,7 +213,9 @@ class DocuMindService:
     def __init__(self):
         self._db = db
         self._storage_bucket = None
-        self._embeddings = embeddings
+        # None on purpose: the embeddings property builds the correctly
+        # configured client (task_type + output_dimensionality) exactly once.
+        self._embeddings = None
         self._llm = llm
         self._hybrid_retriever = HybridRetriever(db=self._db, embeddings=self.embeddings)
         self._conversation_store = ConversationStore(self._db)
@@ -241,15 +243,16 @@ class DocuMindService:
 
     @property
     def embeddings(self):
-        """Lazy-load Gemini embeddings with FIXED 768 dimensions."""
-        print("🔄 Initializing Gemini embeddings...")
-        self._embeddings = GoogleGenerativeAIEmbeddings(
-            model="gemini-embedding-001",  # Latest model (replaces embedding-001)
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
-            task_type="RETRIEVAL_DOCUMENT",
-            output_dimensionality= EMBED_DIM
-        )
-        print(f"✅ Gemini embeddings ready (dim={EMBED_DIM})")
+        """Lazy-load Gemini embeddings with FIXED 768 dimensions (built once)."""
+        if self._embeddings is None:
+            print("🔄 Initializing Gemini embeddings...")
+            self._embeddings = GoogleGenerativeAIEmbeddings(
+                model="gemini-embedding-001",  # Latest model (replaces embedding-001)
+                google_api_key=os.getenv("GOOGLE_API_KEY"),
+                task_type="RETRIEVAL_DOCUMENT",
+                output_dimensionality= EMBED_DIM
+            )
+            print(f"✅ Gemini embeddings ready (dim={EMBED_DIM})")
         return self._embeddings
 
     @property
@@ -488,31 +491,37 @@ Rules:
             
             print(f"📝 Split into {len(chunks)} chunks")
             
-            # Step 4: Generate embeddings and prepare chunk documents
-            chunk_documents = []
-            for i, chunk in enumerate(chunks):
+            # Step 4: Embed every chunk in ONE batched call. A quota error
+            # here fails fast and visibly (0 chunks, metadata-only) instead
+            # of grinding chunk-by-chunk through retry backoff.
+            vectors = []
+            if chunks:
                 try:
-                    embedding = self.embeddings.embed_query(chunk.page_content)
-                    
-                    chunk_doc = {
-                        'doc_id': doc_id,
-                        'landlord_id': landlord_id,
-                        'property_id': property_id,
-                        'unit_id': unit_id,
-                        'unit_label': unit_label,
-                        'category': category,
-                        'filename': file.filename,
-                        'chunk_index': i,
-                        'text': chunk.page_content,
-                        'embedding': Vector(embedding),
-                        # ✅ FIXED: Ensure page is always an integer (never None)
-                        'page': chunk.metadata.get('page', 0) if chunk.metadata.get('page') is not None else 0,
-                        'created_at': firestore.SERVER_TIMESTAMP,
-                    }
-                    chunk_documents.append(chunk_doc)
+                    vectors = self.embeddings.embed_documents(
+                        [chunk.page_content for chunk in chunks]
+                    )
                 except Exception as e:
-                    print(f"⚠️ Skipping chunk {i} due to error: {e}")
-                    continue
+                    print(f"⚠️ Batch embedding failed; indexing metadata only: {e}")
+                    vectors = []
+
+            chunk_documents = []
+            for i, (chunk, embedding) in enumerate(zip(chunks, vectors)):
+                chunk_doc = {
+                    'doc_id': doc_id,
+                    'landlord_id': landlord_id,
+                    'property_id': property_id,
+                    'unit_id': unit_id,
+                    'unit_label': unit_label,
+                    'category': category,
+                    'filename': file.filename,
+                    'chunk_index': i,
+                    'text': chunk.page_content,
+                    'embedding': Vector(embedding),
+                    # ✅ FIXED: Ensure page is always an integer (never None)
+                    'page': chunk.metadata.get('page', 0) if chunk.metadata.get('page') is not None else 0,
+                    'created_at': firestore.SERVER_TIMESTAMP,
+                }
+                chunk_documents.append(chunk_doc)
             
             print(f"✅ Generated {len(chunk_documents)} embeddings")
             

@@ -23,8 +23,15 @@ class _FakeLLM:
 
 
 class _FakeEmbeddings:
+    def __init__(self):
+        self.embed_documents_calls = []
+
     def embed_query(self, _question: str):
         return [0.1, 0.2, 0.3]
+
+    def embed_documents(self, texts):
+        self.embed_documents_calls.append(list(texts))
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 class _FakeSnapshot:
@@ -1605,6 +1612,52 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("couldn't compute", response.answer)
         self.assertEqual(response.citations, [])
+
+
+class EmbeddingClientAndBatchingTests(unittest.IsolatedAsyncioTestCase):
+    def test_embeddings_property_creates_client_once_and_caches(self):
+        service = DocuMindService.__new__(DocuMindService)
+        service._embeddings = None
+        with patch("rag.documind_service.GoogleGenerativeAIEmbeddings") as ctor:
+            ctor.return_value = MagicMock(name="embeddings_client")
+            first = service.embeddings
+            second = service.embeddings
+        self.assertIs(first, second)
+        self.assertEqual(ctor.call_count, 1)
+
+    async def test_ingest_embeds_all_chunks_in_one_batched_call(self):
+        fake_db = _FakeDB()
+        fake_embeddings = _FakeEmbeddings()
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        class _FakeUploadFile:
+            filename = "lease.pdf"
+
+            async def read(self):
+                return b"%PDF-1.4 fake content"
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = fake_embeddings
+            fake_page = MagicMock()
+            # ~2.5k chars -> multiple 1000-char chunks, so batching is observable.
+            fake_page.page_content = "lease clause text. " * 130
+            fake_page.metadata = {"page": 0}
+            loader_mock.return_value.load.return_value = [fake_page]
+
+            response = await service.ingest_document(
+                landlord_id="l1",
+                property_id="p1",
+                category="lease",
+                file=_FakeUploadFile(),
+            )
+
+        self.assertEqual(len(fake_embeddings.embed_documents_calls), 1)
+        self.assertGreater(len(fake_embeddings.embed_documents_calls[0]), 1)
+        self.assertEqual(response.chunks_indexed, len(fake_embeddings.embed_documents_calls[0]))
 
 
 if __name__ == "__main__":
