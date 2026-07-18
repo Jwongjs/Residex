@@ -66,4 +66,29 @@ void main() {
     ], today);
     expect(entries, isEmpty);
   });
+
+  test('expenses documents with a policy_end feed the expiry tile', () {
+    final entries = foldUpcomingExpiries([
+      _doc(docId: 'exp1', category: 'expenses', facts: {
+        'expense_lines': [
+          {'subtype': 'insurance_premium', 'amount': 1800.0},
+        ],
+        'policy_end': '2026-08-15',
+      }),
+    ], DateTime(2026, 7, 18));
+    expect(entries, hasLength(1));
+    expect(entries.single.kind, 'Policy expires');
+    expect(entries.single.date, DateTime(2026, 8, 15));
+  });
+
+  test('expenses documents without policy_end are ignored', () {
+    final entries = foldUpcomingExpiries([
+      _doc(docId: 'exp2', category: 'expenses', facts: {
+        'expense_lines': [
+          {'subtype': 'maintenance', 'amount': 100.0},
+        ],
+      }),
+    ], DateTime(2026, 7, 18));
+    expect(entries, isEmpty);
+  });
 }

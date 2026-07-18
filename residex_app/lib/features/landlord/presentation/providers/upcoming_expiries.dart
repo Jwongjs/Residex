@@ -9,9 +9,9 @@ class ExpiryEntry {
   final String propertyId;
   final String? unitId;
   final String? unitLabel;
-  final String category; // lease | insurance
+  final String category; // lease | insurance | expenses
   final String filename;
-  final String kind; // 'Lease ends' | 'Policy expires'
+  final String kind; // 'Tenancy ends' | 'Policy expires'
   final DateTime date;
 
   ExpiryEntry({
@@ -29,11 +29,15 @@ class ExpiryEntry {
 const Map<String, String> _dateKeyByCategory = {
   'lease': 'lease_end',
   'insurance': 'policy_end',
+  // Combined expense statements carry the insurance policy period when the
+  // extractor found a premium line; docs without policy_end fold to nothing.
+  'expenses': 'policy_end',
 };
 
 const Map<String, String> _kindByCategory = {
-  'lease': 'Lease ends',
+  'lease': 'Tenancy ends',
   'insurance': 'Policy expires',
+  'expenses': 'Policy expires',
 };
 
 /// Pure fold: every lease/policy end within the next [windowDays], soonest
