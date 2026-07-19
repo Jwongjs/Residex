@@ -35,15 +35,21 @@ class _Response:
 class OllamaChat:
     def __init__(
         self,
-        model: str = "qwen3:4b",
+        model: str = "qwen2.5:3b",
         base_url: Optional[str] = None,
         timeout: int = 600,
+        keep_alive: str = "30m",
     ):
+        # Default to a NON-reasoning instruct model. A reasoning model (qwen3)
+        # spends ~3400 thinking tokens and ~4 min/doc on a 4 GB GPU for this
+        # fixed-schema task, and its thinking can't be disabled via the API;
+        # qwen2.5:3b answers directly in ~4 s. Override with OLLAMA_FACT_MODEL.
         self.model = model
         self.base_url = (
             base_url or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434"
         ).rstrip("/")
         self.timeout = timeout
+        self.keep_alive = keep_alive
 
     def invoke(self, prompt: str) -> _Response:
         resp = requests.post(
@@ -54,6 +60,8 @@ class OllamaChat:
                 "stream": False,
                 # temperature 0: extraction is a lookup, not creative writing.
                 "options": {"temperature": 0},
+                # keep the model resident so bursty uploads don't reload it.
+                "keep_alive": self.keep_alive,
             },
             timeout=self.timeout,
         )

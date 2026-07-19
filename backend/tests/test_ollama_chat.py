@@ -26,6 +26,14 @@ class OllamaChatTests(unittest.TestCase):
         self.assertEqual(body["prompt"], "extract facts")
         self.assertFalse(body["stream"])
 
+    def test_includes_keep_alive_to_stay_resident(self):
+        # Cold-loading the fact model costs ~38s; keep_alive keeps it resident
+        # so a burst of uploads doesn't reload it each time.
+        with patch("rag.ollama_chat.requests.post") as post:
+            post.return_value = self._ok("x=1")
+            OllamaChat(keep_alive="30m").invoke("p")
+        self.assertEqual(post.call_args[1]["json"]["keep_alive"], "30m")
+
     def test_strips_reasoning_think_block(self):
         with patch("rag.ollama_chat.requests.post") as post:
             post.return_value = self._ok(

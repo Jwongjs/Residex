@@ -300,7 +300,7 @@ class DocuMindService:
         'gemini' keeps the hosted client."""
         provider = os.getenv("FACT_PROVIDER", "gemini").lower()
         if provider in ("ollama", "local"):
-            model = os.getenv("OLLAMA_FACT_MODEL", "qwen3:4b")
+            model = os.getenv("OLLAMA_FACT_MODEL", "qwen2.5:3b")
             print(f"🔄 Fact extraction routed to local Ollama ({model})")
             return OllamaChat(model=model, base_url=os.getenv("OLLAMA_BASE_URL"))
         return self._llm
