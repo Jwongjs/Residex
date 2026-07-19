@@ -31,6 +31,7 @@ from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
 from rag.fact_extractor import FactExtractor, validate_expense_lines
 from rag.pdf_ocr import PdfOcr
+from rag.ollama_embeddings import OllamaEmbeddings
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
 from rag.retriever import HybridRetriever
@@ -243,16 +244,29 @@ class DocuMindService:
 
     @property
     def embeddings(self):
-        """Lazy-load Gemini embeddings with FIXED 768 dimensions (built once)."""
+        """Lazy-load the embeddings client once. EMBEDDINGS_PROVIDER=ollama routes
+        to the local nomic-embed-text adapter (privacy: raw chunk text never leaves
+        the host); default 'gemini' keeps the hosted 768-dim client. Ingest and the
+        retriever share this one client, so the flag flips both legs together."""
         if self._embeddings is None:
-            print("🔄 Initializing Gemini embeddings...")
-            self._embeddings = GoogleGenerativeAIEmbeddings(
-                model="gemini-embedding-001",  # Latest model (replaces embedding-001)
-                google_api_key=os.getenv("GOOGLE_API_KEY"),
-                task_type="RETRIEVAL_DOCUMENT",
-                output_dimensionality= EMBED_DIM
-            )
-            print(f"✅ Gemini embeddings ready (dim={EMBED_DIM})")
+            provider = os.getenv("EMBEDDINGS_PROVIDER", "gemini").lower()
+            if provider == "ollama":
+                model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+                print(f"🔄 Initializing Ollama embeddings ({model})...")
+                self._embeddings = OllamaEmbeddings(
+                    model=model,
+                    base_url=os.getenv("OLLAMA_BASE_URL"),
+                )
+                print(f"✅ Ollama embeddings ready (model={model}, expected dim={EMBED_DIM})")
+            else:
+                print("🔄 Initializing Gemini embeddings...")
+                self._embeddings = GoogleGenerativeAIEmbeddings(
+                    model="gemini-embedding-001",  # Latest model (replaces embedding-001)
+                    google_api_key=os.getenv("GOOGLE_API_KEY"),
+                    task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality= EMBED_DIM
+                )
+                print(f"✅ Gemini embeddings ready (dim={EMBED_DIM})")
         return self._embeddings
 
     @property

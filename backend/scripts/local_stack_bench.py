@@ -4,7 +4,9 @@ Prints ONLY timings and sizes. Full OCR/chat text goes to scratchpad files
 so the operator can judge quality without PII entering any transcript.
 """
 import base64
+import os
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -12,7 +14,9 @@ import requests
 from pypdf import PdfReader
 
 OLLAMA = "http://localhost:11434"
-SCRATCH = Path(__file__).parent
+# PII guard: OCR/chat output must never land in the repo. Override with BENCH_SCRATCH.
+SCRATCH = Path(os.environ.get("BENCH_SCRATCH") or Path(tempfile.gettempdir()) / "documind_bench")
+SCRATCH.mkdir(parents=True, exist_ok=True)
 DOCS = Path(r"c:\Users\user\Desktop\Documind\demo_documents\ayer8_commercial_real_docs")
 AGREEMENT = DOCS / "2023 Final Agreement Ayer 8 and JNT 25102023 [Signed].pdf"
 PHOTO = DOCS / "maintenance_&_sinking_fund.jpeg"

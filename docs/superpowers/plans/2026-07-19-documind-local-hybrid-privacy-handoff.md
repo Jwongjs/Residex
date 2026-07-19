@@ -22,15 +22,33 @@ Context: real documents (signed tenancy agreements, tax bills) contain names, ad
   - Ollama at `%LOCALAPPDATA%\Programs\Ollama` (add to PATH; server `http://localhost:11434`) with models: `nomic-embed-text` (**768-dim — matches `EMBED_DIM` at documind_service.py:39, so the Firestore vector index shape is unchanged**), `qwen3:4b` (chat), `qwen2.5vl:7b` (vision OCR).
   - Tesseract at `C:\Program Files\Tesseract-OCR\tesseract.exe` (**eng traineddata only — Malay not installed**; bills contain Malay).
 - **Benchmark script:** [backend/scripts/local_stack_bench.py](../../../backend/scripts/local_stack_bench.py) — embeddings (30×1000-char batch, cold+warm), OCR (Tesseract vs qwen2.5vl on real agreement page 3 + real maintenance-bill photo), chat (qwen3:4b, cold+warm, tok/s).
-  - **Numbers were still running at handoff — no results recorded yet.** Rerun with `cd backend && python -u scripts/local_stack_bench.py`.
-  - ⚠️ The script writes OCR output (contains PII) to `Path(__file__).parent` — **before running the repo copy, redirect `SCRATCH` to a temp dir so PII text never lands in the repo.** Do not commit its outputs.
+  - Rerun with `cd backend && python -u scripts/local_stack_bench.py`. The script now defaults `SCRATCH` to `%TEMP%\documind_bench` (override with `BENCH_SCRATCH`), so PII OCR/chat output no longer lands in the repo — the earlier manual-redirect warning is resolved in code.
   - Success criteria agreed with user: 30-chunk embed in seconds; OCR page in seconds-to-tens-of-seconds; chat ≥10 tok/s with first token in a few seconds.
+
+### Benchmark results — collected 2026-07-19 (this machine: RTX 3050 4 GB, 15.4 GB RAM, Ryzen 7 5800H)
+
+| Leg | Model | Result | Criterion | Verdict |
+|---|---|---|---|---|
+| Embeddings | nomic-embed-text | 30 chunks: **cold 3.82 s / warm 2.48 s**, dim 768 | 30-chunk embed in seconds | **PASS** |
+| OCR | Tesseract v5.4 | agreement p3: **2.29 s** (3229 chars); bill photo: **0.72 s** (1736 chars) | seconds–tens of seconds | **PASS** |
+| OCR | qwen2.5vl:7b | **>15 min/page, did not finish (killed)** — only 1.46 GB of 5.88 GB fit in 4 GB VRAM, ~75% ran on CPU | seconds–tens of seconds | **FAIL** |
+| Chat | qwen3:4b | warm: **20.1 s, first token ~0.3 s, 23.4 tok/s** (413 tok). cold: 588 s, first token ~567 s, 22.5 tok/s | ≥10 tok/s, first token in a few seconds | **PASS (warm)** |
+
+**Verdict / decisions:**
+- **OCR → Tesseract, not the VLM.** On 4 GB VRAM the 7B vision model overflows to CPU and is ~2–3 orders of magnitude too slow (>15 min vs 2.29 s/page). Tesseract clears the bar with margin.
+- **Malay OCR — investigated & resolved (2026-07-19), much smaller risk than feared:**
+  - The Malay-dense fixtures — the **CUKAI TAKSIRAN** assessment-tax bills — are **digital PDFs with a text layer** (~900 chars/2p extractable), so they **bypass OCR entirely**; `pypdf` reads them, Malay included. Same for `water_pump_INV0711_upkeep.pdf`. Text-layer extraction must always be tried before OCR fallback (it already is).
+  - The docs that actually hit OCR (signed agreement, `INV FEB 25 ...` invoice, the two phone photos) are English or only lightly Malay. On `maintenance_&_sinking_fund.jpeg`, **`eng+msa` == `eng`-only** (same Malay terms recovered, e.g. PENGURUSAN) because Malay is Latin-script and the eng LSTM already transcribes it char-by-char.
+  - **Fix, proven:** `msa.traineddata` (tessdata_best, 8 MB) installs trivially; Tesseract lists `eng`+`msa`. `-l eng+msa` is non-destructive on English (1755 vs 1748 chars on the photo). **Plan for the OCR wiring (step 3):** default the Tesseract call to `-l eng+msa` and drop `msa.traineddata` into `C:\Program Files\Tesseract-OCR\tessdata\` as cheap insurance for the production case of a *phone-photographed paper Malay bill*. Do NOT reach for the VLM for Malay on this hardware.
+- **Embeddings → nomic-embed-text is a clear go.** Fast, and dim 768 keeps the Firestore index shape unchanged.
+- **Chat-local (later) is plausible but conditional.** Warm throughput (23 tok/s, sub-second first token) is fine; the killer is the **~9.5 min cold model load** under memory pressure. A local chat path would need the model kept resident (Ollama `keep_alive`) and would contend with the OCR model for the 4 GB card — the two can't both be resident. On this laptop, keep chat **hosted** as planned; revisit only on a box with more VRAM.
+- The 567 s cold first-token is a load artifact (qwen3:4b loading while the just-killed 7B VLM was still unloading/swapping), not steady-state — the 20.1 s warm run is representative.
 
 ## Target architecture
 
 | Leg | Provider | Notes |
 |---|---|---|
-| OCR (scanned PDFs, photos) | **Local** — qwen2.5vl:7b via Ollama, or Tesseract if VLM too slow | Replaces the Gemini call in [backend/rag/pdf_ocr.py](../../../backend/rag/pdf_ocr.py) |
+| OCR (scanned PDFs, photos) | **Local — Tesseract** (benchmark rejected qwen2.5vl:7b on 4 GB VRAM, see results below) | Replaces the Gemini call in [backend/rag/pdf_ocr.py](../../../backend/rag/pdf_ocr.py) |
 | Embeddings (ingest + query) | **Local** — nomic-embed-text via Ollama | Ingest at documind_service.py Step 4; query at [backend/rag/retriever.py](../../../backend/rag/retriever.py) `embed_query`. Use nomic prefixes: `search_document:` / `search_query:` |
 | Fact extraction | **Local** (qwen3:4b JSON) — it sees full leading text, so it must not go hosted unscrubbed | [backend/rag/fact_extractor.py](../../../backend/rag/fact_extractor.py) |
 | Chat / answer generation | **Hosted** (Gemini; move to paid tier) | Context chunks pass through the PII gate first |
@@ -49,9 +67,9 @@ Context: real documents (signed tenancy agreements, tax bills) contain names, ad
 
 ## Next steps (ordered)
 
-1. Rerun/collect benchmark numbers; record them here; verdict vs the success criteria (decides qwen2.5vl vs Tesseract for OCR, and whether chat-local is even plausible later).
-2. Ollama embeddings adapter + `EMBEDDINGS_PROVIDER` flag + tests (mirror `_FakeEmbeddings` harness pattern in `test_documind_service_flows.py`; TDD).
-3. OCR provider flag in the `PdfOcr` path (+ fix the 10-page cap) + tests.
+1. ~~Rerun/collect benchmark numbers; record them here; verdict vs the success criteria.~~ **DONE 2026-07-19** — see "Benchmark results" above. Outcome: OCR→Tesseract, embeddings→nomic-embed-text, chat stays hosted.
+2. ~~Ollama embeddings adapter + `EMBEDDINGS_PROVIDER` flag + tests.~~ **DONE 2026-07-19** — [backend/rag/ollama_embeddings.py](../../../backend/rag/ollama_embeddings.py) (`OllamaEmbeddings`, nomic `search_document:`/`search_query:` prefixes over `/api/embed`); `embeddings` property in documind_service.py branches on `EMBEDDINGS_PROVIDER` (default `gemini`, opt into `ollama`), so ingest + retriever flip together. Env: `EMBEDDINGS_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_EMBED_MODEL`. `requests` added to requirements.txt. Tests: `test_ollama_embeddings.py` (4) + `test_embeddings_property_selects_ollama_when_provider_flag_set`. Full suite **157 pass**.
+3. ~~OCR provider flag in the `PdfOcr` path (+ fix the 10-page cap) + tests.~~ **DONE 2026-07-19** — [backend/rag/pdf_ocr.py](../../../backend/rag/pdf_ocr.py): `TesseractOcr` (pipes image bytes `stdin`->`stdout`, no PII on disk; default `-l eng+msa`) + `_extract_page_images` (all pages, so the 10-page cap doesn't apply to local OCR). `PdfOcr` routes on `OCR_PROVIDER` (default `gemini`; `local` = Tesseract). Env: `OCR_PROVIDER`, `OCR_LANG` (default `eng+msa`), `TESSERACT_CMD`, `TESSDATA_DIR`. Tests: `test_ocr_local.py` (8). Real-binary `stdin`/`stdout` contract smoke-tested on the bill photo (1803 chars). Full suite **165 pass**. NOTE: install `msa.traineddata` into the tessdata dir (or set `TESSDATA_DIR`) before flipping `OCR_PROVIDER=local` in prod.
 4. PII scrub module + tests; apply at the chat-context boundary in `ask_documind` and any remaining hosted prompt.
 5. Fact extraction → local model (or scrubbed), tests.
 6. Chunk re-embedding migration script; run it; verify search still returns the Damai fixtures.

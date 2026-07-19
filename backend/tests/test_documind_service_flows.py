@@ -1625,6 +1625,15 @@ class EmbeddingClientAndBatchingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(first, second)
         self.assertEqual(ctor.call_count, 1)
 
+    def test_embeddings_property_selects_ollama_when_provider_flag_set(self):
+        from rag.ollama_embeddings import OllamaEmbeddings
+
+        service = DocuMindService.__new__(DocuMindService)
+        service._embeddings = None
+        with patch.dict("os.environ", {"EMBEDDINGS_PROVIDER": "ollama"}, clear=False):
+            client = service.embeddings
+        self.assertIsInstance(client, OllamaEmbeddings)
+
     async def test_ingest_embeds_all_chunks_in_one_batched_call(self):
         fake_db = _FakeDB()
         fake_embeddings = _FakeEmbeddings()

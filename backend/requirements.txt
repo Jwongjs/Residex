@@ -27,6 +27,7 @@ pypdf
 
 # Utilities
 python-dotenv
+requests  # direct HTTP to local Ollama /api/embed (rag/ollama_embeddings.py)
 
 # ML/NLP for reranking
 sentence-transformers
