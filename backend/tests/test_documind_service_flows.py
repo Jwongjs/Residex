@@ -1669,5 +1669,57 @@ class EmbeddingClientAndBatchingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.chunks_indexed, len(fake_embeddings.embed_documents_calls[0]))
 
 
+class HostedContextScrubTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chunk_pii_is_scrubbed_before_hosted_prompt(self):
+        # Synthetic NRIC — must never reach the hosted LLM prompt verbatim.
+        fake_db = _FakeDB(
+            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}],
+            chunks=[
+                {
+                    "doc_id": "d1",
+                    "filename": "lease.pdf",
+                    "category": "lease",
+                    "page": 1,
+                    "text": "Tenant NRIC 123456-78-9012 signed the lease.",
+                    "landlord_id": "l1",
+                    "property_id": "p1",
+                }
+            ],
+            property_name="Maple Residency",
+        )
+        fake_store = _FakeConversationStore()
+        fake_store.pending["session-pii"] = {
+            "question": "Who signed?",
+            "predicted_categories": ["lease"],
+            "available_categories": ["lease"],
+        }
+        fake_graph = _FakeGraphOrchestrator(
+            {
+                "action": "retrieve",
+                "predicted_categories": ["lease"],
+                "prediction_reason": "lease",
+                "intent": "document_question",
+            }
+        )
+        fake_llm = _FakeLLM("The tenant signed the lease.")
+        service = _build_service(fake_db, fake_store, fake_graph, fake_llm)
+
+        payload = AskRequest(
+            landlord_id="l1",
+            property_id="p1",
+            question="yes",
+            session_id="session-pii",
+            user_action="confirm",
+        )
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            await service.ask_documind(payload)
+
+        self.assertIsNotNone(fake_llm.last_prompt)
+        self.assertNotIn("123456-78-9012", fake_llm.last_prompt)
+        self.assertIn("[NRIC]", fake_llm.last_prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

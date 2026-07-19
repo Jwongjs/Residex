@@ -32,6 +32,7 @@ from rag.category_predictor import CategoryPredictor
 from rag.fact_extractor import FactExtractor, validate_expense_lines
 from rag.pdf_ocr import PdfOcr
 from rag.ollama_embeddings import OllamaEmbeddings
+from rag.pii_scrub import scrub_for_hosted
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
 from rag.retriever import HybridRetriever
@@ -1118,7 +1119,11 @@ Rules:
                     'unit_label': chunk.get('unit_label'),
                 }
             unit_context = chunk.get('unit_label') or 'Property-wide'
-            context_text += f"\n\n[Document {i+1}: {chunk['filename']}, Page {display_page if display_page is not None else 'N/A'} — {unit_context}]\n{chunk['text']}"
+            # PII gate: chunk text is the one place raw document content reaches
+            # the hosted LLM. Scrub NRIC/phone/email here (citations to the app
+            # keep the unscrubbed snippet — the user owns their own documents).
+            safe_chunk_text = scrub_for_hosted(chunk['text'])
+            context_text += f"\n\n[Document {i+1}: {chunk['filename']}, Page {display_page if display_page is not None else 'N/A'} — {unit_context}]\n{safe_chunk_text}"
 
         citations = [
             Citation(
