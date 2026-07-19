@@ -30,6 +30,7 @@ from firebase_admin import storage as firebase_storage
 from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
 from rag.fact_extractor import FactExtractor, validate_expense_lines
+from rag.ollama_chat import OllamaChat
 from rag.pdf_ocr import PdfOcr
 from rag.ollama_embeddings import OllamaEmbeddings
 from rag.pii_scrub import scrub_for_hosted
@@ -226,7 +227,7 @@ class DocuMindService:
             self._llm,
             allowed_categories=sorted(ALLOWED_CATEGORIES),
         )
-        self._fact_extractor = FactExtractor(self._llm)
+        self._fact_extractor = FactExtractor(self._fact_llm())
         self._pdf_ocr = PdfOcr(self._llm)
         self._graph_orchestrator = DocuMindGraphOrchestrator(
             conversation_router=self._conversation_router,
@@ -288,6 +289,20 @@ class DocuMindService:
                 temperature=0.3,
             )
             print("✅ Gemini LLM ready")
+        return self._llm
+
+    def _fact_llm(self):
+        """The LLM injected into FactExtractor. FACT_PROVIDER=ollama (or local)
+        routes extraction to the local model because it is fed the full leading
+        document text (names, addresses, NRIC) — that raw text must never reach
+        the hosted API, and unlike chat context it can't be scrubbed first
+        without erasing the name fields extraction exists to capture. Default
+        'gemini' keeps the hosted client."""
+        provider = os.getenv("FACT_PROVIDER", "gemini").lower()
+        if provider in ("ollama", "local"):
+            model = os.getenv("OLLAMA_FACT_MODEL", "qwen3:4b")
+            print(f"🔄 Fact extraction routed to local Ollama ({model})")
+            return OllamaChat(model=model, base_url=os.getenv("OLLAMA_BASE_URL"))
         return self._llm
 
     def _list_available_categories(self, landlord_id: str, property_id: str) -> List[str]:

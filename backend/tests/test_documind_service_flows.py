@@ -1634,6 +1634,26 @@ class EmbeddingClientAndBatchingTests(unittest.IsolatedAsyncioTestCase):
             client = service.embeddings
         self.assertIsInstance(client, OllamaEmbeddings)
 
+    def test_fact_llm_selects_ollama_when_provider_flag_set(self):
+        # Privacy: fact extraction sees the full leading document text
+        # (names, addresses, NRIC), so FACT_PROVIDER=ollama must keep it off
+        # the hosted client — the sentinel below must NOT be chosen.
+        from rag.ollama_chat import OllamaChat
+
+        service = DocuMindService.__new__(DocuMindService)
+        service._llm = object()  # hosted client sentinel
+        with patch.dict("os.environ", {"FACT_PROVIDER": "ollama"}, clear=False):
+            chosen = service._fact_llm()
+        self.assertIsInstance(chosen, OllamaChat)
+
+    def test_fact_llm_defaults_to_hosted_client(self):
+        service = DocuMindService.__new__(DocuMindService)
+        sentinel = object()
+        service._llm = sentinel
+        with patch.dict("os.environ", {"FACT_PROVIDER": "gemini"}, clear=False):
+            chosen = service._fact_llm()
+        self.assertIs(chosen, sentinel)
+
     async def test_ingest_embeds_all_chunks_in_one_batched_call(self):
         fake_db = _FakeDB()
         fake_embeddings = _FakeEmbeddings()
