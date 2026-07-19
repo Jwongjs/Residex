@@ -1567,6 +1567,37 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.citations, [])
         self.assertFalse(response.user_action_required)
 
+    async def test_finance_path_never_retrieves_document_chunks(self):
+        # Privacy lock: finance answers must be built ONLY from the engine's
+        # computed figures (from extracted_facts), never from raw chunks. Any
+        # chunk retrieval on this path would send confidential document text to
+        # the hosted LLM — so a retrieve() call here is a regression, and this
+        # exploding retriever turns it into a test failure.
+        class _ExplodingRetriever:
+            def __init__(self):
+                self.called = False
+
+            async def retrieve(self, *args, **kwargs):
+                self.called = True
+                raise AssertionError("finance path must not retrieve document chunks")
+
+        fake_db = _FakeDB(docs=[{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1", "category": "lease"}])
+        narration = "Your 2025 statutory rental income is RM 60,106.58."
+        service = _build_service(
+            fake_db, _FakeConversationStore(), self._finance_graph(), _FakeLLM(narration)
+        )
+        service.get_finance_summary = AsyncMock(return_value=_fake_finance_summary())
+        exploding = _ExplodingRetriever()
+        service._hybrid_retriever = exploding
+
+        response = await service.ask_documind(
+            AskRequest(landlord_id="l1", property_id="p1", question="how much profit did I make in 2025?")
+        )
+
+        self.assertFalse(exploding.called)       # no chunk retrieval at all
+        self.assertEqual(response.citations, [])  # nothing chunk-derived returned
+        self.assertEqual(response.answer, narration)
+
     async def test_finance_year_defaults_to_current_year(self):
         fake_db = _FakeDB(docs=[{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1", "category": "lease"}])
         service = _build_service(

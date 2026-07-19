@@ -1,8 +1,18 @@
 import base64
 import io
 import unittest
+from unittest.mock import patch
 
 from pypdf import PdfWriter
+
+
+def _force_gemini_ocr(test_case):
+    """These suites exercise the hosted (Gemini) OCR path specifically, so pin
+    the provider — otherwise an ambient OCR_PROVIDER=local (from .env) routes
+    transcribe() to Tesseract and the assertions no longer apply."""
+    patcher = patch.dict("os.environ", {"OCR_PROVIDER": "gemini"}, clear=False)
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
 
 from rag.pdf_ocr import MAX_OCR_PAGES, PdfOcr, _first_pages
 
@@ -37,6 +47,9 @@ def _blank_pdf(num_pages: int) -> bytes:
 
 
 class PdfOcrTests(unittest.TestCase):
+    def setUp(self):
+        _force_gemini_ocr(self)
+
     def test_transcribe_splits_pages_on_delimiter(self):
         llm = _FakeLLM("First page text\n===PAGE===\nSecond page text")
         pages = PdfOcr(llm).transcribe(_blank_pdf(2))
@@ -84,6 +97,9 @@ class _MimeCapturingLlm:
 
 
 class TestTranscribeMimeTypes(unittest.TestCase):
+    def setUp(self):
+        _force_gemini_ocr(self)
+
     def test_default_mime_is_pdf(self):
         llm = _MimeCapturingLlm()
         PdfOcr(llm).transcribe(b"%PDF-fake")
