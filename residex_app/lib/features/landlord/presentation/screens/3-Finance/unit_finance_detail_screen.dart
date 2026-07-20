@@ -234,58 +234,64 @@ class _UnitFinanceDetailScreenState
   Future<void> _showMarkUnpaidSheet(BuildContext context, WidgetRef ref,
       MonthIncome month, String monthLabel) async {
     final controller = TextEditingController();
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: AppColors.paper,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          left: 24,
-          right: 24,
-          top: 24,
-          bottom: 24 + MediaQuery.of(sheetContext).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Mark $monthLabel as no payment received',
-                style: AppTextStyles.titleLarge),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(hintText: 'Reason (optional)'),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.of(sheetContext).pop(true),
-                child: const Text('Mark as unpaid'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-    final action = ref.read(setPaymentExceptionActionProvider);
     try {
-      await action(
-        propertyId: widget.propertyId,
-        unitId: widget.unit.unitId,
-        month: _monthKey(_displayedYear, month.month),
-        reason: controller.text.trim().isEmpty ? null : controller.text.trim(),
+      final confirmed = await showModalBottomSheet<bool>(
+        context: context,
+        backgroundColor: AppColors.paper,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        isScrollControlled: true,
+        builder: (sheetContext) => Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: 24 + MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Mark $monthLabel as no payment received',
+                  style: AppTextStyles.titleLarge),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration:
+                    const InputDecoration(hintText: 'Reason (optional)'),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                  child: const Text('Mark as unpaid'),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed to mark month: $e')));
+      if (confirmed != true || !context.mounted) return;
+      final action = ref.read(setPaymentExceptionActionProvider);
+      try {
+        await action(
+          propertyId: widget.propertyId,
+          unitId: widget.unit.unitId,
+          month: _monthKey(_displayedYear, month.month),
+          reason:
+              controller.text.trim().isEmpty ? null : controller.text.trim(),
+        );
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to mark month: $e')));
+        }
       }
+    } finally {
+      controller.dispose();
     }
   }
 

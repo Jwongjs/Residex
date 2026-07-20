@@ -109,12 +109,18 @@ class _FakeUnitsCollection:
 
 
 class _FakePropertyRef:
-    def __init__(self, property_name: str, units=None):
+    def __init__(self, db, doc_id, property_name: str, units=None):
+        self._db = db
+        self._doc_id = doc_id
         self._property_name = property_name
         self._units = units or []
 
     def get(self):
-        return _FakePropertyDoc(exists=True, data={"name": self._property_name})
+        landlord_id = self._db.property_owners.get(self._doc_id)
+        return _FakePropertyDoc(
+            exists=True,
+            data={"name": self._property_name, "landlordId": landlord_id},
+        )
 
     def collection(self, name: str):
         if name == "units":
@@ -284,7 +290,7 @@ class _FakeCollection:
     def document(self, _doc_id=None):
         if self._name == "properties":
             return _FakePropertyRef(
-                self._db.property_name, getattr(self._db, "units", [])
+                self._db, _doc_id, self._db.property_name, getattr(self._db, "units", [])
             )
         if self._name == "documind_docs":
             return _FakeDocDocRef(self._db, _doc_id)
@@ -296,13 +302,14 @@ class _FakeCollection:
 
 
 class _FakeDB:
-    def __init__(self, docs=None, chunks=None, property_name="Test Property", units=None, payment_exceptions=None):
+    def __init__(self, docs=None, chunks=None, property_name="Test Property", units=None, payment_exceptions=None, property_owners=None):
         self.docs = docs or []
         self.units = units or []
         self.chunks = chunks or []
         self.properties_rows = []
         self.payment_exceptions = payment_exceptions or []
         self.property_name = property_name
+        self.property_owners = property_owners or {}
         self.last_chunk_category_filter = None
 
     def collection(self, name: str):
@@ -1802,7 +1809,7 @@ class HostedContextScrubTests(unittest.IsolatedAsyncioTestCase):
 
 class PaymentExceptionServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_set_payment_exception_writes_deterministic_doc_id(self):
-        fake_db = _FakeDB()
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
         service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
 
         result = await service.set_payment_exception(
@@ -1817,7 +1824,7 @@ class PaymentExceptionServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row["reason"], "bounced cheque")
 
     async def test_set_payment_exception_upserts_same_month(self):
-        fake_db = _FakeDB()
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
         service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
 
         await service.set_payment_exception(landlord_id="l1", property_id="p1", month="2025-03", reason="first")
@@ -1832,6 +1839,15 @@ class PaymentExceptionServiceTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(ValueError):
             await service.set_payment_exception(landlord_id="l1", property_id="p1", month="March 2025")
+
+    async def test_set_payment_exception_rejects_property_owned_by_another_landlord(self):
+        fake_db = _FakeDB(property_owners={"p1": "someone-else"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        with self.assertRaises(ValueError):
+            await service.set_payment_exception(landlord_id="l1", property_id="p1", month="2025-03")
+
+        self.assertEqual(fake_db.payment_exceptions, [])
 
     async def test_clear_payment_exception_removes_matching_record(self):
         fake_db = _FakeDB(payment_exceptions=[

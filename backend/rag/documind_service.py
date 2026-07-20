@@ -676,6 +676,10 @@ Rules:
         doc id keeps set/clear idempotent — no duplicate marks possible."""
         if not _PAYMENT_MONTH_RE.match(month or ""):
             raise ValueError("month must be formatted YYYY-MM")
+        property_ref = self.db.collection('properties').document(property_id)
+        property_snapshot = property_ref.get()
+        if not property_snapshot.exists or (property_snapshot.to_dict() or {}).get('landlordId') != landlord_id:
+            raise ValueError(f"Property {property_id} not found for landlord {landlord_id}")
         doc_id = self._payment_exception_doc_id(property_id, unit_id, month)
         ref = self.db.collection('documind_payment_exceptions').document(doc_id)
         ref.set({

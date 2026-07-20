@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../../core/theme/app_theme.dart';
 
-/// Compact "<year> ▾" app-bar control. Tapping opens a bottom sheet listing
+/// Compact `<year> ▾` app-bar control. Tapping opens a bottom sheet listing
 /// [years] (newest first); selecting one invokes [onChanged].
 class FinanceYearButton extends StatelessWidget {
   final int selected;
