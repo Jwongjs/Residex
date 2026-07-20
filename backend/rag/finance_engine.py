@@ -83,12 +83,25 @@ def _scope_income(
     unit_id: Optional[str],
     year: int,
     months: List[int],
+    exceptions: List[Dict[str, Any]],
 ):
     """Income rows for one scope (unit_id None = property-wide documents).
 
-    Precedence per month: invoice (actual) > lease coverage (derived) > vacant.
-    Returns (month_rows, rented_count, actual_sum, derived_sum,
-    vacant_months, derived_months)."""
+    Precedence per month: exception (marked unpaid) > invoice (actual) >
+    lease coverage (derived) > vacant. A marked month still counts toward
+    `rented` — the tenant occupied and expenses were incurred, only the
+    income is excluded. Returns (month_rows, rented, actual_sum,
+    derived_sum, vacant_months, derived_months, unpaid_months) where
+    unpaid_months is a list of (month, reason|None)."""
+    exception_by_month: Dict[int, Optional[str]] = {}
+    for exc in exceptions:
+        if not isinstance(exc, dict) or exc.get("unit_id") != unit_id:
+            continue
+        ym = _ym(exc.get("month"))
+        if ym is None or ym[0] != year:
+            continue
+        exception_by_month[ym[1]] = exc.get("reason")
+
     invoice_by_month: Dict[int, float] = {}
     for doc in sorted(
         (d for d in prop_docs
@@ -122,7 +135,17 @@ def _scope_income(
     derived_sum = 0.0
     vacant_months: List[int] = []
     derived_months: List[int] = []
+    unpaid_months: List[Tuple[int, Optional[str]]] = []
     for month in months:
+        if month in exception_by_month:
+            reason = exception_by_month[month]
+            row: Dict[str, Any] = {"month": month, "source": "unpaid", "amount": 0.0}
+            if reason:
+                row["reason"] = reason
+            month_rows.append(row)
+            rented += 1
+            unpaid_months.append((month, reason))
+            continue
         if month in invoice_by_month:
             amount = invoice_by_month[month]
             month_rows.append({"month": month, "source": "actual", "amount": _round2(amount)})
@@ -140,7 +163,7 @@ def _scope_income(
             continue
         month_rows.append({"month": month, "source": "vacant", "amount": 0.0})
         vacant_months.append(month)
-    return month_rows, rented, actual_sum, derived_sum, vacant_months, derived_months
+    return month_rows, rented, actual_sum, derived_sum, vacant_months, derived_months, unpaid_months
 
 
 def _expense_lines(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[str, Any]]:
@@ -239,6 +262,7 @@ def compute_finance_summary(
     documents: List[Dict[str, Any]],
     properties: List[Dict[str, Any]],
     units_by_property: Dict[str, List[Dict[str, Any]]],
+    payment_exceptions: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     months = _months_in_scope(year, today)
 
@@ -255,6 +279,7 @@ def compute_finance_summary(
     statutory_sum = 0.0
     derived_notes: List[str] = []
     vacant_notes: List[str] = []
+    unpaid_notes: List[str] = []
     share_notes: List[str] = []
 
     for prop in properties:
@@ -264,6 +289,10 @@ def compute_finance_summary(
         prop_docs = [
             d for d in documents
             if d.get("property_id") == pid and isinstance(d.get("extracted_facts"), dict)
+        ]
+        prop_exceptions = [
+            e for e in (payment_exceptions or [])
+            if isinstance(e, dict) and e.get("property_id") == pid
         ]
 
         # Income scopes: each real unit, plus a synthetic whole-property scope
@@ -292,8 +321,8 @@ def compute_finance_summary(
         prorated_expenses = 0.0
 
         for scope in scopes:
-            month_rows, rented, actual_sum, derived_sum, vacant, derived = _scope_income(
-                prop_docs, scope["unit_id"], year, months
+            month_rows, rented, actual_sum, derived_sum, vacant, derived, unpaid = _scope_income(
+                prop_docs, scope["unit_id"], year, months, prop_exceptions
             )
             fraction = (rented / len(months)) if months else 0.0
             fractions.append(fraction)
@@ -323,6 +352,11 @@ def compute_finance_summary(
                 vacant_notes.append(
                     f"No invoice recorded for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
                 )
+            for m, reason in unpaid:
+                note = f"No payment received for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
+                if reason:
+                    note += f": {reason}"
+                unpaid_notes.append(note)
 
         # Property-level expenses (no unit) prorate by the property's average
         # rented fraction; a fully-rented year = factor 1.0 so the reference
@@ -383,6 +417,7 @@ def compute_finance_summary(
             "Months backfilled from lease terms (no invoice): " + "; ".join(derived_notes)
         )
     caveats.extend(vacant_notes)
+    caveats.extend(unpaid_notes)
     caveats.extend(share_notes)
 
     return {

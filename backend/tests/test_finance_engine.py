@@ -27,13 +27,18 @@ def _prop(pid, name, share=1.0):
     return {"property_id": pid, "name": name, "ownership_share": share}
 
 
-def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 16)):
+def _exception(pid, month, unit_id=None, reason=None):
+    return {"property_id": pid, "unit_id": unit_id, "month": month, "reason": reason}
+
+
+def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 16), payment_exceptions=None):
     return compute_finance_summary(
         year=year,
         today=today,
         documents=documents,
         properties=properties,
         units_by_property=units or {},
+        payment_exceptions=payment_exceptions,
     )
 
 
@@ -101,6 +106,67 @@ class IncomeFoldTests(unittest.TestCase):
         ]
         result = _summary(docs, [_prop("p1", "House")])
         self.assertEqual(result["properties"][0]["received_rent"], 0.0)
+
+
+class PaymentExceptionTests(unittest.TestCase):
+    def test_exception_excludes_income_but_keeps_expense_proration(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            _doc("p1", "maintenance", {"amount": 1200.0, "period_start": "2025-01-01", "period_end": "2025-12-31"}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")], payment_exceptions=[_exception("p1", "2025-03")])
+        unit = result["properties"][0]["units"][0]
+        march = next(m for m in unit["months"] if m["month"] == 3)
+        self.assertEqual(march["source"], "unpaid")
+        self.assertEqual(march["amount"], 0.0)
+        # 11 months derived x 1000 (March excluded)
+        self.assertEqual(result["properties"][0]["received_rent"], 11000.0)
+        # March still counts as tenanted -> full year rented -> full expense deducted
+        self.assertEqual(unit["rented_months"], 12)
+        self.assertEqual(result["properties"][0]["direct_expenses"], 1200.0)
+        self.assertEqual(result["properties"][0]["rental_income_or_loss"], 9800.0)
+
+    def test_exception_beats_invoice(self):
+        docs = [_doc("p1", "rental_invoice", {"amount": 1200.0, "period_month": "2025-03"})]
+        result = _summary(docs, [_prop("p1", "House")],
+                           payment_exceptions=[_exception("p1", "2025-03", reason="bounced cheque")])
+        march = next(m for m in result["properties"][0]["units"][0]["months"] if m["month"] == 3)
+        self.assertEqual(march["source"], "unpaid")
+        self.assertEqual(result["properties"][0]["received_rent"], 0.0)
+
+    def test_exception_beats_lease_derived(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        result = _summary(docs, [_prop("p1", "House")], payment_exceptions=[_exception("p1", "2025-03")])
+        march = next(m for m in result["properties"][0]["units"][0]["months"] if m["month"] == 3)
+        self.assertEqual(march["source"], "unpaid")
+        self.assertEqual(result["properties"][0]["received_rent"], 11000.0)
+
+    def test_exception_reduces_statutory_income(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        without = _summary(docs, [_prop("p1", "House")])
+        with_exception = _summary(docs, [_prop("p1", "House")], payment_exceptions=[_exception("p1", "2025-03")])
+        self.assertEqual(without["totals"]["statutory_rental_income"], 12000.0)
+        self.assertEqual(with_exception["totals"]["statutory_rental_income"], 11000.0)
+
+    def test_exception_reason_appears_in_caveats(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        result = _summary(docs, [_prop("p1", "House")],
+                           payment_exceptions=[_exception("p1", "2025-03", reason="tenant requested deferral")])
+        joined = " ".join(result["caveats"])
+        self.assertIn("No payment received for Mar", joined)
+        self.assertIn("tenant requested deferral", joined)
+
+    def test_malformed_and_mismatched_exceptions_are_tolerated(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        exceptions = [
+            _exception("p1", "not-a-month"),
+            _exception("p2", "2025-03"),  # wrong property, must be ignored
+            {"property_id": "p1", "unit_id": None, "month": "2025-04"},  # missing "reason" key is fine
+        ]
+        result = _summary(docs, [_prop("p1", "House")], payment_exceptions=exceptions)
+        months = {m["month"]: m["source"] for m in result["properties"][0]["units"][0]["months"]}
+        self.assertEqual(months[3], "derived")  # malformed month string ignored
+        self.assertEqual(months[4], "unpaid")   # well-formed record still applies
 
 
 class ExpenseFoldTests(unittest.TestCase):
