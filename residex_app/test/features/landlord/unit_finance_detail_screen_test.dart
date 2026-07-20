@@ -1,0 +1,66 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
+import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
+import 'package:residex_app/features/landlord/presentation/screens/3-Finance/unit_finance_detail_screen.dart';
+
+FinanceSummary _summaryFor(int year, {double amount = 700.0}) {
+  return FinanceSummary(
+    year: year,
+    totals: FinanceTotals(
+      receivedRent: amount * 12, derivedRent: 0.0, directExpenses: 0.0,
+      netPl: amount * 12, statutoryRentalIncome: amount * 12,
+      statutoryNote: 'Estimate — for your tax agent',
+    ),
+    properties: [
+      PropertyFinance(
+        propertyId: 'p1', name: 'Ayer 8',
+        receivedRent: amount * 12, derivedRent: 0.0, directExpenses: 0.0,
+        rentalIncomeOrLoss: amount * 12,
+        units: [
+          UnitFinance(
+            unitId: 'u1', label: 'Unit A', rentedMonths: 12, contribution: amount * 12,
+            months: [
+              for (var m = 1; m <= 12; m++)
+                MonthIncome(month: m, source: 'actual', amount: amount),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+void main() {
+  testWidgets('year button switches the displayed month figures',
+      (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2025, 2026]),
+          financeSummaryProvider.overrideWith((ref, year) async => _summaryFor(year)),
+        ],
+        child: MaterialApp(
+          home: UnitFinanceDetailScreen(
+            propertyId: 'p1',
+            propertyName: 'Ayer 8',
+            unit: UnitFinance(unitId: 'u1', label: 'Unit A', rentedMonths: 12, contribution: 8400.0),
+            year: 2026,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unit A — 2026'), findsOneWidget);
+    expect(find.text('RM 700.00'), findsWidgets);
+
+    await tester.tap(find.text('2026').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2025'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unit A — 2025'), findsOneWidget);
+  });
+}

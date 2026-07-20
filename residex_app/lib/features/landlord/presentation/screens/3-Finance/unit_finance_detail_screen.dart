@@ -3,13 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/finance_summary.dart';
 import '../../providers/finance_logic.dart';
+import '../../providers/finance_providers.dart';
+import '../../widgets/common/finance_year_picker.dart';
 import '../2-Documind/document_viewer_screen.dart';
 import 'finance_screen.dart' show uploadDocumentForCategory;
 
 /// Month-by-month drill-down for one unit (or the whole-property line):
 /// income strip, its expense lines (tappable to the source PDF), and a
-/// one-tap invoice upload for months with no record.
-class UnitFinanceDetailScreen extends ConsumerWidget {
+/// one-tap invoice upload for months with no record. Switching the year in
+/// the app bar re-fetches this property's summary for that year and
+/// re-resolves this unit from it.
+class UnitFinanceDetailScreen extends ConsumerStatefulWidget {
   final String propertyId;
   final String propertyName;
   final UnitFinance unit;
@@ -24,17 +28,74 @@ class UnitFinanceDetailScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UnitFinanceDetailScreen> createState() =>
+      _UnitFinanceDetailScreenState();
+}
+
+class _UnitFinanceDetailScreenState
+    extends ConsumerState<UnitFinanceDetailScreen> {
+  late int _year;
+
+  @override
+  void initState() {
+    super.initState();
+    _year = widget.year;
+  }
+
+  UnitFinance _resolveUnit(FinanceSummary summary) {
+    final block = summary.properties.firstWhere(
+      (p) => p.propertyId == widget.propertyId,
+      orElse: () => PropertyFinance(
+        propertyId: widget.propertyId,
+        name: widget.propertyName,
+        receivedRent: 0,
+        derivedRent: 0,
+        directExpenses: 0,
+        rentalIncomeOrLoss: 0,
+      ),
+    );
+    return block.units.firstWhere(
+      (u) => u.unitId == widget.unit.unitId,
+      orElse: () => UnitFinance(
+        unitId: widget.unit.unitId,
+        label: widget.unit.label,
+        rentedMonths: 0,
+        contribution: 0,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final summaryAsync = ref.watch(financeSummaryProvider(_year));
+    final yearsAsync = ref.watch(financeYearsProvider);
+    final unit = summaryAsync.maybeWhen(
+      data: _resolveUnit,
+      orElse: () => widget.unit,
+    );
+
     return Scaffold(
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         backgroundColor: AppColors.paper,
-        title: Text('${unit.label} — $year', style: AppTextStyles.titleLarge),
+        title: Text('${unit.label} — $_year', style: AppTextStyles.titleLarge),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: FinanceYearButton(
+                selected: _year,
+                years: yearsAsync.value ?? [_year],
+                onChanged: (y) => setState(() => _year = y),
+              ),
+            ),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text(propertyName, style: AppTextStyles.bodyMedium),
+          Text(widget.propertyName, style: AppTextStyles.bodyMedium),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
@@ -56,12 +117,12 @@ class UnitFinanceDetailScreen extends ConsumerWidget {
           const SizedBox(height: 20),
           Text('Monthly income', style: AppTextStyles.titleMedium),
           const SizedBox(height: 8),
-          _buildMonthStrip(),
+          _buildMonthStrip(unit),
           const SizedBox(height: 8),
           _buildLegend(),
           if (unit.missingInvoiceMonths.isNotEmpty) ...[
             const SizedBox(height: 20),
-            _buildMissingInvoices(context, ref),
+            _buildMissingInvoices(context, ref, unit),
           ],
           if (unit.expenseLines.isNotEmpty) ...[
             const SizedBox(height: 20),
@@ -80,12 +141,14 @@ class UnitFinanceDetailScreen extends ConsumerWidget {
         return AppColors.registry;
       case 'derived':
         return AppColors.catUpkeep;
+      case 'unpaid':
+        return AppColors.sealRed;
       default:
         return AppColors.hairline;
     }
   }
 
-  Widget _buildMonthStrip() {
+  Widget _buildMonthStrip(UnitFinance unit) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -117,8 +180,15 @@ class UnitFinanceDetailScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                month.source == 'vacant' ? '—' : formatRM(month.amount),
-                style: AppTextStyles.bodySmall,
+                month.source == 'vacant'
+                    ? '—'
+                    : month.source == 'unpaid'
+                        ? 'UNPAID'
+                        : formatRM(month.amount),
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: month.source == 'unpaid' ? AppColors.sealRed : null,
+                  fontWeight: month.source == 'unpaid' ? FontWeight.w600 : null,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -146,12 +216,14 @@ class UnitFinanceDetailScreen extends ConsumerWidget {
       children: [
         item(AppColors.registry, 'Invoiced'),
         item(AppColors.catUpkeep, 'From lease terms'),
+        item(AppColors.sealRed, 'Unpaid'),
         item(AppColors.hairline, 'No record'),
       ],
     );
   }
 
-  Widget _buildMissingInvoices(BuildContext context, WidgetRef ref) {
+  Widget _buildMissingInvoices(
+      BuildContext context, WidgetRef ref, UnitFinance unit) {
     final names =
         unit.missingInvoiceMonths.map((m) => monthAbbrev[m - 1]).join(', ');
     return Container(
@@ -174,7 +246,7 @@ class UnitFinanceDetailScreen extends ConsumerWidget {
             onPressed: () => uploadDocumentForCategory(
               context,
               ref,
-              propertyId: propertyId,
+              propertyId: widget.propertyId,
               category: 'rental_invoice',
             ),
             child: const Text('Add invoice'),
@@ -214,7 +286,7 @@ class UnitFinanceDetailScreen extends ConsumerWidget {
         onTap: () {
           Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => DocumentViewerScreen(
-              propertyId: propertyId,
+              propertyId: widget.propertyId,
               docId: line.docId,
               filename: line.description ??
                   (financeCategoryLabels[line.category] ?? line.category),
