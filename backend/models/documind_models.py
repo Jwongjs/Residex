@@ -152,8 +152,9 @@ class UnassignUnitRequest(BaseModel):
 class MonthIncome(BaseModel):
     """One month of one unit's income."""
     month: int  # 1-12
-    source: str  # actual | derived | vacant
+    source: str  # actual | derived | unpaid | vacant
     amount: float
+    reason: Optional[str] = None
 
 
 class ExpenseLine(BaseModel):
@@ -227,3 +228,20 @@ class FactsUpdateRequest(BaseModel):
 class FactsUpdateResponse(BaseModel):
     doc_id: str
     extracted_facts: Dict[str, Any]
+
+
+# ========== PAYMENT EXCEPTION MODELS ==========
+
+class PaymentExceptionRequest(BaseModel):
+    landlord_id: str
+    property_id: str
+    month: str = Field(..., description="Calendar month, YYYY-MM")
+    unit_id: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class PaymentExceptionResponse(BaseModel):
+    property_id: str
+    unit_id: Optional[str] = None
+    month: str
+    reason: Optional[str] = None

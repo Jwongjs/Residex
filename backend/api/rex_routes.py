@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -124,6 +124,46 @@ async def finance_summary(
     agent and always ships with its caveats.
     """
     return await documind_service.get_finance_summary(landlord_id, year)
+
+@router.put("/documind/finance/payment-exception", response_model=PaymentExceptionResponse)
+async def set_payment_exception(payload: PaymentExceptionRequest):
+    """
+    Mark one month as 'no payment received' for a property or unit scope.
+
+    Excludes that month from Received Rent, Net P/L, and Statutory Rental
+    Income; the month still counts as tenanted for expense proration.
+    Idempotent — re-marking the same month overwrites the reason.
+    """
+    try:
+        return await documind_service.set_payment_exception(
+            landlord_id=payload.landlord_id,
+            property_id=payload.property_id,
+            unit_id=payload.unit_id,
+            month=payload.month,
+            reason=payload.reason,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/documind/finance/payment-exception")
+async def clear_payment_exception(
+    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+    property_id: str = Query(..., description="Property ID"),
+    month: str = Query(..., description="Calendar month, YYYY-MM"),
+    unit_id: str | None = Query(None, description="Unit ID; omit for a whole-property mark"),
+):
+    """
+    Clear a 'no payment received' mark. Idempotent — clearing an unmarked
+    month is a no-op, not an error.
+    """
+    return await documind_service.clear_payment_exception(
+        landlord_id=landlord_id,
+        property_id=property_id,
+        unit_id=unit_id,
+        month=month,
+    )
+
 
 @router.delete("/documind/documents/{doc_id}")
 async def delete_document(

@@ -52,3 +52,45 @@ class FinanceSummaryApiTests(unittest.TestCase):
             params={"landlord_id": "landlord-1"},
         )
         self.assertEqual(response.status_code, 422)
+
+    def test_set_payment_exception_returns_200_and_forwards_params(self):
+        with patch(
+            "api.rex_routes.documind_service.set_payment_exception",
+            new=AsyncMock(return_value={"property_id": "p1", "unit_id": None, "month": "2025-03", "reason": "late"}),
+        ) as mocked:
+            response = self.client.put(
+                "/api/rex/documind/finance/payment-exception",
+                json={"landlord_id": "l1", "property_id": "p1", "month": "2025-03", "reason": "late"},
+            )
+            call_kwargs = mocked.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["month"], "2025-03")
+        self.assertEqual(call_kwargs["landlord_id"], "l1")
+        self.assertEqual(call_kwargs["month"], "2025-03")
+
+    def test_set_payment_exception_bad_month_returns_400(self):
+        with patch(
+            "api.rex_routes.documind_service.set_payment_exception",
+            new=AsyncMock(side_effect=ValueError("month must be formatted YYYY-MM")),
+        ):
+            response = self.client.put(
+                "/api/rex/documind/finance/payment-exception",
+                json={"landlord_id": "l1", "property_id": "p1", "month": "March"},
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_clear_payment_exception_returns_200_and_forwards_params(self):
+        with patch(
+            "api.rex_routes.documind_service.clear_payment_exception",
+            new=AsyncMock(return_value={"property_id": "p1", "unit_id": None, "month": "2025-03"}),
+        ) as mocked:
+            response = self.client.request(
+                "DELETE",
+                "/api/rex/documind/finance/payment-exception",
+                params={"landlord_id": "l1", "property_id": "p1", "month": "2025-03"},
+            )
+            call_kwargs = mocked.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(call_kwargs["property_id"], "p1")

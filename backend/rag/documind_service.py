@@ -41,6 +41,7 @@ from rag.finance_engine import compute_finance_summary
 
 EMBED_DIM = 768 # Default to 768 if not set
 OCR_TEXT_THRESHOLD = 200  # chars; below this a PDF is treated as scanned
+_PAYMENT_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 UPLOAD_CONTENT_TYPES = {
     ".pdf": "application/pdf",
@@ -658,6 +659,51 @@ Rules:
             "facts_extracted_at": firestore.SERVER_TIMESTAMP,
         })
         return {"doc_id": doc_id, "extracted_facts": facts}
+
+    def _payment_exception_doc_id(self, property_id: str, unit_id: Optional[str], month: str) -> str:
+        return f"{property_id}__{unit_id or 'property'}__{month}"
+
+    async def set_payment_exception(
+        self,
+        *,
+        landlord_id: str,
+        property_id: str,
+        month: str,
+        unit_id: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Upsert a 'no payment received' mark for one month. Deterministic
+        doc id keeps set/clear idempotent — no duplicate marks possible."""
+        if not _PAYMENT_MONTH_RE.match(month or ""):
+            raise ValueError("month must be formatted YYYY-MM")
+        doc_id = self._payment_exception_doc_id(property_id, unit_id, month)
+        ref = self.db.collection('documind_payment_exceptions').document(doc_id)
+        ref.set({
+            'landlord_id': landlord_id,
+            'property_id': property_id,
+            'unit_id': unit_id,
+            'month': month,
+            'reason': reason,
+            'created_at': firestore.SERVER_TIMESTAMP,
+        })
+        return {"property_id": property_id, "unit_id": unit_id, "month": month, "reason": reason}
+
+    async def clear_payment_exception(
+        self,
+        *,
+        landlord_id: str,
+        property_id: str,
+        month: str,
+        unit_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Remove a 'no payment received' mark, if any. Idempotent — clearing
+        an unmarked month is a no-op, not an error."""
+        doc_id = self._payment_exception_doc_id(property_id, unit_id, month)
+        ref = self.db.collection('documind_payment_exceptions').document(doc_id)
+        snapshot = ref.get()
+        if snapshot.exists and (snapshot.to_dict() or {}).get("landlord_id") == landlord_id:
+            ref.delete()
+        return {"property_id": property_id, "unit_id": unit_id, "month": month}
 
     async def ask_documind(self, payload: AskRequest) -> AskResponse:
         """
@@ -1307,8 +1353,8 @@ Rules:
 
     async def get_finance_summary(self, landlord_id: str, year: int) -> FinanceSummaryResponse:
         """One Firestore fold, zero LLM: fetch the landlord's documents,
-        properties, and units, then run the pure engine. Categories are
-        alias-normalized before the fold."""
+        properties, units, and payment exceptions, then run the pure engine.
+        Categories are alias-normalized before the fold."""
         documents = []
         query = self.db.collection('documind_docs').where(
             filter=FieldFilter('landlord_id', '==', landlord_id)
@@ -1331,12 +1377,26 @@ Rules:
             for prop in properties
         }
 
+        payment_exceptions = []
+        exceptions_query = self.db.collection('documind_payment_exceptions').where(
+            filter=FieldFilter('landlord_id', '==', landlord_id)
+        )
+        for snap in exceptions_query.stream():
+            data = snap.to_dict() or {}
+            payment_exceptions.append({
+                "property_id": data.get("property_id"),
+                "unit_id": data.get("unit_id"),
+                "month": data.get("month"),
+                "reason": data.get("reason"),
+            })
+
         summary = compute_finance_summary(
             year=year,
             today=date.today(),
             documents=documents,
             properties=properties,
             units_by_property=units_by_property,
+            payment_exceptions=payment_exceptions,
         )
         return FinanceSummaryResponse(**summary)
 
