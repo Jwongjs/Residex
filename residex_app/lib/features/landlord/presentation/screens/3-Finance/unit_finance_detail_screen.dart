@@ -4,6 +4,7 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/finance_summary.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
+import '../../providers/documind_provider.dart';
 import '../../widgets/common/finance_year_picker.dart';
 import '../2-Documind/document_viewer_screen.dart';
 import 'finance_screen.dart' show uploadDocumentForCategory;
@@ -168,48 +169,174 @@ class _UnitFinanceDetailScreenState
       runSpacing: 8,
       children: unit.months.map((month) {
         final color = _sourceColor(month.source);
-        return Container(
-          width: 74,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.hairline),
-          ),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration:
-                        BoxDecoration(color: color, shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(monthAbbrev[month.month - 1],
-                      style: AppTextStyles.labelSmall),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                month.source == 'vacant'
-                    ? '—'
-                    : month.source == 'unpaid'
-                        ? 'UNPAID'
-                        : formatRM(month.amount),
-                style: AppTextStyles.bodySmall.copyWith(
-                  color: month.source == 'unpaid' ? AppColors.sealRed : null,
-                  fontWeight: month.source == 'unpaid' ? FontWeight.w600 : null,
+        return InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: month.source == 'vacant'
+              ? null
+              : () => _handleMonthTap(context, ref, month),
+          child: Container(
+            width: 74,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.hairline),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration:
+                          BoxDecoration(color: color, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(monthAbbrev[month.month - 1],
+                        style: AppTextStyles.labelSmall),
+                  ],
                 ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  month.source == 'vacant'
+                      ? '—'
+                      : month.source == 'unpaid'
+                          ? 'UNPAID'
+                          : formatRM(month.amount),
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: month.source == 'unpaid' ? AppColors.sealRed : null,
+                    fontWeight: month.source == 'unpaid' ? FontWeight.w600 : null,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         );
       }).toList(),
     );
+  }
+
+  String _monthKey(int year, int month) => '$year-${month.toString().padLeft(2, '0')}';
+
+  Future<void> _handleMonthTap(
+      BuildContext context, WidgetRef ref, MonthIncome month) async {
+    final monthLabel = '${monthAbbrev[month.month - 1]} $_displayedYear';
+    if (month.source == 'unpaid') {
+      await _showClearUnpaidSheet(context, ref, month, monthLabel);
+    } else {
+      await _showMarkUnpaidSheet(context, ref, month, monthLabel);
+    }
+  }
+
+  Future<void> _showMarkUnpaidSheet(BuildContext context, WidgetRef ref,
+      MonthIncome month, String monthLabel) async {
+    final controller = TextEditingController();
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: AppColors.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: 24 + MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Mark $monthLabel as no payment received',
+                style: AppTextStyles.titleLarge),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(hintText: 'Reason (optional)'),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(sheetContext).pop(true),
+                child: const Text('Mark as unpaid'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    final action = ref.read(setPaymentExceptionActionProvider);
+    try {
+      await action(
+        propertyId: widget.propertyId,
+        unitId: widget.unit.unitId,
+        month: _monthKey(_displayedYear, month.month),
+        reason: controller.text.trim().isEmpty ? null : controller.text.trim(),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed to mark month: $e')));
+      }
+    }
+  }
+
+  Future<void> _showClearUnpaidSheet(BuildContext context, WidgetRef ref,
+      MonthIncome month, String monthLabel) async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: AppColors.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$monthLabel is marked as no payment received',
+                  style: AppTextStyles.titleLarge),
+              if (month.reason != null && month.reason!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(month.reason!, style: AppTextStyles.bodyMedium),
+              ],
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                  child: const Text('Clear mark'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    final action = ref.read(clearPaymentExceptionActionProvider);
+    try {
+      await action(
+        propertyId: widget.propertyId,
+        unitId: widget.unit.unitId,
+        month: _monthKey(_displayedYear, month.month),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed to clear mark: $e')));
+      }
+    }
   }
 
   Widget _buildLegend() {
