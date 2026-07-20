@@ -179,6 +179,12 @@ class UnitFinance(BaseModel):
     expense_lines: List[ExpenseLine] = Field(default_factory=list)
 
 
+class YearCoverage(BaseModel):
+    """One year's document-completeness report for a property."""
+    year: int
+    missing: List[str] = Field(default_factory=list)
+
+
 class PropertyFinance(BaseModel):
     """Per-property annual block (mirrors the reference sheet)."""
     property_id: str
@@ -191,6 +197,7 @@ class PropertyFinance(BaseModel):
     units: List[UnitFinance]
     expense_lines: List[ExpenseLine]  # all lines, itemized
     property_expense_lines: List[ExpenseLine]  # the property-level subset
+    coverage: List[YearCoverage] = Field(default_factory=list)
 
 
 class FinanceTotals(BaseModel):

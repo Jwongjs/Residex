@@ -255,6 +255,117 @@ def _expense_lines(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[str,
     return lines
 
 
+def _document_years(doc: Dict[str, Any]) -> List[int]:
+    """All years a document's facts reference, for the coverage window
+    fallback and per-year completeness. Mirrors _expense_lines' allocation
+    fields (excluding 'expenses', handled separately since its lines carry
+    their own categories)."""
+    facts = doc.get("extracted_facts")
+    if not isinstance(facts, dict):
+        return []
+    category = doc.get("category")
+    years: List[int] = []
+
+    def add_year(value):
+        ym = _ym(value)
+        if ym:
+            years.append(ym[0])
+
+    def add_period_year(value):
+        if isinstance(value, int):
+            years.append(value)
+
+    if category == "lease":
+        add_year(facts.get("lease_start"))
+    elif category == "rental_invoice":
+        add_year(facts.get("period_month"))
+    elif category in ("loan", "tax"):
+        add_period_year(facts.get("period_year"))
+    elif category == "upkeep":
+        add_year(facts.get("service_date"))
+    elif category == "maintenance":
+        add_year(facts.get("period_start"))
+        add_year(facts.get("period_end"))
+    elif category == "insurance":
+        add_year(facts.get("policy_start"))
+        add_year(facts.get("policy_end"))
+    elif category == "expenses":
+        for item in (facts.get("expense_lines") or []):
+            if not isinstance(item, dict):
+                continue
+            add_period_year(item.get("period_year"))
+            add_year(item.get("date"))
+    return years
+
+
+def _property_coverage(prop_docs: List[Dict[str, Any]], current_year: int) -> List[Dict[str, Any]]:
+    """Per-year document-completeness report from the property's earliest
+    lease_start (fallback: earliest document year found) through
+    current_year. rental_invoice is only flagged missing for years the
+    lease actually covered; expense categories are flagged across the
+    whole window regardless of tenancy."""
+    lease_years: List[int] = []
+    lease_spans: List[Tuple[Tuple[int, int], Tuple[int, int]]] = []
+    all_years: List[int] = []
+    for doc in prop_docs:
+        all_years.extend(_document_years(doc))
+        if doc.get("category") != "lease":
+            continue
+        facts = doc.get("extracted_facts")
+        if not isinstance(facts, dict):
+            continue
+        start = _ym(facts.get("lease_start"))
+        end = _ym(facts.get("lease_end"))
+        if start:
+            lease_years.append(start[0])
+        if start and end:
+            lease_spans.append((start, end))
+
+    if lease_years:
+        start_year = min(lease_years)
+    elif all_years:
+        start_year = min(all_years)
+    else:
+        return []
+    start_year = min(start_year, current_year)
+
+    years_covered_by_lease = {y for (s, e) in lease_spans for y in range(s[0], e[0] + 1)}
+
+    years_with_category: Dict[str, set] = {c: set() for c in FINANCE_CATEGORIES}
+    for doc in prop_docs:
+        category = doc.get("category")
+        facts = doc.get("extracted_facts")
+        if not isinstance(facts, dict):
+            continue
+        if category == "expenses":
+            for item in (facts.get("expense_lines") or []):
+                if not isinstance(item, dict):
+                    continue
+                mapped = EXPENSE_SUBTYPE_CATEGORY.get(item.get("subtype"))
+                if mapped is None:
+                    continue
+                item_year = item.get("period_year")
+                if not isinstance(item_year, int):
+                    ym = _ym(item.get("date"))
+                    item_year = ym[0] if ym else None
+                if item_year is not None:
+                    years_with_category[mapped].add(item_year)
+        elif category in years_with_category:
+            for year in _document_years(doc):
+                years_with_category[category].add(year)
+
+    coverage: List[Dict[str, Any]] = []
+    for year in range(start_year, current_year + 1):
+        missing = []
+        for category in FINANCE_CATEGORIES:
+            if category == "rental_invoice" and year not in years_covered_by_lease:
+                continue  # no tenancy that year — nothing to invoice
+            if year not in years_with_category[category]:
+                missing.append(category)
+        coverage.append({"year": year, "missing": missing})
+    return coverage
+
+
 def compute_finance_summary(
     *,
     year: int,
@@ -404,6 +515,7 @@ def compute_finance_summary(
             "units": unit_blocks,
             "expense_lines": expense_lines,
             "property_expense_lines": property_level_lines,
+            "coverage": _property_coverage(prop_docs, today.year),
         })
 
     statutory = _round2(statutory_sum)

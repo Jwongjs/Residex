@@ -382,3 +382,44 @@ class TestCombinedExpensesDocument(unittest.TestCase):
         }]
         summary = self._summary(docs)
         self.assertEqual(summary["totals"]["direct_expenses"], 100.0)
+
+
+class CoverageTests(unittest.TestCase):
+    def test_coverage_window_starts_at_earliest_lease_year(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2023-06-01", "lease_end": "2025-05-31"}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")])
+        years = [c["year"] for c in result["properties"][0]["coverage"]]
+        self.assertEqual(years, [2023, 2024, 2025, 2026])
+
+    def test_coverage_flags_missing_categories_and_rental_invoice_windowing(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2024-01-01", "lease_end": "2024-12-31"}),
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 100.0, "period_year": 2024}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")])
+        coverage = {c["year"]: c["missing"] for c in result["properties"][0]["coverage"]}
+        self.assertEqual(sorted(coverage.keys()), [2024, 2025, 2026])
+        # 2024: lease covers it -> no rental_invoice document -> flagged; tax present -> not flagged
+        self.assertIn("rental_invoice", coverage[2024])
+        self.assertNotIn("tax", coverage[2024])
+        for category in ("loan", "upkeep", "maintenance", "insurance"):
+            self.assertIn(category, coverage[2024])
+        # 2025/2026: lease doesn't cover -> rental_invoice NOT flagged
+        self.assertNotIn("rental_invoice", coverage[2025])
+        self.assertNotIn("rental_invoice", coverage[2026])
+        # but tax is still flagged in years no document covers
+        self.assertIn("tax", coverage[2025])
+        self.assertIn("tax", coverage[2026])
+
+    def test_coverage_falls_back_to_earliest_document_year_without_lease(self):
+        docs = [_doc("p1", "tax", {"subtype": "assessment", "amount": 100.0, "period_year": 2022})]
+        result = _summary(docs, [_prop("p1", "House")])
+        years = [c["year"] for c in result["properties"][0]["coverage"]]
+        self.assertEqual(years[0], 2022)
+        self.assertEqual(years[-1], 2026)
+
+    def test_coverage_empty_when_no_documents(self):
+        result = _summary([], [_prop("p1", "House")])
+        self.assertEqual(result["properties"][0]["coverage"], [])

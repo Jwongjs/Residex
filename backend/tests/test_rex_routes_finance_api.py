@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
-from models.documind_models import FinanceSummaryResponse, FinanceTotals
+from models.documind_models import FinanceSummaryResponse, FinanceTotals, PropertyFinance, YearCoverage
 
 
 def _fake_summary():
@@ -94,3 +94,38 @@ class FinanceSummaryApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(call_kwargs["property_id"], "p1")
+
+    def test_finance_summary_serializes_coverage(self):
+        summary = FinanceSummaryResponse(
+            year=2026,
+            totals=FinanceTotals(
+                received_rent=0.0, derived_rent=0.0, direct_expenses=0.0,
+                net_pl=0.0, statutory_rental_income=0.0,
+                statutory_note="Estimate — for your tax agent",
+            ),
+            expense_breakdown={},
+            properties=[PropertyFinance(
+                property_id="p1", name="House",
+                received_rent=0.0, derived_rent=0.0, direct_expenses=0.0,
+                rental_income_or_loss=0.0,
+                units=[],
+                expense_lines=[],
+                property_expense_lines=[],
+                coverage=[YearCoverage(year=2024, missing=["tax", "insurance"])],
+            )],
+            caveats=[],
+            missing_categories={},
+        )
+        with patch(
+            "api.rex_routes.documind_service.get_finance_summary",
+            new=AsyncMock(return_value=summary),
+        ):
+            response = self.client.get(
+                "/api/rex/documind/finance/summary",
+                params={"landlord_id": "landlord-1", "year": 2026},
+            )
+        body = response.json()
+        self.assertEqual(
+            body["properties"][0]["coverage"],
+            [{"year": 2024, "missing": ["tax", "insurance"]}],
+        )
