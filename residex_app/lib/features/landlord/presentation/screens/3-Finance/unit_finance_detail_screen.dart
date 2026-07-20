@@ -35,11 +35,15 @@ class UnitFinanceDetailScreen extends ConsumerStatefulWidget {
 class _UnitFinanceDetailScreenState
     extends ConsumerState<UnitFinanceDetailScreen> {
   late int _year;
+  late int _displayedYear;
+  late UnitFinance _displayedUnit;
 
   @override
   void initState() {
     super.initState();
     _year = widget.year;
+    _displayedYear = widget.year;
+    _displayedUnit = widget.unit;
   }
 
   UnitFinance _resolveUnit(FinanceSummary summary) {
@@ -67,24 +71,33 @@ class _UnitFinanceDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final summaryAsync = ref.watch(financeSummaryProvider(_year));
+    ref.watch(financeSummaryProvider(_year));
     final yearsAsync = ref.watch(financeYearsProvider);
-    final unit = summaryAsync.maybeWhen(
-      data: _resolveUnit,
-      orElse: () => widget.unit,
+
+    ref.listen<AsyncValue<FinanceSummary>>(
+      financeSummaryProvider(_year),
+      (previous, next) {
+        next.whenData((summary) {
+          setState(() {
+            _displayedUnit = _resolveUnit(summary);
+            _displayedYear = _year;
+          });
+        });
+      },
     );
 
     return Scaffold(
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         backgroundColor: AppColors.paper,
-        title: Text('${unit.label} — $_year', style: AppTextStyles.titleLarge),
+        title: Text('${_displayedUnit.label} — $_displayedYear',
+            style: AppTextStyles.titleLarge),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
               child: FinanceYearButton(
-                selected: _year,
+                selected: _displayedYear,
                 years: yearsAsync.value ?? [_year],
                 onChanged: (y) => setState(() => _year = y),
               ),
@@ -109,7 +122,7 @@ class _UnitFinanceDetailScreenState
                 Expanded(
                     child: Text('Net contribution',
                         style: AppTextStyles.labelLarge)),
-                Text(formatRM(unit.contribution),
+                Text(formatRM(_displayedUnit.contribution),
                     style: AppTextStyles.displayMedium),
               ],
             ),
@@ -117,18 +130,19 @@ class _UnitFinanceDetailScreenState
           const SizedBox(height: 20),
           Text('Monthly income', style: AppTextStyles.titleMedium),
           const SizedBox(height: 8),
-          _buildMonthStrip(unit),
+          _buildMonthStrip(_displayedUnit),
           const SizedBox(height: 8),
           _buildLegend(),
-          if (unit.missingInvoiceMonths.isNotEmpty) ...[
+          if (_displayedUnit.missingInvoiceMonths.isNotEmpty) ...[
             const SizedBox(height: 20),
-            _buildMissingInvoices(context, ref, unit),
+            _buildMissingInvoices(context, ref, _displayedUnit),
           ],
-          if (unit.expenseLines.isNotEmpty) ...[
+          if (_displayedUnit.expenseLines.isNotEmpty) ...[
             const SizedBox(height: 20),
             Text('Expenses', style: AppTextStyles.titleMedium),
             const SizedBox(height: 8),
-            ...unit.expenseLines.map((line) => _buildExpenseLine(context, line)),
+            ..._displayedUnit.expenseLines
+                .map((line) => _buildExpenseLine(context, line)),
           ],
         ],
       ),
