@@ -35,6 +35,10 @@ FinanceSummary _fakeSummary(int year) {
             months: const [],
           ),
         ],
+        coverage: [
+          YearCoverage(year: 2025, missing: const ['insurance']),
+          YearCoverage(year: 2026, missing: const []),
+        ],
       ),
     ],
     caveats: const ['Income assumes rent billed equals rent received — invoices are the ledger, payment is not confirmed.'],
@@ -67,5 +71,6 @@ void main() {
     expect(find.text('Unit A'), findsOneWidget);
     expect(find.textContaining('50%'), findsOneWidget); // ownership badge
     expect(find.textContaining('Insurance policy'), findsOneWidget); // missing category
+    expect(find.textContaining('1 missing'), findsOneWidget); // coverage chip for 2025
   });
 }

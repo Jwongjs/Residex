@@ -238,6 +238,52 @@ class FinanceScreen extends ConsumerWidget {
     );
   }
 
+  Widget _buildCoverageStrip(
+      BuildContext context, WidgetRef ref, PropertyFinance block) {
+    return SizedBox(
+      height: 28,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: block.coverage.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          final yearCoverage = block.coverage[index];
+          final complete = yearCoverage.missing.isEmpty;
+          final color = complete ? AppColors.deedGreen : AppColors.catUpkeep;
+          return InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () =>
+                ref.read(financeYearProvider.notifier).state = yearCoverage.year,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: color),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    complete ? Icons.check_circle_outline : Icons.error_outline,
+                    size: 13,
+                    color: color,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    complete
+                        ? '${yearCoverage.year}'
+                        : '${yearCoverage.year} · ${yearCoverage.missing.length} missing',
+                    style: AppTextStyles.labelSmall.copyWith(color: color),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildPropertyBlock(BuildContext context, WidgetRef ref,
       FinanceSummary summary, PropertyFinance block) {
     final missing = summary.missingCategories[block.propertyId] ?? const [];
@@ -273,6 +319,10 @@ class FinanceScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 10),
+          if (block.coverage.isNotEmpty) ...[
+            _buildCoverageStrip(context, ref, block),
+            const SizedBox(height: 10),
+          ],
           _headlineRow('Received Rent', block.receivedRent),
           _headlineRow('Direct Expenses', block.directExpenses),
           _headlineRow('Rental Income/Loss', block.rentalIncomeOrLoss,
