@@ -111,4 +111,35 @@ void main() {
     expect(summary.caveats, isEmpty);
     expect(summary.expenseBreakdown, isEmpty);
   });
+
+  test('fromJson parses coverage and unpaid-month reason', () {
+    final summary = FinanceSummaryModel.fromJson({
+      ...json,
+      'properties': [
+        {
+          ...((json['properties'] as List<dynamic>)[0] as Map<String, dynamic>),
+          'coverage': [
+            {'year': 2023, 'missing': ['tax', 'maintenance']},
+            {'year': 2024, 'missing': <String>[]},
+          ],
+          'units': [
+            {
+              ...((((json['properties'] as List<dynamic>)[0] as Map<String, dynamic>)['units'] as List<dynamic>)[0] as Map<String, dynamic>),
+              'months': [
+                {'month': 4, 'source': 'unpaid', 'amount': 0.0, 'reason': 'tenant requested deferral'},
+              ],
+            }
+          ],
+        }
+      ],
+    });
+    final block = summary.properties.single;
+    expect(block.coverage.length, 2);
+    expect(block.coverage[0].year, 2023);
+    expect(block.coverage[0].missing, ['tax', 'maintenance']);
+    expect(block.coverage[1].missing, isEmpty);
+    final month = block.units.single.months.single;
+    expect(month.source, 'unpaid');
+    expect(month.reason, 'tenant requested deferral');
+  });
 }

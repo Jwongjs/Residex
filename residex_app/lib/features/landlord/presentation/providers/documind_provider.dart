@@ -250,3 +250,52 @@ final updateExpenseLinesActionProvider = Provider<Future<void> Function({
     ref.invalidate(financeYearsProvider);
   };
 });
+
+/// Mark one month as "no payment received" for a property or unit scope.
+final setPaymentExceptionActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required String month,
+  String? unitId,
+  String? reason,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required String month,
+    String? unitId,
+    String? reason,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.setPaymentException(
+      landlordId: landlordId,
+      propertyId: propertyId,
+      unitId: unitId,
+      month: month,
+      reason: reason,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// Clear a "no payment received" mark.
+final clearPaymentExceptionActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required String month,
+  String? unitId,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required String month,
+    String? unitId,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.clearPaymentException(
+      landlordId: landlordId,
+      propertyId: propertyId,
+      unitId: unitId,
+      month: month,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});

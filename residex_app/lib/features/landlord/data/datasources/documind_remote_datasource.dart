@@ -313,6 +313,53 @@ class DocuMindRemoteDataSource {
       throw Exception('Failed to update expense lines: ${response.body}');
     }
   }
+
+  /// Mark one month as "no payment received". Excludes that month from
+  /// Received Rent, Net P/L, and Statutory Rental Income.
+  Future<void> setPaymentException({
+    required String landlordId,
+    required String propertyId,
+    required String month,
+    String? unitId,
+    String? reason,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindPaymentException}');
+    final response = await httpClient.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'landlord_id': landlordId,
+        'property_id': propertyId,
+        'unit_id': unitId,
+        'month': month,
+        'reason': reason,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to mark month unpaid: ${response.body}');
+    }
+  }
+
+  /// Clear a "no payment received" mark. Idempotent.
+  Future<void> clearPaymentException({
+    required String landlordId,
+    required String propertyId,
+    required String month,
+    String? unitId,
+  }) async {
+    final queryParameters = {
+      'landlord_id': landlordId,
+      'property_id': propertyId,
+      'month': month,
+      if (unitId != null) 'unit_id': unitId,
+    };
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindPaymentException}')
+        .replace(queryParameters: queryParameters);
+    final response = await httpClient.delete(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to clear payment mark: ${response.body}');
+    }
+  }
 }
 
 /// Thrown when a cited document no longer exists (e.g. deleted, or predates

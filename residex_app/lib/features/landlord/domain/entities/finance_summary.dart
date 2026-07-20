@@ -48,6 +48,7 @@ class PropertyFinance {
   final List<UnitFinance> units;
   final List<ExpenseLine> expenseLines;
   final List<ExpenseLine> propertyExpenseLines;
+  final List<YearCoverage> coverage;
 
   PropertyFinance({
     required this.propertyId,
@@ -60,7 +61,15 @@ class PropertyFinance {
     this.units = const [],
     this.expenseLines = const [],
     this.propertyExpenseLines = const [],
+    this.coverage = const [],
   });
+}
+
+class YearCoverage {
+  final int year;
+  final List<String> missing;
+
+  YearCoverage({required this.year, this.missing = const []});
 }
 
 class UnitFinance {
@@ -86,10 +95,11 @@ class UnitFinance {
 
 class MonthIncome {
   final int month; // 1-12
-  final String source; // actual | derived | vacant
+  final String source; // actual | derived | unpaid | vacant
   final double amount;
+  final String? reason;
 
-  MonthIncome({required this.month, required this.source, required this.amount});
+  MonthIncome({required this.month, required this.source, required this.amount, this.reason});
 }
 
 class ExpenseLine {

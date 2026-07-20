@@ -48,6 +48,15 @@ class FinanceSummaryModel {
           .toList(),
       expenseLines: _lines(json['expense_lines']),
       propertyExpenseLines: _lines(json['property_expense_lines']),
+      coverage: (json['coverage'] as List<dynamic>? ?? const [])
+          .map((c) => c as Map<String, dynamic>)
+          .map((c) => YearCoverage(
+                year: (c['year'] as num?)?.toInt() ?? 0,
+                missing: (c['missing'] as List<dynamic>? ?? const [])
+                    .map((m) => m.toString())
+                    .toList(),
+              ))
+          .toList(),
     );
   }
 
@@ -63,6 +72,7 @@ class FinanceSummaryModel {
                 month: (m['month'] as num?)?.toInt() ?? 0,
                 source: m['source'] as String? ?? 'vacant',
                 amount: _d(m['amount']),
+                reason: m['reason'] as String?,
               ))
           .toList(),
       missingInvoiceMonths: (json['missing_invoice_months'] as List<dynamic>? ?? const [])
