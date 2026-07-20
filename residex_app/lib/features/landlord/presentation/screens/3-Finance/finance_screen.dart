@@ -2,13 +2,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
-import '../../../../../core/theme/app_dimensions.dart';
 import '../../../domain/entities/finance_summary.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
 import '../../widgets/common/upload_source_sheet.dart';
+import '../../widgets/common/finance_ledger_strip.dart';
+import '../../widgets/common/finance_year_picker.dart';
 import '../2-Documind/documind_screen.dart' show isAllowedUploadFilename;
 import '../2-Documind/documind_upload_summary.dart';
 import 'unit_finance_detail_screen.dart';
@@ -82,6 +83,18 @@ class FinanceScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text('Finance', style: AppTextStyles.headlineMedium),
         backgroundColor: AppColors.paper,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: FinanceYearButton(
+                selected: year,
+                years: yearsAsync.value ?? [year],
+                onChanged: (y) => ref.read(financeYearProvider.notifier).state = y,
+              ),
+            ),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         color: AppColors.registry,
@@ -94,8 +107,6 @@ class FinanceScreen extends ConsumerWidget {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20),
           children: [
-            _buildYearChips(ref, year, yearsAsync.value ?? [year]),
-            const SizedBox(height: 16),
             ...summaryAsync.when(
               data: (summary) => _buildSummary(context, ref, summary),
               loading: () => const [
@@ -119,31 +130,6 @@ class FinanceScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildYearChips(WidgetRef ref, int selected, List<int> years) {
-    return SizedBox(
-      height: 36,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: years.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final year = years[index];
-          final isSelected = year == selected;
-          return ChoiceChip(
-            label: Text('$year'),
-            selected: isSelected,
-            selectedColor: AppColors.registry,
-            labelStyle: AppTextStyles.labelLarge.copyWith(
-              color: isSelected ? Colors.white : AppColors.ink,
-            ),
-            onSelected: (_) =>
-                ref.read(financeYearProvider.notifier).state = year,
-          );
-        },
       ),
     );
   }
@@ -177,70 +163,15 @@ class FinanceScreen extends ConsumerWidget {
     }
 
     return [
-      _buildHeadlinePanel(context, summary),
+      FinanceLedgerStrip(
+        summary: summary,
+        onShowCaveats: () => _showCaveats(context, summary.caveats),
+      ),
       const SizedBox(height: 20),
       ...summary.properties.map(
         (block) => _buildPropertyBlock(context, ref, summary, block),
       ),
     ];
-  }
-
-  Widget _buildHeadlinePanel(BuildContext context, FinanceSummary summary) {
-    final totals = summary.totals;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.hairline),
-        boxShadow: AppShadows.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _headlineRow('Received Rent', totals.receivedRent),
-          if (totals.derivedRent > 0)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                'includes ${formatRM(totals.derivedRent)} backfilled from lease terms',
-                style: AppTextStyles.bodySmall
-                    .copyWith(color: AppColors.textMuted),
-              ),
-            ),
-          _headlineRow('Direct Expenses', totals.directExpenses),
-          const Divider(height: 20, color: AppColors.hairline),
-          _headlineRow('Net P/L', totals.netPl, emphasized: true),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Statutory Rental Income',
-                        style: AppTextStyles.labelLarge),
-                    Text(
-                      totals.statutoryNote,
-                      style: AppTextStyles.bodySmall
-                          .copyWith(color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              Text(formatRM(totals.statutoryRentalIncome),
-                  style: AppTextStyles.titleLarge),
-              IconButton(
-                icon: const Icon(Icons.info_outline,
-                    size: 20, color: AppColors.textMuted),
-                tooltip: 'Assumptions and caveats',
-                onPressed: () => _showCaveats(context, summary.caveats),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _headlineRow(String label, double value, {bool emphasized = false}) {

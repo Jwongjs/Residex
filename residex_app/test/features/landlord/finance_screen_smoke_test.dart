@@ -60,7 +60,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Statutory Rental Income'), findsOneWidget);
+    expect(find.text('Statutory rental income'), findsOneWidget);
     expect(find.text('RM 24,483.13'), findsWidgets); // statutory + P/L rows
     expect(find.text('Ayer 8'), findsOneWidget);
     expect(find.textContaining('Estimate'), findsWidgets);
