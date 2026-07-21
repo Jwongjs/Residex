@@ -67,6 +67,30 @@ Each (year, category) cell is one of:
 
 States are conveyed by icon plus label, never colour alone.
 
+### `present` means billed, not paid
+
+Coverage answers *"do I have the document?"* It does not answer *"did the money move?"*
+Two tempting inferences are both wrong:
+
+- **Uploaded does not mean paid.** The Ayer@8 February statement shows **RM1,626.81
+  outstanding** — it is a demand for payment, and uploading it proves only that the charge
+  was raised.
+- **Missing does not mean unpaid.** It almost always means not yet uploaded. The app never
+  infers non-payment from an absent document; `missing` means unknown.
+
+**Expenses therefore carry no paid/unpaid state.** Two reasons this is safe:
+
+1. **Tax does not need it.** Malaysian deductions are for expenses *incurred*, not expenses
+   paid, so an unpaid 2025 maintenance charge still deducts in 2025. The tax figure is
+   unaffected by settlement.
+2. **The signal already exists.** Late payment charges are an extracted subtype. When
+   arrears accumulate, penalty lines appear on the statement by themselves — a real signal
+   with no manual upkeep and no new mechanism.
+
+**Rent is the deliberate exception.** It keeps its unpaid-month mechanism, because the
+asymmetry is genuine: nobody issues a document when a tenant *fails* to pay, the landlord
+is the party owed, and the shortfall is real money that no other source would reveal.
+
 ---
 
 ## 3. Expanded expense catalogue and deductibility
@@ -296,15 +320,42 @@ Tags are useful whether or not folders are switched on — search and filter com
 
 Single toggle in the Documents header: **"Organise into folders."**
 
-**The rule: documents that keep arriving together stay together.** A folder's identity is
-the set of tags that **repeat** across its documents. The February Ayer@8 statement carries
-maintenance, sinking fund and utilities plus the once-a-year insurance and quit rent lines;
-March carries only the first three. The repeating tags are maintenance + sinking fund +
-utilities, so both file together and the annual riders do not split them. A standalone fire
-insurance policy shares none of those repeating tags and gets its own folder.
+**The rule: documents that keep arriving together stay together.**
+
+Stated generally — this applies to **every tag in the catalogue**, with no hardcoded list
+and no special case for strata:
+
+> **A document's folder identity is its *periodic* tags. One-off tags ride along and never
+> split a folder. A document with no periodic tags is filed by its full tag set.**
+
+The periodic/one-off classification is not new data — it is the rhythm each subtype already
+carries in §2:
+
+| Rhythm | Tags | Role in grouping |
+|---|---|---|
+| **Periodic** (monthly / quarterly) | `maintenance`, `sinking_fund`, `utilities`, `management_fee`, `security_fee`, `rent_collection` | **Define the folder** |
+| **One-off** (annual or per-event) | `insurance_premium`, `quit_rent`, `parcel_rent`, `assessment_tax`, `loan_interest`, `stamp_duty`, `agent_commission`, `legal_fee`, `advertising` | **Ride along** — never split a folder |
+| **Ad hoc** | `upkeep`, `pest_control`, `renovation` | Ride along; form their own folder when alone |
+
+Worked examples across property types:
+
+| Document | Tags | Result |
+|---|---|---|
+| Ayer@8 February statement | maintenance, sinking, utilities, insurance, quit rent | Periodic core `{maintenance, sinking, utilities}` |
+| Ayer@8 March statement | maintenance, sinking, utilities | **Same folder** — annual riders did not split it |
+| Landed guarded-scheme quarterly bill | security fee, rent collection | Own folder, all quarters together |
+| Standalone fire policy | insurance | No periodic tags → own folder |
+| Standalone assessment bill | assessment tax | No periodic tags → own folder |
+| Plumbing receipt | upkeep | No periodic tags → own folder |
+| Management statement with a one-off pest treatment | maintenance, sinking, utilities, pest control | Ad hoc rides along → **folder unchanged** |
 
 Grouping is recomputed over the whole set rather than assigned on arrival, so **upload
 order never changes the outcome**.
+
+**Known limitation:** two documents with genuinely different periodic cores — say
+`{maintenance, sinking}` and `{maintenance, sinking, utilities}` — land in separate folders
+even where a person would merge them. The sticky manual move is the escape hatch.
+Predictable and occasionally wrong beats clever and unexplainable.
 
 | Control | Behaviour |
 |---|---|
@@ -388,7 +439,10 @@ makes backfilling possible.
   the named subtypes only; the engine does not adjudicate whether a given repair receipt is
   a capital improvement.
 - Obligation tracking — no "did I pay this month" state or reminders for the landlord's own
-  bills.
+  bills. Expenses are tracked as **billed**, never as settled; see §2. Rent keeps its
+  unpaid-month mechanism as the sole exception.
+- Extracting outstanding or arrears balances from statements. Considered and declined —
+  accumulating arrears already surface as late-payment lines.
 - Generating e-invoices. The app stores them; it does not issue them.
 
 ---
