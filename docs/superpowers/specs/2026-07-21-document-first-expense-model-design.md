@@ -87,6 +87,29 @@ Two tempting inferences are both wrong:
    arrears accumulate, penalty lines appear on the statement by themselves — a real signal
    with no manual upkeep and no new mechanism.
 
+### Payment state never gates an expense deduction
+
+"Billed, not paid" governs **inference**, not accounting. An uploaded expense document
+counts toward the figures immediately. Exactly three filters apply to an expense line, and
+payment is not among them:
+
+1. The `deductible` flag — utilities, penalties, renovations, loan principal excluded
+2. Property-profile applicability — a landed owner never accrues maintenance
+3. Proration by the fraction of the year the property was available to let
+
+| Figure | Fed by |
+|---|---|
+| **Gross rental income** | Received rent plus recovered rent; excludes `outstanding` and `written_off` |
+| **Direct expenses** | Every deductible line from every uploaded document, **regardless of payment** |
+| **Net P/L** | Gross minus direct expenses |
+| **Statutory rental income** | Same basis; withheld entirely on incomplete years |
+
+**The asymmetry is deliberate: income counts when received, expenses count when billed.**
+That is the more useful landlord view — what was actually pocketed versus what is owed —
+and it is correct for tax, since Malaysian deductions are for expenses *incurred*. But it
+is a mixed basis, which is precisely why outstanding rent is reported as its own figure
+rather than silently vanishing: the landlord's tax agent must be able to see both.
+
 **A rental invoice is no different.** It records what was *charged* that month — useful for
 catching a mid-term revision or a partial month the lease cannot show. It never evidences
 receipt. Only a receipt or a bank transfer slip does, which is why the Rent records folder
