@@ -87,9 +87,68 @@ Two tempting inferences are both wrong:
    arrears accumulate, penalty lines appear on the statement by themselves — a real signal
    with no manual upkeep and no new mechanism.
 
-**Rent is the deliberate exception.** It keeps its unpaid-month mechanism, because the
-asymmetry is genuine: nobody issues a document when a tenant *fails* to pay, the landlord
-is the party owed, and the shortfall is real money that no other source would reveal.
+**A rental invoice is no different.** It records what was *charged* that month — useful for
+catching a mid-term revision or a partial month the lease cannot show. It never evidences
+receipt. Only a receipt or a bank transfer slip does, which is why the Rent records folder
+(§9) holds those too.
+
+### Rent is the deliberate exception — three states
+
+Rent keeps a landlord-asserted payment state, because the asymmetry is genuine: nobody
+issues a document when a tenant *fails* to pay, the landlord is the party owed, and the
+shortfall is real money no other source would reveal.
+
+Today's mechanism has two states and collapses two different facts into one red tile. It
+becomes three:
+
+| State | Meaning | Behaviour |
+|---|---|---|
+| `received` | Money arrived (default) | Counts as received rent |
+| `outstanding` | Billed, unpaid, still being chased | Shown separately from received rent |
+| `written_off` | Given up on; irrecoverable | Shown separately; the year can close |
+
+**Recovery never reopens a closed year.** An `outstanding` month simply clears back to
+`received` when the tenant pays. A `written_off` month that is later paid is booked as
+**recovered income in the year the money arrived** — the original year stays frozen. A
+landlord may already have filed it, and silently rewriting a filed year is worse than
+useless.
+
+**Writing off adds nothing.** It is a subtraction — a record that money never came. The
+month stops counting toward received rent and no amount appears anywhere. Most write-offs
+never recover; that is the normal ending. Only an actual recovery adds an amount, and the
+write-off date itself is not a financial event.
+
+Worked through: August 2025 rent of RM3,000 goes unpaid → the month sits `outstanding`;
+December 2025 the landlord gives up → `written_off`, still excluded, 2025 received rent is
+RM3,000 lower, nothing added; March 2026 the tenant unexpectedly pays → RM3,000 lands in
+**2026**, and 2025 stays frozen.
+
+**Recovered rent is its own line, never merged into the receiving month.** March 2026
+already has its own rent tile; folding RM3,000 into it would show a RM6,000 March and
+corrupt the ledger. Instead:
+
+> **Recovered rent — Aug 2025** · RM3,000 · *received Mar 2026*
+
+It counts toward 2026's income total, is visibly not March's rent, and preserves the trail
+back to the originating month for the landlord's tax agent.
+
+**The app does not decide the tax treatment.** Whether outstanding rent is assessable
+before receipt, and whether an individual landlord may claim bad-debt relief under s.4(d),
+is contested ground. Consistent with the existing `STATUTORY_NOTE` posture, received and
+outstanding are presented as **two separate figures**, with the outstanding amount named in
+the note for the landlord's tax agent to resolve. Tracking the fact is the app's job;
+adjudicating it is not.
+
+Implementation: the existing `documind_payment_exceptions` collection gains a `state`
+field, replacing mere row presence as the signal. Unchanged: a non-received month still
+counts as tenanted for expense proration — the property was let, the tenant simply did not
+pay.
+
+**Discoverability defect (to fix, not merely note).** The control lives three levels deep —
+Finance tab, then a unit, then a month tile
+(`unit_finance_detail_screen.dart:170-232`). A landlord who has never found it cannot know
+it exists, and will instead see rent counted that they never received. A year-level
+affordance must surface it.
 
 ---
 
@@ -390,25 +449,29 @@ Six stages, each independently shippable, each leaving the app working.
 6. Period-based coverage plus the `x/N` installment check
 7. **Mark unavailable** exceptions collection
 8. Incomplete years show no finished total and no tax estimate
+9. Rent payment states — `received` / `outstanding` / `written_off`, received and
+   outstanding reported as separate figures, recovery booked in the year the money arrived
 
 *(Absorbs old Tasks 4, 5.)*
 
-### Stage C — Registration and backfill (Flutter + light backend)
-9. Three-step guided registration — skippable past Step 1, resumable
-10. Records grid, used at registration and permanently after
-11. Missing documents ordered by damage, labelled with what they cost
+### Stage C — Registration, backfill and payment visibility (Flutter + light backend)
+10. Three-step guided registration — skippable past Step 1, resumable
+11. Records grid, used at registration and permanently after
+12. Missing documents ordered by damage, labelled with what they cost
+13. Payment-state control surfaced at year level, not buried three levels deep; three-state
+    month tiles replacing the binary UNPAID tile
 
 ### Stage D — Agreement-assisted liability (backend + Flutter)
-12. Extract the utilities and repairs clauses, retaining quoted evidence
-13. Pre-filled confirm-once prompt
+14. Extract the utilities and repairs clauses, retaining quoted evidence
+15. Pre-filled confirm-once prompt
 
 ### Stage E — Documents tab (Flutter only, low risk)
-14. Fifth bottom tab; Documind becomes chat-only
-15. Rental invoices demoted to the optional **Rent records** folder
+16. Fifth bottom tab; Documind becomes chat-only
+17. Rental invoices demoted to the optional **Rent records** folder
 
 ### Stage F — Tags and folders (backend + Flutter, largest UI build)
-16. Derived sub-category tags with chips
-17. Opt-in clustering, rename, sticky manual moves, year/month separators
+18. Derived sub-category tags with chips
+19. Opt-in clustering, rename, sticky manual moves, year/month separators
 
 **Ordering rationale:** A defines the vocabulary everything else speaks. B cannot track
 categories that do not exist. C displays what B computes. D refines one rule from A. E is
