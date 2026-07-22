@@ -15,6 +15,7 @@ from rag.fact_extractor import (
     EXPENSE_SUBTYPE_CATEGORY,
     LANDLORD_BORNE_SUBTYPES,
     NEVER_DEDUCTIBLE_SUBTYPES,
+    RENEWAL_ONLY_SUBTYPES,
 )
 
 _EXPENSE_LINE_LABELS = {
@@ -183,17 +184,39 @@ def _scope_income(
     return month_rows, rented, actual_sum, derived_sum, vacant_months, derived_months, unpaid_months
 
 
-def _line_deductible(subtype: Optional[str], utilities_paid_by: Optional[str]) -> bool:
+def _renewal_years(prop_docs: List[Dict[str, Any]]) -> set:
+    """Years in which a lease document marked `renewal` starts."""
+    years = set()
+    for doc in prop_docs:
+        facts = doc.get("extracted_facts")
+        if not isinstance(facts, dict) or doc.get("category") != "lease":
+            continue
+        if facts.get("subtype") != "renewal":
+            continue
+        ym = _ym(facts.get("lease_start"))
+        if ym is not None:
+            years.add(ym[0])
+    return years
+
+
+def _line_deductible(
+    subtype: Optional[str],
+    utilities_paid_by: Optional[str],
+    letting_deductible: bool,
+) -> bool:
     """Whether an expense line feeds direct_expenses.
 
     Penalties and capital outlay never do. Utilities do only when the
-    property profile says the landlord bears them — extraction classifies
-    the charge, the profile decides deductibility, and the tenancy
-    agreement stays advisory."""
+    property profile says the landlord bears them. Letting costs do only
+    when a renewal tenancy for the year is on file — absence of evidence
+    reads as a first letting, because the excluded line stays visible and
+    correctable while a silent over-claim would not."""
     if subtype in NEVER_DEDUCTIBLE_SUBTYPES:
         return False
     if subtype in LANDLORD_BORNE_SUBTYPES:
         return utilities_paid_by == "landlord"
+    if subtype in RENEWAL_ONLY_SUBTYPES:
+        return letting_deductible
     return True
 
 
@@ -214,6 +237,7 @@ def _expense_lines(
     per validated item, mapped to its finance category via
     EXPENSE_SUBTYPE_CATEGORY; a line belongs to the year when its
     period_year matches or its date falls in the year."""
+    letting_deductible = year in _renewal_years(prop_docs)
     lines: List[Dict[str, Any]] = []
     for doc in prop_docs:
         facts = doc["extracted_facts"]
@@ -237,7 +261,9 @@ def _expense_lines(
                     "amount": _round2(amount),
                     "date": item.get("date") or str(item.get("period_year") or year),
                     "unit_id": doc.get("unit_id"),
-                    "deductible": _line_deductible(subtype, utilities_paid_by),
+                    "deductible": _line_deductible(
+                        subtype, utilities_paid_by, letting_deductible
+                    ),
                 })
             continue
         entry = None  # (amount, description, date_str)
@@ -287,7 +313,9 @@ def _expense_lines(
                 "amount": _round2(amount),
                 "date": when,
                 "unit_id": doc.get("unit_id"),
-                "deductible": _line_deductible(facts.get("subtype"), utilities_paid_by),
+                "deductible": _line_deductible(
+                    facts.get("subtype"), utilities_paid_by, letting_deductible
+                ),
             })
     return lines
 
@@ -552,6 +580,15 @@ def compute_finance_summary(
                 f"{name}: RM{excluded:,.2f} of billed charges are not deductible "
                 "(utilities, penalties, capital works) and are excluded from the "
                 "figures."
+            )
+
+        if any(
+            not l["deductible"] and l["subtype"] in RENEWAL_ONLY_SUBTYPES
+            for l in expense_lines
+        ):
+            non_deductible_notes.append(
+                f"{name}: letting costs are excluded as first-letting expenses "
+                "— upload the renewal tenancy agreement if this was a renewal."
             )
 
         total_received += received

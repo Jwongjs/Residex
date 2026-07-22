@@ -567,3 +567,63 @@ class ExpandedSubtypeTests(unittest.TestCase):
         lines = result["properties"][0]["expense_lines"]
         self.assertEqual(len(lines), 9)
         self.assertTrue(all(line["description"] for line in lines))
+
+
+class LettingCostDeductibilityTests(unittest.TestCase):
+    def _letting_costs(self):
+        return _doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "agent_commission", "amount": 1200.0, "date": "2025-01-15"},
+            {"subtype": "stamp_duty", "amount": 180.0, "date": "2025-01-15"},
+        ]})
+
+    def _lease(self, subtype):
+        return _doc("p1", "lease", {
+            "monthly_rent": 1000.0, "subtype": subtype,
+            "lease_start": "2025-01-01", "lease_end": "2025-12-31",
+        })
+
+    def test_first_letting_costs_do_not_deduct(self):
+        result = _summary(
+            [self._lease("new"), self._letting_costs()], [_prop("p1", "House")]
+        )
+        self.assertEqual(result["totals"]["direct_expenses"], 0.0)
+        self.assertNotIn("letting", result["expense_breakdown"])
+
+    def test_renewal_letting_costs_deduct(self):
+        result = _summary(
+            [self._lease("renewal"), self._letting_costs()], [_prop("p1", "House")]
+        )
+        self.assertEqual(result["expense_breakdown"]["letting"], 1380.0)
+        self.assertEqual(result["totals"]["direct_expenses"], 1380.0)
+
+    def test_no_lease_on_file_is_treated_as_a_first_letting(self):
+        result = _summary([self._letting_costs()], [_prop("p1", "House")])
+        self.assertEqual(result["totals"]["direct_expenses"], 0.0)
+
+    def test_a_renewal_in_another_year_does_not_unlock_this_year(self):
+        earlier = _doc("p1", "lease", {
+            "monthly_rent": 1000.0, "subtype": "renewal",
+            "lease_start": "2024-01-01", "lease_end": "2024-12-31",
+        })
+        result = _summary([earlier, self._letting_costs()], [_prop("p1", "House")])
+        self.assertEqual(result["totals"]["direct_expenses"], 0.0)
+
+    def test_excluded_letting_costs_say_what_would_change_them(self):
+        result = _summary([self._letting_costs()], [_prop("p1", "House")])
+        self.assertTrue(any(
+            "renewal tenancy agreement" in c for c in result["caveats"]
+        ))
+
+    def test_letting_lines_stay_visible_when_excluded(self):
+        result = _summary([self._letting_costs()], [_prop("p1", "House")])
+        lines = result["properties"][0]["expense_lines"]
+        commission = next(l for l in lines if l["subtype"] == "agent_commission")
+        self.assertEqual(commission["amount"], 1200.0)
+        self.assertFalse(commission["deductible"])
+
+    def test_other_subtypes_are_unaffected_by_the_renewal_rule(self):
+        docs = [self._lease("new"), _doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "upkeep", "amount": 300.0, "date": "2025-05-01"},
+        ]})]
+        result = _summary(docs, [_prop("p1", "House")])
+        self.assertEqual(result["totals"]["direct_expenses"], 300.0)

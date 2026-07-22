@@ -154,6 +154,13 @@ NEVER_DEDUCTIBLE_SUBTYPES = {"late_penalty", "renovation", "loan_principal"}
 # under-claiming beats over-claiming.
 LANDLORD_BORNE_SUBTYPES = {"utilities"}
 
+# LHDN PR 12/2018: the cost of putting a property on the market for the
+# first time is capital/preliminary. These deduct only when a renewal
+# tenancy for the same year is on file.
+RENEWAL_ONLY_SUBTYPES = {
+    "agent_commission", "legal_fee", "stamp_duty", "advertising",
+}
+
 # Classification is a lookup against this table, not model judgment — the
 # Malay/English wording landlords actually see on Malaysian bills.
 _EXPENSE_SYNONYMS = (
