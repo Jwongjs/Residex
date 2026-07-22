@@ -575,6 +575,20 @@ def _expected_categories(prop: Dict[str, Any]) -> List[str]:
     return expected
 
 
+def _expected_record_categories(prop: Dict[str, Any]) -> List[str]:
+    """The flattened category/tax-subtype vocabulary this property is ever
+    expected to hold expense documents for — the Records grid's column
+    set (spec §9). Excludes rental_invoice (rent has its own records
+    surface, spec §9) and upkeep (never flagged missing, spec §2)."""
+    tax_subtypes = _expected_tax_subtypes(prop)
+    labels = [label for label, _ in tax_subtypes] if tax_subtypes else ["tax"]
+    categories = [
+        c for c in _expected_categories(prop)
+        if c not in ("rental_invoice", "tax", "upkeep")
+    ]
+    return labels + categories
+
+
 def _property_coverage(
     prop_docs: List[Dict[str, Any]],
     current_year: int,
@@ -928,6 +942,7 @@ def compute_finance_summary(
             "recovered_rent": recovered_lines,
             "complete": complete,
             "coverage": coverage_rows,
+            "expected_categories": _expected_record_categories(prop),
         })
 
     statutory = _round2(statutory_sum)

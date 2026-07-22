@@ -4,6 +4,7 @@ from datetime import date, datetime
 from rag.finance_engine import (
     LOSS_FLOOR_NOTE,
     STATUTORY_NOTE,
+    _expected_record_categories,
     _installment_gaps,
     _maintenance_months_covered,
     _parse_installment,
@@ -1271,3 +1272,38 @@ class TrackFromYearTests(unittest.TestCase):
         prop = dict(_prop("p1", "House"), track_from_year=2030)
         result = _summary(self._docs(), [prop], today=date(2026, 7, 16))
         self.assertEqual(result["properties"][0]["coverage"], [])
+
+
+class ExpectedRecordCategoriesTests(unittest.TestCase):
+    def test_strata_mortgaged_gets_the_land_office_slot_not_specific_subtypes(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata", has_mortgage=True)
+        categories = _expected_record_categories(prop)
+        self.assertIn("assessment", categories)
+        self.assertIn("land_office_tax", categories)
+        self.assertIn("loan", categories)
+        self.assertIn("maintenance", categories)
+        self.assertNotIn("insurance", categories)
+        self.assertNotIn("quit_rent", categories)
+        self.assertNotIn("rental_invoice", categories)
+        self.assertNotIn("upkeep", categories)
+
+    def test_landed_mortgaged_expects_quit_rent_specifically(self):
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=True)
+        categories = _expected_record_categories(prop)
+        self.assertIn("assessment", categories)
+        self.assertIn("quit_rent", categories)
+        self.assertIn("insurance", categories)
+        self.assertIn("loan", categories)
+        self.assertNotIn("maintenance", categories)
+        self.assertNotIn("land_office_tax", categories)
+
+    def test_cash_buyer_is_never_expected_to_hold_a_loan_statement(self):
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)
+        self.assertNotIn("loan", _expected_record_categories(prop))
+
+    def test_unknown_profile_falls_back_to_the_generic_tax_bucket(self):
+        prop = _prop("p1", "House")
+        categories = _expected_record_categories(prop)
+        self.assertIn("tax", categories)
+        self.assertNotIn("assessment", categories)
+        self.assertNotIn("quit_rent", categories)

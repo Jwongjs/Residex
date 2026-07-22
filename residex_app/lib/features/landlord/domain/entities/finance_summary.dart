@@ -54,6 +54,7 @@ class PropertyFinance {
   final List<ExpenseLine> propertyExpenseLines;
   final List<RecoveredRentLine> recoveredRent;
   final List<YearCoverage> coverage;
+  final List<String> expectedCategories;
 
   PropertyFinance({
     required this.propertyId,
@@ -70,6 +71,7 @@ class PropertyFinance {
     this.propertyExpenseLines = const [],
     this.recoveredRent = const [],
     this.coverage = const [],
+    this.expectedCategories = const [],
   });
 }
 

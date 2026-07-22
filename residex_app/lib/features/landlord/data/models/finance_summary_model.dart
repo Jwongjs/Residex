@@ -88,6 +88,9 @@ class FinanceSummaryModel {
                     .toList(),
               ))
           .toList(),
+      expectedCategories: (json['expected_categories'] as List<dynamic>? ?? const [])
+          .map((c) => c.toString())
+          .toList(),
     );
   }
 

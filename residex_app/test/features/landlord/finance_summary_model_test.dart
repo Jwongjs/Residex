@@ -246,4 +246,25 @@ void main() {
     expect(block.recoveredRent, isEmpty);
     expect(block.expenseLines.single.deductible, isTrue);
   });
+
+  test('fromJson parses expected_categories', () {
+    final summary = FinanceSummaryModel.fromJson({
+      'year': 2025,
+      'totals': {
+        'received_rent': 0, 'derived_rent': 0, 'direct_expenses': 0,
+        'net_pl': 0, 'statutory_rental_income': 0,
+        'statutory_note': 'Estimate — for your tax agent',
+      },
+      'properties': [
+        {
+          'property_id': 'p1', 'name': 'Ayer 8',
+          'received_rent': 0, 'derived_rent': 0, 'direct_expenses': 0,
+          'rental_income_or_loss': 0,
+          'expected_categories': ['assessment', 'land_office_tax', 'maintenance'],
+        }
+      ],
+    });
+    expect(summary.properties.single.expectedCategories,
+        ['assessment', 'land_office_tax', 'maintenance']);
+  });
 }

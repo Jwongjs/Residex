@@ -233,6 +233,7 @@ class PropertyFinance(BaseModel):
     property_expense_lines: List[ExpenseLine]  # the property-level subset
     recovered_rent: List[RecoveredRentLine] = Field(default_factory=list)
     coverage: List[YearCoverage] = Field(default_factory=list)
+    expected_categories: List[str] = Field(default_factory=list)
 
 
 class FinanceTotals(BaseModel):

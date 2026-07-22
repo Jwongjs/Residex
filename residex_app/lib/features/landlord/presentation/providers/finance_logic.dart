@@ -1,4 +1,5 @@
 import '../../domain/entities/documind_document.dart';
+import '../../domain/entities/finance_summary.dart';
 
 /// Currency display: the app formats, never computes.
 String formatRM(double value) {
@@ -24,6 +25,41 @@ const Map<String, String> financeCategoryLabels = {
   'maintenance': 'Maintenance statement',
   'rental_invoice': 'Rent invoice',
 };
+
+/// Display labels for coverage-report entries, including fine tax
+/// subtypes beyond the 7 broad upload categories in [financeCategoryLabels].
+/// Must match backend `_TAX_LABELS`/labels in finance_engine.py exactly —
+/// [recordCellFor] matches on this text.
+const Map<String, String> coverageLabels = {
+  ...financeCategoryLabels,
+  'assessment': 'Assessment tax',
+  'quit_rent': 'Quit rent',
+  'parcel_rent': 'Parcel rent',
+  'land_office_tax': 'Land-office tax (quit or parcel rent)',
+};
+
+/// A coverage-report label (e.g. 'quit_rent', 'land_office_tax') is not
+/// itself a valid upload category — typed tax documents are uploaded as
+/// 'tax' and the extractor reads the subtype off the bill. This maps a
+/// coverage label to the upload category the backend expects.
+const Map<String, String> _coverageLabelToUploadCategory = {
+  'assessment': 'tax',
+  'quit_rent': 'tax',
+  'parcel_rent': 'tax',
+  'land_office_tax': 'tax',
+};
+
+String uploadCategoryFor(String coverageLabel) =>
+    _coverageLabelToUploadCategory[coverageLabel] ?? coverageLabel;
+
+/// The coverage row for [year], or null when the property has no tracked
+/// years yet (brand new, zero documents).
+YearCoverage? yearCoverageFor(List<YearCoverage> coverage, int year) {
+  for (final row in coverage) {
+    if (row.year == year) return row;
+  }
+  return null;
+}
 
 const List<String> monthAbbrev = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',

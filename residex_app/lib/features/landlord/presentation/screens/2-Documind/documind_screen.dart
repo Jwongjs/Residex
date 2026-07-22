@@ -12,6 +12,7 @@ import '../../../domain/entities/documind_document.dart';
 import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
+import '../../widgets/common/records_grid.dart';
 import '../../widgets/common/upload_source_sheet.dart';
 import 'documind_chat_logic.dart';
 import 'document_viewer_screen.dart';
@@ -329,6 +330,31 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                   ],
                 ),
               ),
+              if (!_showChatInterface && _selectedPropertyId != null) ...[
+                const SizedBox(width: 10),
+                Material(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => RecordsGridScreen(
+                        propertyId: _selectedPropertyId!,
+                        propertyName: _getPropertyName(properties, _selectedPropertyId),
+                      ),
+                    )),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: const Icon(Icons.grid_view_outlined,
+                          size: 18, color: AppColors.primaryCyan),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
