@@ -124,22 +124,45 @@ EXPENSE_SUBTYPE_CATEGORY: Dict[str, str] = {
     "sinking_fund": "maintenance",
     "insurance_premium": "insurance",
     "upkeep": "upkeep",
+    # Captured for visibility, never folded as a deduction by default. Each
+    # keeps a bucket of its own so it can neither satisfy a coverage slot nor
+    # inflate a deductible bucket.
+    "utilities": "utilities",
+    "late_penalty": "late_penalty",
+    "renovation": "renovation",
+    "loan_principal": "loan_principal",
 }
+
+# Penalties and capital outlay: never deductible against s.4(d) rental income.
+NEVER_DEDUCTIBLE_SUBTYPES = {"late_penalty", "renovation", "loan_principal"}
+
+# Deductible only when the property profile says the landlord bears the cost.
+# The Malaysian default is the tenant (Ayer@8 tenancy clause 5.2), and
+# under-claiming beats over-claiming.
+LANDLORD_BORNE_SUBTYPES = {"utilities"}
 
 # Classification is a lookup against this table, not model judgment — the
 # Malay/English wording landlords actually see on Malaysian bills.
 _EXPENSE_SYNONYMS = (
     "- loan_interest: housing loan interest, interest charged, faedah pinjaman\n"
+    "- loan_principal: principal repayment, principal portion of an "
+    "installment, bayaran pokok\n"
     "- assessment_tax: assessment, cukai pintu, cukai taksiran\n"
     "- quit_rent: quit rent, cukai tanah\n"
     "- parcel_rent: parcel rent, cukai petak\n"
-    "- maintenance: service charge, caj perkhidmatan, management fee, "
-    "maintenance fee, caj penyelenggaraan\n"
+    "- maintenance: service charge, caj perkhidmatan, maintenance fee, "
+    "caj penyelenggaraan, or a management fee charged by a JMB/MC or "
+    "building management\n"
     "- sinking_fund: sinking fund, kumpulan wang penjelas\n"
     "- insurance_premium: insurance premium, fire policy, houseowner policy, "
     "takaful contribution\n"
-    "- upkeep: repairs, servicing, plumbing or electrical works, Indah Water, "
-    "utility bills paid by the owner"
+    "- upkeep: repairs, servicing, plumbing or electrical works\n"
+    "- renovation: renovation, upgrading, improvement or addition works, "
+    "kerja ubah suai\n"
+    "- utilities: water meter billing, water sewerage billing, Indah Water, "
+    "electricity or water billed through the management\n"
+    "- late_penalty: late payment charge, late payment interest, denda lewat, "
+    "faedah lewat bayar"
 )
 
 

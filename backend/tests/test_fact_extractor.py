@@ -1,6 +1,12 @@
 import unittest
 
-from rag.fact_extractor import FactExtractor, EXPENSE_SUBTYPE_CATEGORY, validate_expense_lines
+from rag.fact_extractor import (
+    FactExtractor,
+    EXPENSE_SUBTYPE_CATEGORY,
+    LANDLORD_BORNE_SUBTYPES,
+    NEVER_DEDUCTIBLE_SUBTYPES,
+    validate_expense_lines,
+)
 
 
 class _LLMResponse:
@@ -148,4 +154,11 @@ class TestValidateExpenseLines(unittest.TestCase):
 
     def test_every_subtype_maps_to_a_finance_category(self):
         for subtype, category in EXPENSE_SUBTYPE_CATEGORY.items():
-            self.assertIn(category, {"loan", "tax", "maintenance", "insurance", "upkeep"})
+            self.assertIn(category, {
+                "loan", "tax", "maintenance", "insurance", "upkeep",
+                "utilities", "late_penalty", "renovation", "loan_principal",
+            })
+
+    def test_non_deductible_subtypes_are_declared_subtypes(self):
+        for subtype in NEVER_DEDUCTIBLE_SUBTYPES | LANDLORD_BORNE_SUBTYPES:
+            self.assertIn(subtype, EXPENSE_SUBTYPE_CATEGORY)

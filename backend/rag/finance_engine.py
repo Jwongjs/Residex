@@ -11,7 +11,11 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from rag.fact_extractor import EXPENSE_SUBTYPE_CATEGORY
+from rag.fact_extractor import (
+    EXPENSE_SUBTYPE_CATEGORY,
+    LANDLORD_BORNE_SUBTYPES,
+    NEVER_DEDUCTIBLE_SUBTYPES,
+)
 
 _EXPENSE_LINE_LABELS = {
     "loan_interest": "Loan interest",
@@ -22,6 +26,10 @@ _EXPENSE_LINE_LABELS = {
     "sinking_fund": "Sinking fund",
     "insurance_premium": "Insurance premium",
     "upkeep": "Upkeep",
+    "utilities": "Utilities",
+    "late_penalty": "Late payment charge",
+    "renovation": "Renovation",
+    "loan_principal": "Loan principal",
 }
 
 # Categories that feed the fold; also the per-property completeness report.
@@ -166,7 +174,25 @@ def _scope_income(
     return month_rows, rented, actual_sum, derived_sum, vacant_months, derived_months, unpaid_months
 
 
-def _expense_lines(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[str, Any]]:
+def _line_deductible(subtype: Optional[str], utilities_paid_by: Optional[str]) -> bool:
+    """Whether an expense line feeds direct_expenses.
+
+    Penalties and capital outlay never do. Utilities do only when the
+    property profile says the landlord bears them — extraction classifies
+    the charge, the profile decides deductibility, and the tenancy
+    agreement stays advisory."""
+    if subtype in NEVER_DEDUCTIBLE_SUBTYPES:
+        return False
+    if subtype in LANDLORD_BORNE_SUBTYPES:
+        return utilities_paid_by == "landlord"
+    return True
+
+
+def _expense_lines(
+    prop_docs: List[Dict[str, Any]],
+    year: int,
+    utilities_paid_by: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Deductible expense lines allocated to the target year.
 
     Allocation rules (spec schema table): loan interest by the statement's
@@ -202,6 +228,7 @@ def _expense_lines(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[str,
                     "amount": _round2(amount),
                     "date": item.get("date") or str(item.get("period_year") or year),
                     "unit_id": doc.get("unit_id"),
+                    "deductible": _line_deductible(subtype, utilities_paid_by),
                 })
             continue
         entry = None  # (amount, description, date_str)
@@ -251,6 +278,7 @@ def _expense_lines(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[str,
                 "amount": _round2(amount),
                 "date": when,
                 "unit_id": doc.get("unit_id"),
+                "deductible": _line_deductible(facts.get("subtype"), utilities_paid_by),
             })
     return lines
 
@@ -342,7 +370,7 @@ def _property_coverage(prop_docs: List[Dict[str, Any]], current_year: int) -> Li
                 if not isinstance(item, dict):
                     continue
                 mapped = EXPENSE_SUBTYPE_CATEGORY.get(item.get("subtype"))
-                if mapped is None:
+                if mapped is None or mapped not in years_with_category:
                     continue
                 item_year = item.get("period_year")
                 if not isinstance(item_year, int):
@@ -392,6 +420,7 @@ def compute_finance_summary(
     vacant_notes: List[str] = []
     unpaid_notes: List[str] = []
     share_notes: List[str] = []
+    non_deductible_notes: List[str] = []
 
     for prop in properties:
         pid = prop["property_id"]
@@ -420,7 +449,7 @@ def compute_finance_summary(
         if has_property_wide_income or not scopes:
             scopes.append({"unit_id": None, "label": "Whole property"})
 
-        expense_lines = _expense_lines(prop_docs, year)
+        expense_lines = _expense_lines(prop_docs, year, prop.get("utilities_paid_by"))
         lines_by_unit: Dict[Optional[str], List[Dict[str, Any]]] = {}
         for line in expense_lines:
             lines_by_unit.setdefault(line.get("unit_id"), []).append(line)
@@ -441,7 +470,9 @@ def compute_finance_summary(
                 lines_by_unit.get(scope["unit_id"], [])
                 if scope["unit_id"] is not None else []
             )
-            unit_expense_total = sum(l["amount"] for l in unit_lines)
+            unit_expense_total = sum(
+                l["amount"] for l in unit_lines if l["deductible"]
+            )
             prorated_expenses += unit_expense_total * fraction
             unit_blocks.append({
                 "unit_id": scope["unit_id"],
@@ -474,13 +505,15 @@ def compute_finance_summary(
         # scenario reproduces exactly.
         property_level_lines = lines_by_unit.get(None, [])
         avg_fraction = (sum(fractions) / len(fractions)) if fractions else 0.0
-        prorated_expenses += sum(l["amount"] for l in property_level_lines) * avg_fraction
+        prorated_expenses += sum(
+            l["amount"] for l in property_level_lines if l["deductible"]
+        ) * avg_fraction
 
         received = prop_actual + prop_derived
-        direct = sum(l["amount"] for l in expense_lines)
+        direct = sum(l["amount"] for l in expense_lines if l["deductible"])
         statutory_sum += share * (received - prorated_expenses)
 
-        contributing = {l["category"] for l in expense_lines}
+        contributing = {l["category"] for l in expense_lines if l["deductible"]}
         if any(row["source"] == "actual" for u in unit_blocks for row in u["months"]):
             contributing.add("rental_invoice")
         missing = [c for c in FINANCE_CATEGORIES if c not in contributing]
@@ -496,8 +529,20 @@ def compute_finance_summary(
             share_notes.append(f"Ownership share applied: {name} at {share:.0%}.")
 
         for line in expense_lines:
+            if not line["deductible"]:
+                continue
             expense_breakdown[line["category"]] = _round2(
                 expense_breakdown.get(line["category"], 0.0) + line["amount"]
+            )
+
+        excluded = _round2(sum(
+            l["amount"] for l in expense_lines if not l["deductible"]
+        ))
+        if excluded:
+            non_deductible_notes.append(
+                f"{name}: RM{excluded:,.2f} of billed charges are not deductible "
+                "(utilities, penalties, capital works) and are excluded from the "
+                "figures."
             )
 
         total_received += received
@@ -531,6 +576,7 @@ def compute_finance_summary(
     caveats.extend(vacant_notes)
     caveats.extend(unpaid_notes)
     caveats.extend(share_notes)
+    caveats.extend(non_deductible_notes)
 
     return {
         "year": year,

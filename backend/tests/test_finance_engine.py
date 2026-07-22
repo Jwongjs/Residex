@@ -423,3 +423,82 @@ class CoverageTests(unittest.TestCase):
     def test_coverage_empty_when_no_documents(self):
         result = _summary([], [_prop("p1", "House")])
         self.assertEqual(result["properties"][0]["coverage"], [])
+
+
+class NonDeductibleLineTests(unittest.TestCase):
+    def _statement(self):
+        return _doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "maintenance", "amount": 764.00, "date": "2025-02-01"},
+            {"subtype": "sinking_fund", "amount": 76.40, "date": "2025-02-01"},
+            {"subtype": "utilities", "amount": 132.21, "date": "2025-02-01"},
+            {"subtype": "late_penalty", "amount": 5.71, "date": "2025-02-01"},
+        ]})
+
+    def test_utilities_and_penalties_excluded_by_default(self):
+        result = _summary([self._statement()], [_prop("p1", "Ayer8")])
+        self.assertEqual(result["totals"]["direct_expenses"], 840.40)
+        self.assertEqual(result["expense_breakdown"]["maintenance"], 840.40)
+        self.assertNotIn("utilities", result["expense_breakdown"])
+        self.assertNotIn("late_penalty", result["expense_breakdown"])
+
+    def test_non_deductible_lines_are_still_captured_and_visible(self):
+        result = _summary([self._statement()], [_prop("p1", "Ayer8")])
+        lines = result["properties"][0]["expense_lines"]
+        utilities = next(l for l in lines if l["subtype"] == "utilities")
+        self.assertFalse(utilities["deductible"])
+        self.assertEqual(utilities["amount"], 132.21)
+        self.assertEqual(utilities["category"], "utilities")
+
+    def test_utilities_deduct_when_the_landlord_bears_them(self):
+        prop = dict(_prop("p1", "Ayer8"), utilities_paid_by="landlord")
+        result = _summary([self._statement()], [prop])
+        self.assertEqual(result["totals"]["direct_expenses"], 972.61)
+        self.assertEqual(result["expense_breakdown"]["utilities"], 132.21)
+
+    def test_penalties_never_deduct_even_when_landlord_pays_utilities(self):
+        prop = dict(_prop("p1", "Ayer8"), utilities_paid_by="landlord")
+        result = _summary([self._statement()], [prop])
+        penalty = next(
+            l for l in result["properties"][0]["expense_lines"]
+            if l["subtype"] == "late_penalty"
+        )
+        self.assertFalse(penalty["deductible"])
+
+    def test_renovation_and_loan_principal_never_deduct(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "renovation", "amount": 9000.0, "date": "2025-05-01"},
+            {"subtype": "loan_principal", "amount": 12000.0, "period_year": 2025},
+            {"subtype": "upkeep", "amount": 300.0, "date": "2025-05-01"},
+        ]})]
+        result = _summary(docs, [_prop("p1", "House")])
+        self.assertEqual(result["totals"]["direct_expenses"], 300.0)
+        self.assertNotIn("renovation", result["expense_breakdown"])
+        self.assertNotIn("loan_principal", result["expense_breakdown"])
+
+    def test_loan_principal_does_not_satisfy_loan_coverage(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "loan_principal", "amount": 12000.0, "period_year": 2025},
+        ]})]
+        result = _summary(docs, [_prop("p1", "House")])
+        self.assertIn("loan", result["missing_categories"]["p1"])
+
+    def test_exclusion_is_announced_not_silent(self):
+        result = _summary([self._statement()], [_prop("p1", "Ayer8")])
+        self.assertTrue(any(
+            "not deductible" in c and "Ayer8" in c for c in result["caveats"]
+        ))
+
+    def test_document_backed_lines_default_to_deductible(self):
+        docs = [_doc("p1", "upkeep", {"amount": 300.0, "service_date": "2025-04-10"})]
+        result = _summary(docs, [_prop("p1", "House")])
+        self.assertTrue(result["properties"][0]["expense_lines"][0]["deductible"])
+
+    def test_non_deductible_lines_do_not_reduce_statutory_income(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0,
+                                 "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            self._statement(),
+        ]
+        result = _summary(docs, [_prop("p1", "House")])
+        # 12 x 1000 rent, fully rented so the proration factor is 1.0
+        self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0 - 840.40)

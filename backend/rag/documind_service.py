@@ -451,6 +451,7 @@ Rules:
                     "property_id": snap.id,
                     "name": data.get('name') or snap.id,
                     "ownership_share": share,
+                    "utilities_paid_by": data.get('utilities_paid_by'),
                 })
             return results
         except Exception as e:

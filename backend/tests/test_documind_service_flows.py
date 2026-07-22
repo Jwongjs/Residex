@@ -1547,6 +1547,33 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         # statutory: 0.5 * (2000 - 300 * (1 rented month / 12)) = 987.50
         self.assertEqual(summary.totals.statutory_rental_income, 987.5)
 
+    async def test_get_finance_summary_reads_utilities_policy(self):
+        statement = {
+            "doc_id": "exp-1", "landlord_id": "l1", "property_id": "p1",
+            "category": "expenses", "filename": "feb.pdf",
+            "uploaded_at": datetime(2025, 2, 10),
+            "extracted_facts": {"expense_lines": [
+                {"subtype": "maintenance", "amount": 764.00, "date": "2025-02-01"},
+                {"subtype": "utilities", "amount": 132.21, "date": "2025-02-01"},
+            ]},
+        }
+        fake_db = _FakeDB(docs=[statement])
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "Ayer8",
+             "utilities_paid_by": "landlord"},
+        ]
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        self.assertEqual(summary.totals.direct_expenses, 896.21)
+        utilities = next(
+            l for l in summary.properties[0].expense_lines if l.subtype == "utilities"
+        )
+        self.assertTrue(utilities.deductible)
+
     async def test_get_finance_summary_no_properties_is_empty(self):
         fake_db = _FakeDB()
         service = _build_service(

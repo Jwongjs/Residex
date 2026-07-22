@@ -158,7 +158,10 @@ class MonthIncome(BaseModel):
 
 
 class ExpenseLine(BaseModel):
-    """One deductible expense, traceable to its source document."""
+    """One expense line traceable to its source document. Non-deductible
+    lines (utilities the tenant bears, penalties, capital works) are still
+    carried so the landlord sees their whole bill; they simply do not feed
+    the figures."""
     doc_id: str
     category: str
     subtype: Optional[str] = None
@@ -166,6 +169,7 @@ class ExpenseLine(BaseModel):
     amount: float
     date: Optional[str] = None
     unit_id: Optional[str] = None  # None = property-level expense
+    deductible: bool = True
 
 
 class UnitFinance(BaseModel):
