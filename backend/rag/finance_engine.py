@@ -30,6 +30,15 @@ _EXPENSE_LINE_LABELS = {
     "late_penalty": "Late payment charge",
     "renovation": "Renovation",
     "loan_principal": "Loan principal",
+    "management_fee": "Property management fee",
+    "rent_collection": "Rent collection fee",
+    "security_fee": "Security fee",
+    "pest_control": "Pest control",
+    "agent_commission": "Agent commission",
+    "legal_fee": "Legal fees",
+    "stamp_duty": "Stamp duty",
+    "advertising": "Advertising",
+    "sst": "Service tax (SST)",
 }
 
 # Categories that feed the fold; also the per-property completeness report.

@@ -124,6 +124,19 @@ EXPENSE_SUBTYPE_CATEGORY: Dict[str, str] = {
     "sinking_fund": "maintenance",
     "insurance_premium": "insurance",
     "upkeep": "upkeep",
+    # Recurring services a landlord or a guarded scheme is billed for.
+    "management_fee": "management",
+    "rent_collection": "management",
+    "security_fee": "management",
+    "pest_control": "upkeep",
+    # Costs of putting the property on the market. Deductible on a renewal
+    # only — see RENEWAL_ONLY_SUBTYPES.
+    "agent_commission": "letting",
+    "legal_fee": "letting",
+    "stamp_duty": "letting",
+    "advertising": "letting",
+    # Service tax charged on any of the above.
+    "sst": "sst",
     # Captured for visibility, never folded as a deduction by default. Each
     # keeps a bucket of its own so it can neither satisfy a coverage slot nor
     # inflate a deductible bucket.
@@ -154,6 +167,24 @@ _EXPENSE_SYNONYMS = (
     "caj penyelenggaraan, or a management fee charged by a JMB/MC or "
     "building management\n"
     "- sinking_fund: sinking fund, kumpulan wang penjelas\n"
+    "- management_fee: property management fee charged by a letting or "
+    "estate agent for managing the tenancy — NOT a JMB/MC building charge, "
+    "which is maintenance\n"
+    "- rent_collection: rent collection fee or commission charged by an "
+    "agent, yuran kutipan sewa\n"
+    "- security_fee: guard house, security or patrol charge in a guarded "
+    "scheme, caj keselamatan / pengawal\n"
+    "- pest_control: pest control, fumigation, termite treatment, "
+    "kawalan serangga\n"
+    "- agent_commission: agent commission or brokerage for securing a "
+    "tenant, komisen ejen\n"
+    "- legal_fee: solicitor or legal fees for preparing the tenancy "
+    "agreement, yuran guaman\n"
+    "- stamp_duty: stamp duty on the tenancy agreement, duti setem\n"
+    "- advertising: advertising or listing fees to market the property, "
+    "kos iklan\n"
+    "- sst: sales and service tax or service tax charged on a fee above, "
+    "cukai perkhidmatan\n"
     "- insurance_premium: insurance premium, fire policy, houseowner policy, "
     "takaful contribution\n"
     "- upkeep: repairs, servicing, plumbing or electrical works\n"

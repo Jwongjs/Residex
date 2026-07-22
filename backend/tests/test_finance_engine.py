@@ -502,3 +502,68 @@ class NonDeductibleLineTests(unittest.TestCase):
         result = _summary(docs, [_prop("p1", "House")])
         # 12 x 1000 rent, fully rented so the proration factor is 1.0
         self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0 - 840.40)
+
+
+class ExpandedSubtypeTests(unittest.TestCase):
+    def test_agent_and_management_charges_roll_into_their_own_buckets(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "management_fee", "amount": 200.0, "date": "2025-02-01"},
+            {"subtype": "rent_collection", "amount": 50.0, "date": "2025-02-01"},
+            {"subtype": "security_fee", "amount": 30.0, "date": "2025-02-01"},
+            {"subtype": "sst", "amount": 24.0, "date": "2025-02-01"},
+        ]})]
+        result = _summary(docs, [_prop("p1", "House")])
+        self.assertEqual(result["expense_breakdown"]["management"], 280.0)
+        self.assertEqual(result["expense_breakdown"]["sst"], 24.0)
+        self.assertEqual(result["totals"]["direct_expenses"], 304.0)
+
+    def test_pest_control_rolls_into_upkeep(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "pest_control", "amount": 120.0, "date": "2025-05-01"},
+            {"subtype": "upkeep", "amount": 300.0, "date": "2025-05-01"},
+        ]})]
+        result = _summary(docs, [_prop("p1", "House")])
+        self.assertEqual(result["expense_breakdown"]["upkeep"], 420.0)
+
+    def test_strata_management_charge_still_lands_in_maintenance(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "maintenance", "amount": 764.0, "date": "2025-02-01"},
+            {"subtype": "sinking_fund", "amount": 76.4, "date": "2025-02-01"},
+        ]})]
+        result = _summary(docs, [_prop("p1", "Condo")])
+        self.assertEqual(result["expense_breakdown"]["maintenance"], 840.40)
+        self.assertNotIn("management", result["expense_breakdown"])
+
+    def test_new_buckets_never_become_a_coverage_expectation(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "management_fee", "amount": 200.0, "date": "2025-02-01"},
+            {"subtype": "sst", "amount": 24.0, "date": "2025-02-01"},
+        ]})]
+        result = _summary(docs, [_prop("p1", "House")])
+        row = next(
+            r for r in result["properties"][0]["coverage"] if r["year"] == 2025
+        )
+        self.assertNotIn("management", row["missing"])
+        self.assertNotIn("sst", row["missing"])
+        self.assertNotIn("letting", row["missing"])
+
+    def test_sst_never_satisfies_the_property_tax_slot(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "sst", "amount": 24.0, "date": "2025-02-01"},
+        ]})]
+        result = _summary(docs, [_prop("p1", "House")])
+        self.assertIn("tax", result["missing_categories"]["p1"])
+
+    def test_every_new_subtype_has_a_line_label(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": subtype, "amount": 10.0, "date": "2025-02-01"}
+            for subtype in (
+                "agent_commission", "management_fee", "legal_fee", "stamp_duty",
+                "advertising", "pest_control", "rent_collection", "security_fee",
+                "sst",
+            )
+        ]})]
+        result = _summary(docs, [_prop("p1", "House")])
+        lines = result["properties"][0]["expense_lines"]
+        self.assertEqual(len(lines), 9)
+        self.assertTrue(all(line["description"] for line in lines))

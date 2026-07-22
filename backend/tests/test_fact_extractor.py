@@ -156,6 +156,7 @@ class TestValidateExpenseLines(unittest.TestCase):
         for subtype, category in EXPENSE_SUBTYPE_CATEGORY.items():
             self.assertIn(category, {
                 "loan", "tax", "maintenance", "insurance", "upkeep",
+                "management", "letting", "sst",
                 "utilities", "late_penalty", "renovation", "loan_principal",
             })
 
