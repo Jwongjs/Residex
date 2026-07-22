@@ -911,6 +911,20 @@ class PartialInstallmentCoverageTests(unittest.TestCase):
         row = next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
         self.assertEqual(row["partial_installments"], [])
 
+    def test_marking_the_gap_unavailable_clears_it_from_partial_installments(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0,
+                                 "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "1/2"}),
+        ]
+        prop = dict(_prop("p1", "House"), property_type="landed")
+        exceptions = [_doc_exception("p1", 2025, "assessment")]
+        result = _summary(docs, [prop], document_exceptions=exceptions)
+        row = next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
+        self.assertEqual(row["partial_installments"], [])
+        self.assertIn("assessment", row["unavailable"])
+
 
 class MaintenanceMonthCoverageTests(unittest.TestCase):
     def test_typed_maintenance_doc_covers_its_period_span(self):

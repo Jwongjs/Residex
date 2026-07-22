@@ -448,7 +448,11 @@ def _parse_installment(value: Any) -> Tuple[Optional[int], Optional[int]]:
     return (sequence, total)
 
 
-def _installment_gaps(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[str, Any]]:
+def _installment_gaps(
+    prop_docs: List[Dict[str, Any]],
+    year: int,
+    suppressed_subtypes: Optional[Set[str]] = None,
+) -> List[Dict[str, Any]]:
     """Tax subtypes for `year` whose own bills declare N installments but
     fewer distinct ones were uploaded — from a typed 'tax' document or an
     'installment' marker on a bundled 'expenses' line alike, so a strata
@@ -456,7 +460,12 @@ def _installment_gaps(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[s
     counts exactly as a standalone tax bill would.
 
     The expectation is evidence-based: it comes only from an 'x/N' label on
-    the landlord's own bill, never a hardcoded council schedule."""
+    the landlord's own bill, never a hardcoded council schedule.
+
+    `suppressed_subtypes` lets a landlord's 'mark unavailable' acknowledgement
+    silence a gap here too — otherwise a permanently-missing second
+    installment could never be closed out, contradicting the mechanism's own
+    purpose."""
     seen: Dict[str, set] = {}
     expected: Dict[str, int] = {}
 
@@ -489,6 +498,8 @@ def _installment_gaps(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[s
 
     gaps = []
     for subtype, total in sorted(expected.items()):
+        if subtype in (suppressed_subtypes or set()):
+            continue
         have = len(seen.get(subtype, set()))
         if have < total:
             gaps.append({
@@ -660,7 +671,7 @@ def _property_coverage(
         coverage.append({
             "year": year,
             "missing": missing,
-            "partial_installments": _installment_gaps(prop_docs, year),
+            "partial_installments": _installment_gaps(prop_docs, year, unavailable_for_year),
             "partial_categories": partial_categories,
             "unavailable": unavailable_list,
         })
