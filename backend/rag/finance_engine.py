@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from rag.fact_extractor import (
     EXPENSE_SUBTYPE_CATEGORY,
@@ -373,6 +373,49 @@ _EXPENSE_TAX_SUBTYPE = {
 }
 
 
+def _month_span(start: Tuple[int, int], end: Tuple[int, int]):
+    """Inclusive (year, month) pairs walking from start to end."""
+    year, month = start
+    while (year, month) <= end:
+        yield (year, month)
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+
+
+def _maintenance_months_covered(prop_docs: List[Dict[str, Any]], year: int) -> Set[int]:
+    """Distinct months of `year` with at least one extracted maintenance or
+    sinking-fund fact — from a typed 'maintenance' document's period span,
+    or a bundled 'expenses' line's own date. A line naming only period_year
+    cannot fill a specific slot (spec §4), so it is not counted here even
+    though the coarse yearly presence check in `years_with_category` still
+    sees it."""
+    months: Set[int] = set()
+    for doc in prop_docs:
+        facts = doc.get("extracted_facts")
+        if not isinstance(facts, dict):
+            continue
+        category = doc.get("category")
+        if category == "maintenance":
+            start = _ym(facts.get("period_start")) or _ym(facts.get("period_end"))
+            if start is None:
+                continue
+            end = _ym(facts.get("period_end")) or start
+            for span_year, span_month in _month_span(start, end):
+                if span_year == year:
+                    months.add(span_month)
+        elif category == "expenses":
+            for item in (facts.get("expense_lines") or []):
+                if not isinstance(item, dict):
+                    continue
+                if EXPENSE_SUBTYPE_CATEGORY.get(item.get("subtype")) != "maintenance":
+                    continue
+                ym = _ym(item.get("date"))
+                if ym is not None and ym[0] == year:
+                    months.add(ym[1])
+    return months
+
+
 _INSTALLMENT_RE = re.compile(r"(\d+)\s*(?:/|of|drpd|daripada)\s*(\d+)", re.IGNORECASE)
 
 
@@ -574,6 +617,7 @@ def _property_coverage(
     coverage: List[Dict[str, Any]] = []
     for year in range(start_year, current_year + 1):
         missing = []
+        partial_categories: List[Dict[str, Any]] = []
         for category in (expected if expected is not None else FINANCE_CATEGORIES):
             if category == "rental_invoice" and year not in years_covered_by_lease:
                 continue  # no tenancy that year — nothing to invoice
@@ -582,12 +626,20 @@ def _property_coverage(
                     if not any(year in subtype_years.get(s, set()) for s in satisfying):
                         missing.append(label)
                 continue
+            if category == "maintenance":
+                have = len(_maintenance_months_covered(prop_docs, year))
+                if have == 0:
+                    missing.append(category)
+                elif have < 12:
+                    partial_categories.append({"category": "maintenance", "have": have, "expect": 12})
+                continue
             if year not in years_with_category[category]:
                 missing.append(category)
         coverage.append({
             "year": year,
             "missing": missing,
             "partial_installments": _installment_gaps(prop_docs, year),
+            "partial_categories": partial_categories,
         })
     return coverage
 

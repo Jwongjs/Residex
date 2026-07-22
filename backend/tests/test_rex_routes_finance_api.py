@@ -127,5 +127,6 @@ class FinanceSummaryApiTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(
             body["properties"][0]["coverage"],
-            [{"year": 2024, "missing": ["tax", "insurance"], "partial_installments": []}],
+            [{"year": 2024, "missing": ["tax", "insurance"], "partial_installments": [],
+              "partial_categories": []}],
         )

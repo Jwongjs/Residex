@@ -5,6 +5,7 @@ from rag.finance_engine import (
     LOSS_FLOOR_NOTE,
     STATUTORY_NOTE,
     _installment_gaps,
+    _maintenance_months_covered,
     _parse_installment,
     compute_finance_summary,
 )
@@ -858,3 +859,73 @@ class PartialInstallmentCoverageTests(unittest.TestCase):
         result = _summary(docs, [_prop("p1", "House")])
         row = next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
         self.assertEqual(row["partial_installments"], [])
+
+
+class MaintenanceMonthCoverageTests(unittest.TestCase):
+    def test_typed_maintenance_doc_covers_its_period_span(self):
+        docs = [_doc("p1", "maintenance", {
+            "amount": 300.0, "period_start": "2025-01-01", "period_end": "2025-03-31",
+        })]
+        self.assertEqual(_maintenance_months_covered(docs, 2025), {1, 2, 3})
+
+    def test_bundled_line_covers_only_its_own_dated_month(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "maintenance", "amount": 250.0, "date": "2025-02-01"},
+            {"subtype": "sinking_fund", "amount": 25.0, "date": "2025-02-01"},
+        ]})]
+        self.assertEqual(_maintenance_months_covered(docs, 2025), {2})
+
+    def test_year_only_bundled_line_fills_no_specific_month(self):
+        # No date to resolve to a month: falls back to the year, satisfies
+        # no monthly slot (spec §4).
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "maintenance", "amount": 3000.0, "period_year": 2025},
+        ]})]
+        self.assertEqual(_maintenance_months_covered(docs, 2025), set())
+
+    def test_other_years_are_excluded(self):
+        docs = [_doc("p1", "maintenance", {
+            "amount": 300.0, "period_start": "2024-11-01", "period_end": "2025-01-31",
+        })]
+        self.assertEqual(_maintenance_months_covered(docs, 2025), {1})
+
+
+class PartialMaintenanceCoverageTests(unittest.TestCase):
+    def _docs(self, *maintenance_months):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        for month in maintenance_months:
+            docs.append(_doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 250.0, "date": f"2025-{month:02d}-01"},
+            ]}))
+        return docs
+
+    def _row(self, prop, docs):
+        result = _summary(docs, [prop])
+        return next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
+
+    def test_four_of_twelve_months_reports_partial_not_missing(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        row = self._row(prop, self._docs(1, 2, 3, 4))
+        self.assertNotIn("maintenance", row["missing"])
+        self.assertEqual(
+            row["partial_categories"],
+            [{"category": "maintenance", "have": 4, "expect": 12}],
+        )
+
+    def test_zero_months_is_still_plain_missing(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        row = self._row(prop, self._docs())
+        self.assertIn("maintenance", row["missing"])
+        self.assertEqual(row["partial_categories"], [])
+
+    def test_twelve_of_twelve_is_neither_missing_nor_partial(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        row = self._row(prop, self._docs(*range(1, 13)))
+        self.assertNotIn("maintenance", row["missing"])
+        self.assertEqual(row["partial_categories"], [])
+
+    def test_landed_property_never_reports_a_maintenance_partial(self):
+        prop = dict(_prop("p1", "House"), property_type="landed")
+        row = self._row(prop, self._docs(1, 2))
+        self.assertEqual(row["partial_categories"], [])

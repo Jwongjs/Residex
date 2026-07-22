@@ -190,11 +190,19 @@ class InstallmentGap(BaseModel):
     expect: int
 
 
+class PartialCategory(BaseModel):
+    """A periodic category with some but not all of its slots filled."""
+    category: str
+    have: int
+    expect: int
+
+
 class YearCoverage(BaseModel):
     """One year's document-completeness report for a property."""
     year: int
     missing: List[str] = Field(default_factory=list)
     partial_installments: List[InstallmentGap] = Field(default_factory=list)
+    partial_categories: List[PartialCategory] = Field(default_factory=list)
 
 
 class PropertyFinance(BaseModel):
