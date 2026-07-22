@@ -454,6 +454,7 @@ Rules:
                     "property_type": data.get('property_type'),
                     "has_mortgage": data.get('has_mortgage'),
                     "utilities_paid_by": data.get('utilities_paid_by'),
+                    "track_from_year": data.get('track_from_year'),
                 })
             return results
         except Exception as e:

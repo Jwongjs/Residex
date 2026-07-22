@@ -1682,6 +1682,30 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("loan", missing)
         self.assertIn("maintenance", missing)
 
+    async def test_get_finance_summary_reads_track_from_year(self):
+        lease = {
+            "doc_id": "lease-1", "landlord_id": "l1", "property_id": "p1",
+            "category": "lease", "filename": "lease.pdf",
+            "uploaded_at": datetime(2020, 1, 1),
+            "extracted_facts": {
+                "monthly_rent": 1000.0, "lease_start": "2020-01-01", "lease_end": "2026-12-31",
+            },
+        }
+        fake_db = _FakeDB(docs=[lease])
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "Kiara Court", "track_from_year": 2023},
+        ]
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        years = [row.year for row in summary.properties[0].coverage]
+        self.assertNotIn(2020, years)
+        self.assertNotIn(2022, years)
+        self.assertIn(2023, years)
+
     async def test_get_finance_summary_no_properties_is_empty(self):
         fake_db = _FakeDB()
         service = _build_service(
