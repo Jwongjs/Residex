@@ -451,6 +451,8 @@ Rules:
                     "property_id": snap.id,
                     "name": data.get('name') or snap.id,
                     "ownership_share": share,
+                    "property_type": data.get('property_type'),
+                    "has_mortgage": data.get('has_mortgage'),
                     "utilities_paid_by": data.get('utilities_paid_by'),
                 })
             return results

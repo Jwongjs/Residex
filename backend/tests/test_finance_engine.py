@@ -627,3 +627,50 @@ class LettingCostDeductibilityTests(unittest.TestCase):
         ]})]
         result = _summary(docs, [_prop("p1", "House")])
         self.assertEqual(result["totals"]["direct_expenses"], 300.0)
+
+
+class ProfileExpectationTests(unittest.TestCase):
+    def _docs(self):
+        return [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01",
+                                     "lease_end": "2025-12-31"})]
+
+    def _row(self, prop, year=2025):
+        result = _summary(self._docs(), [prop])
+        return next(
+            r for r in result["properties"][0]["coverage"] if r["year"] == year
+        )
+
+    def test_landed_property_is_never_asked_for_maintenance(self):
+        row = self._row(dict(_prop("p1", "House"), property_type="landed"))
+        self.assertNotIn("maintenance", row["missing"])
+        self.assertIn("insurance", row["missing"])
+
+    def test_strata_property_is_never_asked_for_insurance(self):
+        row = self._row(dict(_prop("p1", "Condo"), property_type="strata"))
+        self.assertNotIn("insurance", row["missing"])
+        self.assertIn("maintenance", row["missing"])
+
+    def test_unmortgaged_property_is_never_asked_for_a_loan_statement(self):
+        row = self._row(dict(_prop("p1", "House"),
+                             property_type="landed", has_mortgage=False))
+        self.assertNotIn("loan", row["missing"])
+
+    def test_mortgaged_property_is_still_asked_for_a_loan_statement(self):
+        row = self._row(dict(_prop("p1", "House"),
+                             property_type="landed", has_mortgage=True))
+        self.assertIn("loan", row["missing"])
+
+    def test_unknown_profile_keeps_todays_behaviour(self):
+        row = self._row(_prop("p1", "House"))
+        self.assertIn("maintenance", row["missing"])
+        self.assertIn("insurance", row["missing"])
+        self.assertIn("loan", row["missing"])
+
+    def test_the_gate_also_applies_to_missing_category_caveats(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata", has_mortgage=False)
+        result = _summary(self._docs(), [prop])
+        missing = result["missing_categories"]["p1"]
+        self.assertNotIn("insurance", missing)
+        self.assertNotIn("loan", missing)
+        self.assertIn("maintenance", missing)

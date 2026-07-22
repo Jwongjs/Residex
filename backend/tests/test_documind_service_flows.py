@@ -1574,6 +1574,23 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(utilities.deductible)
 
+    async def test_get_finance_summary_reads_property_profile(self):
+        fake_db = _FakeDB()
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "Kiara Court",
+             "property_type": "strata", "has_mortgage": False},
+        ]
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        missing = summary.missing_categories.get("p1", [])
+        self.assertNotIn("insurance", missing)
+        self.assertNotIn("loan", missing)
+        self.assertIn("maintenance", missing)
+
     async def test_get_finance_summary_no_properties_is_empty(self):
         fake_db = _FakeDB()
         service = _build_service(

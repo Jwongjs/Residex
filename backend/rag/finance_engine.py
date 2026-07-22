@@ -363,7 +363,27 @@ def _document_years(doc: Dict[str, Any]) -> List[int]:
     return years
 
 
-def _property_coverage(prop_docs: List[Dict[str, Any]], current_year: int) -> List[Dict[str, Any]]:
+def _expected_categories(prop: Dict[str, Any]) -> List[str]:
+    """Finance categories this property should hold documents for.
+
+    An unknown property_type keeps the full list, so properties registered
+    before the profile existed behave exactly as they do today."""
+    expected = list(FINANCE_CATEGORIES)
+    property_type = prop.get("property_type")
+    if property_type == "landed":
+        expected.remove("maintenance")  # no management corporation
+    elif property_type == "strata":
+        expected.remove("insurance")  # inside the MC master policy
+    if prop.get("has_mortgage") is False:
+        expected.remove("loan")
+    return expected
+
+
+def _property_coverage(
+    prop_docs: List[Dict[str, Any]],
+    current_year: int,
+    expected: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     """Per-year document-completeness report from the property's earliest
     lease_start (fallback: earliest document year found) through
     current_year. rental_invoice is only flagged missing for years the
@@ -422,7 +442,7 @@ def _property_coverage(prop_docs: List[Dict[str, Any]], current_year: int) -> Li
     coverage: List[Dict[str, Any]] = []
     for year in range(start_year, current_year + 1):
         missing = []
-        for category in FINANCE_CATEGORIES:
+        for category in (expected if expected is not None else FINANCE_CATEGORIES):
             if category == "rental_invoice" and year not in years_covered_by_lease:
                 continue  # no tenancy that year — nothing to invoice
             if year not in years_with_category[category]:
@@ -553,7 +573,7 @@ def compute_finance_summary(
         contributing = {l["category"] for l in expense_lines if l["deductible"]}
         if any(row["source"] == "actual" for u in unit_blocks for row in u["months"]):
             contributing.add("rental_invoice")
-        missing = [c for c in FINANCE_CATEGORIES if c not in contributing]
+        missing = [c for c in _expected_categories(prop) if c not in contributing]
         if missing:
             missing_categories[pid] = missing
             for category in missing:
@@ -606,7 +626,9 @@ def compute_finance_summary(
             "units": unit_blocks,
             "expense_lines": expense_lines,
             "property_expense_lines": property_level_lines,
-            "coverage": _property_coverage(prop_docs, today.year),
+            "coverage": _property_coverage(
+                prop_docs, today.year, _expected_categories(prop)
+            ),
         })
 
     statutory = _round2(statutory_sum)
