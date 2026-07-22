@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -198,6 +198,44 @@ async def clear_document_unavailable(
     """
     return await documind_service.clear_document_unavailable(
         landlord_id=landlord_id, property_id=property_id, year=year, category=category,
+    )
+
+
+@router.put("/documind/finance/rent-recovery", response_model=RentRecoveryResponse)
+async def record_rent_recovery(payload: RentRecoveryRequest):
+    """
+    Book a written-off month's rent as income in the year it actually
+    arrived. The original (written-off) year is never reopened or
+    recomputed — this adds a distinct 'Recovered rent' line to the year
+    the money was received. Requires the month to already be on file as
+    written_off.
+    """
+    try:
+        return await documind_service.record_rent_recovery(
+            landlord_id=payload.landlord_id,
+            property_id=payload.property_id,
+            unit_id=payload.unit_id,
+            original_month=payload.original_month,
+            amount=payload.amount,
+            received_year=payload.received_year,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/documind/finance/rent-recovery")
+async def clear_rent_recovery(
+    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+    property_id: str = Query(..., description="Property ID"),
+    original_month: str = Query(..., description="The written-off month the recovery was recorded against, YYYY-MM"),
+    unit_id: str | None = Query(None, description="Unit ID; omit for a whole-property mark"),
+):
+    """
+    Remove a recorded rent recovery. Idempotent — clearing an unrecorded
+    scope is a no-op, not an error.
+    """
+    return await documind_service.clear_rent_recovery(
+        landlord_id=landlord_id, property_id=property_id, unit_id=unit_id, original_month=original_month,
     )
 
 

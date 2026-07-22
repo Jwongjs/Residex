@@ -217,9 +217,13 @@ Keep the two new checks in small isolated helpers (`_expected_categories(profile
 Legend: ✅ live in the engine · 🟡 designed, pending build · ❌ void, superseded.
 
 Stage A of the document-first plan is complete (deductibility rules, expanded
-subtype catalogue, profile-gated coverage, land-office tax slot). Stage B
-(period-based coverage, `x/N` installments, `track_from_year`, rent payment
-states) and the Flutter stages are pending.
+subtype catalogue, profile-gated coverage, land-office tax slot).
+
+Stage B is complete: period-based coverage (installments, monthly-slot
+maintenance), the mark-unavailable mechanism, the per-property statutory
+gate on year completeness, and the three-state rent model with recovery are
+all live in the engine. Registration/backfill UI, the Documents tab, and
+tags/folders (Stages C–F) are pending.
 
 ---
 

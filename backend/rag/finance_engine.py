@@ -677,6 +677,14 @@ def _year_is_complete(coverage_rows: List[Dict[str, Any]], year: int) -> bool:
     return not row["missing"] and not row["partial_installments"] and not row["partial_categories"]
 
 
+def _month_label(value: Optional[str]) -> str:
+    """'2025-08' -> 'Aug 2025'; passes through anything unparseable."""
+    ym = _ym(value)
+    if ym is None:
+        return value or ""
+    return f"{MONTH_NAMES[ym[1] - 1]} {ym[0]}"
+
+
 def compute_finance_summary(
     *,
     year: int,
@@ -686,6 +694,7 @@ def compute_finance_summary(
     units_by_property: Dict[str, List[Dict[str, Any]]],
     payment_exceptions: Optional[List[Dict[str, Any]]] = None,
     document_exceptions: Optional[List[Dict[str, Any]]] = None,
+    rent_recoveries: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     months = _months_in_scope(year, today)
 
@@ -814,7 +823,28 @@ def compute_finance_summary(
         )
         complete = _year_is_complete(coverage_rows, year)
 
-        received = prop_actual + prop_derived
+        recovered_lines: List[Dict[str, Any]] = []
+        prop_recovered = 0.0
+        for r in (rent_recoveries or []):
+            if not isinstance(r, dict) or r.get("property_id") != pid or r.get("received_year") != year:
+                continue
+            amount = _amount(r, "amount")
+            if amount is None:
+                continue
+            prop_recovered += amount
+            recovered_lines.append({
+                "unit_id": r.get("unit_id"),
+                "original_month": r.get("original_month"),
+                "amount": _round2(amount),
+                "label": f"Recovered rent — {_month_label(r.get('original_month'))}",
+            })
+        if recovered_lines:
+            recovered_summary = ", ".join(
+                f"{line['label']} (RM{line['amount']:,.2f})" for line in recovered_lines
+            )
+            unpaid_notes.append(f"{name}: recovered rent booked this year — {recovered_summary}")
+
+        received = prop_actual + prop_derived + prop_recovered
         direct = sum(l["amount"] for l in expense_lines if l["deductible"])
         if complete:
             statutory_sum += share * (received - prorated_expenses)
@@ -881,6 +911,7 @@ def compute_finance_summary(
             "units": unit_blocks,
             "expense_lines": expense_lines,
             "property_expense_lines": property_level_lines,
+            "recovered_rent": recovered_lines,
             "complete": complete,
             "coverage": coverage_rows,
         })

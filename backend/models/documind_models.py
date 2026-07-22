@@ -208,6 +208,15 @@ class YearCoverage(BaseModel):
     unavailable: List[str] = Field(default_factory=list)
 
 
+class RecoveredRentLine(BaseModel):
+    """A written-off month's rent, booked as income in the year it
+    actually arrived. Never merged into that year's own month rows."""
+    unit_id: Optional[str] = None
+    original_month: str
+    amount: float
+    label: str
+
+
 class PropertyFinance(BaseModel):
     """Per-property annual block (mirrors the reference sheet)."""
     property_id: str
@@ -222,6 +231,7 @@ class PropertyFinance(BaseModel):
     units: List[UnitFinance]
     expense_lines: List[ExpenseLine]  # all lines, itemized
     property_expense_lines: List[ExpenseLine]  # the property-level subset
+    recovered_rent: List[RecoveredRentLine] = Field(default_factory=list)
     coverage: List[YearCoverage] = Field(default_factory=list)
 
 
@@ -300,3 +310,22 @@ class DocumentExceptionResponse(BaseModel):
     property_id: str
     year: int
     category: str
+
+
+# ========== RENT RECOVERY MODELS ==========
+
+class RentRecoveryRequest(BaseModel):
+    landlord_id: str
+    property_id: str
+    original_month: str = Field(..., description="The written-off month being recovered, YYYY-MM")
+    amount: float = Field(..., gt=0)
+    received_year: int = Field(..., ge=2000, le=2100, description="Calendar year the money actually arrived")
+    unit_id: Optional[str] = None
+
+
+class RentRecoveryResponse(BaseModel):
+    property_id: str
+    unit_id: Optional[str] = None
+    original_month: str
+    amount: float
+    received_year: int

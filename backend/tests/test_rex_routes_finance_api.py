@@ -180,3 +180,38 @@ class FinanceSummaryApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(kwargs["property_id"], "p1")
+
+    def test_record_rent_recovery_returns_200_and_forwards_params(self):
+        with patch(
+            "api.rex_routes.documind_service.record_rent_recovery",
+            new=AsyncMock(return_value={
+                "property_id": "p1", "unit_id": None, "original_month": "2025-08",
+                "amount": 3000.0, "received_year": 2026,
+            }),
+        ) as mocked:
+            response = self.client.put(
+                "/api/rex/documind/finance/rent-recovery",
+                json={
+                    "landlord_id": "landlord-1", "property_id": "p1",
+                    "original_month": "2025-08", "amount": 3000.0, "received_year": 2026,
+                },
+            )
+            kwargs = mocked.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["amount"], 3000.0)
+        self.assertEqual(kwargs["received_year"], 2026)
+
+    def test_clear_rent_recovery_returns_200(self):
+        with patch(
+            "api.rex_routes.documind_service.clear_rent_recovery",
+            new=AsyncMock(return_value={"property_id": "p1", "unit_id": None, "original_month": "2025-08"}),
+        ) as mocked:
+            response = self.client.delete(
+                "/api/rex/documind/finance/rent-recovery",
+                params={"landlord_id": "landlord-1", "property_id": "p1", "original_month": "2025-08"},
+            )
+            kwargs = mocked.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(kwargs["property_id"], "p1")

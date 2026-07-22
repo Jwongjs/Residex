@@ -41,8 +41,15 @@ def _doc_exception(pid, year, category):
     return {"property_id": pid, "year": year, "category": category}
 
 
+def _recovery(pid, original_month, amount, received_year, unit_id=None):
+    return {
+        "property_id": pid, "unit_id": unit_id, "original_month": original_month,
+        "amount": amount, "received_year": received_year,
+    }
+
+
 def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 16),
-             payment_exceptions=None, document_exceptions=None):
+             payment_exceptions=None, document_exceptions=None, rent_recoveries=None):
     return compute_finance_summary(
         year=year,
         today=today,
@@ -51,6 +58,7 @@ def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 1
         units_by_property=units or {},
         payment_exceptions=payment_exceptions,
         document_exceptions=document_exceptions,
+        rent_recoveries=rent_recoveries,
     )
 
 
@@ -1161,3 +1169,63 @@ class RentPaymentStateTests(unittest.TestCase):
                            payment_exceptions=[{"property_id": "p1", "unit_id": None, "month": "2025-03"}])
         joined = " ".join(result["caveats"])
         self.assertIn("No payment received for Mar", joined)
+
+
+class RentRecoveryTests(unittest.TestCase):
+    def test_recovery_counts_toward_the_year_it_arrived(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2026-01-01", "lease_end": "2026-12-31"})]
+        result = _summary(
+            docs, [_prop("p1", "House")], year=2026, today=date(2026, 7, 16),
+            rent_recoveries=[_recovery("p1", "2025-08", 3000.0, 2026)],
+        )
+        # 7 months derived (Jan-Jul, today is mid-Jul 2026 so Jul is in scope) + recovery
+        self.assertEqual(result["properties"][0]["received_rent"], 7000.0 + 3000.0)
+        self.assertEqual(result["totals"]["received_rent"], 7000.0 + 3000.0)
+
+    def test_recovered_line_is_itemized_and_traceable(self):
+        result = _summary(
+            [], [_prop("p1", "House")], year=2026, today=date(2026, 7, 16),
+            rent_recoveries=[_recovery("p1", "2025-08", 3000.0, 2026)],
+        )
+        lines = result["properties"][0]["recovered_rent"]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0]["original_month"], "2025-08")
+        self.assertEqual(lines[0]["amount"], 3000.0)
+        self.assertEqual(lines[0]["label"], "Recovered rent — Aug 2025")
+
+    def test_recovery_does_not_appear_or_change_anything_in_the_original_year(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        without = _summary(docs, [_prop("p1", "House")], year=2025)
+        with_recovery = _summary(
+            docs, [_prop("p1", "House")], year=2025,
+            rent_recoveries=[_recovery("p1", "2025-08", 3000.0, 2026)],
+        )
+        self.assertEqual(without["properties"][0]["received_rent"], with_recovery["properties"][0]["received_rent"])
+        self.assertEqual(with_recovery["properties"][0]["recovered_rent"], [])
+
+    def test_recovery_for_a_different_property_is_ignored(self):
+        result = _summary(
+            [], [_prop("p1", "House")], year=2026, today=date(2026, 7, 16),
+            rent_recoveries=[_recovery("p2", "2025-08", 3000.0, 2026)],
+        )
+        self.assertEqual(result["properties"][0]["recovered_rent"], [])
+        self.assertEqual(result["properties"][0]["received_rent"], 0.0)
+
+    def test_recovery_feeds_the_statutory_estimate_like_any_other_receipt(self):
+        # A coverage window needs at least one document to anchor a year at
+        # all; with zero documents _property_coverage has nothing to walk
+        # and the property can never be "complete". A single upkeep receipt
+        # both anchors 2026 and satisfies its own slot.
+        docs = [_doc("p1", "upkeep", {"amount": 0.0, "service_date": "2026-01-01"})]
+        result = _summary(
+            docs, [dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)],
+            year=2026, today=date(2026, 7, 16),
+            rent_recoveries=[_recovery("p1", "2025-08", 3000.0, 2026)],
+            document_exceptions=[
+                _doc_exception("p1", 2026, c)
+                for c in ("rental_invoice", "assessment", "quit_rent", "insurance")
+            ],
+        )
+        self.assertEqual(result["totals"]["statutory_rental_income"], 3000.0)

@@ -750,6 +750,62 @@ Rules:
             ref.delete()
         return {"property_id": property_id, "year": year, "category": category}
 
+    def _rent_recovery_doc_id(self, property_id: str, unit_id: Optional[str], original_month: str) -> str:
+        return f"{property_id}__{unit_id or 'property'}__{original_month}"
+
+    async def record_rent_recovery(
+        self, *, landlord_id: str, property_id: str, original_month: str,
+        amount: float, received_year: int, unit_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Book a written-off month's rent as income in the year it
+        actually arrived, without reopening the original (frozen) year.
+        Requires the month to already be on file as written_off — a
+        recovery corrects a specific write-off, it is never a free-
+        floating credit. Idempotent — recording the same scope again
+        overwrites the amount/year."""
+        if not _PAYMENT_MONTH_RE.match(original_month or ""):
+            raise ValueError("original_month must be formatted YYYY-MM")
+        property_ref = self.db.collection('properties').document(property_id)
+        property_snapshot = property_ref.get()
+        if not property_snapshot.exists or (property_snapshot.to_dict() or {}).get('landlordId') != landlord_id:
+            raise ValueError(f"Property {property_id} not found for landlord {landlord_id}")
+        exception_id = self._payment_exception_doc_id(property_id, unit_id, original_month)
+        exception_snapshot = self.db.collection('documind_payment_exceptions').document(exception_id).get()
+        exception_data = exception_snapshot.to_dict() if exception_snapshot.exists else None
+        if not exception_data or exception_data.get("state") != "written_off":
+            raise ValueError(
+                f"{original_month} is not on file as written_off for this scope; "
+                "a recovery can only be recorded against a written-off month."
+            )
+        doc_id = self._rent_recovery_doc_id(property_id, unit_id, original_month)
+        ref = self.db.collection('documind_rent_recoveries').document(doc_id)
+        ref.set({
+            'landlord_id': landlord_id,
+            'property_id': property_id,
+            'unit_id': unit_id,
+            'original_month': original_month,
+            'amount': float(amount),
+            'received_year': received_year,
+            'recorded_at': firestore.SERVER_TIMESTAMP,
+        })
+        return {
+            "property_id": property_id, "unit_id": unit_id, "original_month": original_month,
+            "amount": float(amount), "received_year": received_year,
+        }
+
+    async def clear_rent_recovery(
+        self, *, landlord_id: str, property_id: str, original_month: str, unit_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Remove a recorded recovery. Idempotent — clearing an unrecorded
+        scope is a no-op, not an error. Does not affect the underlying
+        written_off exception."""
+        doc_id = self._rent_recovery_doc_id(property_id, unit_id, original_month)
+        ref = self.db.collection('documind_rent_recoveries').document(doc_id)
+        snapshot = ref.get()
+        if snapshot.exists and (snapshot.to_dict() or {}).get("landlord_id") == landlord_id:
+            ref.delete()
+        return {"property_id": property_id, "unit_id": unit_id, "original_month": original_month}
+
     async def ask_documind(self, payload: AskRequest) -> AskResponse:
         """
         Answer question using Firestore Vector Search.
@@ -1448,6 +1504,20 @@ Rules:
                 "category": data.get("category"),
             })
 
+        rent_recoveries = []
+        recoveries_query = self.db.collection('documind_rent_recoveries').where(
+            filter=FieldFilter('landlord_id', '==', landlord_id)
+        )
+        for snap in recoveries_query.stream():
+            data = snap.to_dict() or {}
+            rent_recoveries.append({
+                "property_id": data.get("property_id"),
+                "unit_id": data.get("unit_id"),
+                "original_month": data.get("original_month"),
+                "amount": data.get("amount"),
+                "received_year": data.get("received_year"),
+            })
+
         summary = compute_finance_summary(
             year=year,
             today=date.today(),
@@ -1456,6 +1526,7 @@ Rules:
             units_by_property=units_by_property,
             payment_exceptions=payment_exceptions,
             document_exceptions=document_exceptions,
+            rent_recoveries=rent_recoveries,
         )
         return FinanceSummaryResponse(**summary)
 
