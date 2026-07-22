@@ -654,6 +654,16 @@ def _property_coverage(
     return coverage
 
 
+def _year_is_complete(coverage_rows: List[Dict[str, Any]], year: int) -> bool:
+    """True when the requested year has no missing category, no partial
+    tax installment, and no partial maintenance month — the only state
+    that may safely feed the statutory estimate (spec §7.2)."""
+    row = next((r for r in coverage_rows if r["year"] == year), None)
+    if row is None:
+        return False
+    return not row["missing"] and not row["partial_installments"] and not row["partial_categories"]
+
+
 def compute_finance_summary(
     *,
     year: int,
@@ -682,6 +692,7 @@ def compute_finance_summary(
     unpaid_notes: List[str] = []
     share_notes: List[str] = []
     non_deductible_notes: List[str] = []
+    incomplete_notes: List[str] = []
 
     for prop in properties:
         pid = prop["property_id"]
@@ -777,9 +788,20 @@ def compute_finance_summary(
             l["amount"] for l in property_level_lines if l["deductible"]
         ) * avg_fraction
 
+        coverage_rows = _property_coverage(
+            prop_docs, today.year, _expected_categories(prop),
+            _expected_tax_subtypes(prop), prop_unavailable,
+        )
+        complete = _year_is_complete(coverage_rows, year)
+
         received = prop_actual + prop_derived
         direct = sum(l["amount"] for l in expense_lines if l["deductible"])
-        statutory_sum += share * (received - prorated_expenses)
+        if complete:
+            statutory_sum += share * (received - prorated_expenses)
+        else:
+            incomplete_notes.append(
+                f"{name}: {year} records are incomplete — excluded from the statutory estimate."
+            )
 
         contributing = {l["category"] for l in expense_lines if l["deductible"]}
         if any(row["source"] == "actual" for u in unit_blocks for row in u["months"]):
@@ -837,10 +859,8 @@ def compute_finance_summary(
             "units": unit_blocks,
             "expense_lines": expense_lines,
             "property_expense_lines": property_level_lines,
-            "coverage": _property_coverage(
-                prop_docs, today.year, _expected_categories(prop),
-                _expected_tax_subtypes(prop), prop_unavailable,
-            ),
+            "complete": complete,
+            "coverage": coverage_rows,
         })
 
     statutory = _round2(statutory_sum)
@@ -857,6 +877,7 @@ def compute_finance_summary(
     caveats.extend(unpaid_notes)
     caveats.extend(share_notes)
     caveats.extend(non_deductible_notes)
+    caveats.extend(incomplete_notes)
 
     return {
         "year": year,

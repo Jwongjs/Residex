@@ -1555,6 +1555,13 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
                 "category": "lease", "filename": "old.pdf",
                 "uploaded_at": datetime(2024, 1, 1),
             },
+        ], document_exceptions=[
+            # No profile is set, so every FINANCE_CATEGORIES slot is
+            # expected; mark the ones this fixture never intended to
+            # exercise unavailable so completeness doesn't withhold the
+            # statutory figure under test.
+            {"landlord_id": "l1", "property_id": "p1", "year": 2025, "category": c}
+            for c in ("loan", "tax", "maintenance", "insurance")
         ])
         fake_db.properties_rows = [
             {"doc_id": "p1", "landlordId": "l1", "name": "Kiara Court", "ownership_share": 0.5},

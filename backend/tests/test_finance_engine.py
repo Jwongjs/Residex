@@ -152,8 +152,13 @@ class PaymentExceptionTests(unittest.TestCase):
 
     def test_exception_reduces_statutory_income(self):
         docs = [_doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
-        without = _summary(docs, [_prop("p1", "House")])
-        with_exception = _summary(docs, [_prop("p1", "House")], payment_exceptions=[_exception("p1", "2025-03")])
+        exceptions = [
+            _doc_exception("p1", 2025, c)
+            for c in ("rental_invoice", "loan", "tax", "upkeep", "maintenance", "insurance")
+        ]
+        without = _summary(docs, [_prop("p1", "House")], document_exceptions=exceptions)
+        with_exception = _summary(docs, [_prop("p1", "House")], payment_exceptions=[_exception("p1", "2025-03")],
+                                   document_exceptions=exceptions)
         self.assertEqual(without["totals"]["statutory_rental_income"], 12000.0)
         self.assertEqual(with_exception["totals"]["statutory_rental_income"], 11000.0)
 
@@ -221,7 +226,12 @@ class StatutoryTests(unittest.TestCase):
             _doc("p1", "upkeep", {"amount": 600.0, "service_date": "2025-02-01"}, unit_id="u2"),
         ]
         units = {"p1": [{"unit_id": "u1", "label": "Unit A"}, {"unit_id": "u2", "label": "Unit B"}]}
-        result = _summary(docs, [_prop("p1", "Block")], units=units, year=2025, today=date(2026, 1, 1))
+        # No profile is set, so every FINANCE_CATEGORIES slot is expected;
+        # mark the ones this fixture never intended to exercise unavailable
+        # so completeness doesn't withhold the statutory figure under test.
+        exceptions = [_doc_exception("p1", 2025, c) for c in ("loan", "tax", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "Block")], units=units, year=2025, today=date(2026, 1, 1),
+                           document_exceptions=exceptions)
         # Net includes the vacant unit's expense (cash reality)
         self.assertEqual(result["totals"]["net_pl"], 400.0)
         # Statutory prorates Unit B's expense by its rented fraction (0/12)
@@ -233,7 +243,9 @@ class StatutoryTests(unittest.TestCase):
             _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
             _doc("p1", "tax", {"subtype": "quit_rent", "amount": 120.0, "period_year": 2025}),
         ]
-        result = _summary(docs, [_prop("p1", "Shared", share=0.5)], year=2025, today=date(2026, 1, 1))
+        exceptions = [_doc_exception("p1", 2025, c) for c in ("loan", "upkeep", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "Shared", share=0.5)], year=2025, today=date(2026, 1, 1),
+                           document_exceptions=exceptions)
         self.assertEqual(result["totals"]["net_pl"], 880.0)
         # statutory: 0.5 * (1000 - 120 * (1/12 rented fraction))
         self.assertEqual(result["totals"]["statutory_rental_income"], 495.0)
@@ -245,7 +257,12 @@ class StatutoryTests(unittest.TestCase):
             _doc("p2", "rental_invoice", {"amount": 200.0, "period_month": "2025-01"}),
             _doc("p2", "loan", {"subtype": "interest_statement", "interest_paid": 5000.0, "period_year": 2025}),
         ]
-        result = _summary(docs, [_prop("p1", "Winner"), _prop("p2", "Loser")], year=2025, today=date(2026, 1, 1))
+        exceptions = (
+            [_doc_exception("p1", 2025, c) for c in ("loan", "tax", "upkeep", "maintenance", "insurance")]
+            + [_doc_exception("p2", 2025, c) for c in ("tax", "upkeep", "maintenance", "insurance")]
+        )
+        result = _summary(docs, [_prop("p1", "Winner"), _prop("p2", "Loser")], year=2025, today=date(2026, 1, 1),
+                           document_exceptions=exceptions)
         # p1 statutory 1000; p2: 200 - 5000*(1/12) = -216.67 -> offsets
         self.assertEqual(result["totals"]["statutory_rental_income"], 783.33)
         self.assertNotIn(LOSS_FLOOR_NOTE, result["totals"]["statutory_note"])
@@ -254,7 +271,8 @@ class StatutoryTests(unittest.TestCase):
             _doc("p2", "loan", {"subtype": "interest_statement", "interest_paid": 200000.0, "period_year": 2025},
                  doc_id="big-loss"),
         ]
-        floored = _summary(heavy_loss, [_prop("p1", "Winner"), _prop("p2", "Loser")], year=2025, today=date(2026, 1, 1))
+        floored = _summary(heavy_loss, [_prop("p1", "Winner"), _prop("p2", "Loser")], year=2025, today=date(2026, 1, 1),
+                            document_exceptions=exceptions)
         self.assertEqual(floored["totals"]["statutory_rental_income"], 0.0)
         self.assertIn(LOSS_FLOOR_NOTE, floored["totals"]["statutory_note"])
         self.assertIn(STATUTORY_NOTE, floored["totals"]["statutory_note"])
@@ -296,6 +314,12 @@ class GoldenReferenceSheetTest(unittest.TestCase):
             _doc("p1", "tax", {"subtype": "assessment", "amount": 1500.0, "period_year": 2025}),
             _doc("p1", "tax", {"subtype": "quit_rent", "amount": 316.87, "period_year": 2025}),
             _doc("p1", "maintenance", {"amount": 25700.0, "period_start": "2025-01-01", "period_end": "2025-12-31"}),
+            # No profile is set (property_type unknown), so every FINANCE_CATEGORIES
+            # slot is expected; these $0 placeholders satisfy insurance/upkeep for
+            # completeness without moving any of the sheet's real figures.
+            _doc("p1", "insurance", {"premium": 0.0,
+                                     "policy_start": "2025-01-01", "policy_end": "2025-12-31"}),
+            _doc("p1", "upkeep", {"amount": 0.0, "service_date": "2025-06-01"}),
         ]
         # Shaftbury: 10 x 6,000 + 2 x 10,000 = 80,000; expenses 70,950.52
         for m in range(1, 11):
@@ -307,6 +331,8 @@ class GoldenReferenceSheetTest(unittest.TestCase):
             _doc("p2", "maintenance", {"amount": 19090.0, "period_start": "2025-01-01", "period_end": "2025-12-31"}),
             _doc("p2", "tax", {"subtype": "assessment", "amount": 2860.52, "period_year": 2025}),
             _doc("p2", "upkeep", {"amount": 4000.0, "service_date": "2025-06-15"}),
+            _doc("p2", "insurance", {"premium": 0.0,
+                                     "policy_start": "2025-01-01", "policy_end": "2025-12-31"}),
         ]
         # USJ: 10 x 4,000 + 2 x 7,500 = 55,000; expenses 28,426.03
         for m in range(1, 11):
@@ -317,6 +343,8 @@ class GoldenReferenceSheetTest(unittest.TestCase):
             _doc("p3", "loan", {"subtype": "interest_statement", "interest_paid": 20000.0, "period_year": 2025}),
             _doc("p3", "insurance", {"premium": 1426.03, "policy_start": "2025-01-01", "policy_end": "2026-01-01"}),
             _doc("p3", "maintenance", {"amount": 7000.0, "period_start": "2025-01-01", "period_end": "2025-12-31"}),
+            _doc("p3", "tax", {"subtype": "assessment", "amount": 0.0, "period_year": 2025}),
+            _doc("p3", "upkeep", {"amount": 0.0, "service_date": "2025-06-01"}),
         ]
         return docs
 
@@ -508,7 +536,13 @@ class NonDeductibleLineTests(unittest.TestCase):
                                  "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
             self._statement(),
         ]
-        result = _summary(docs, [_prop("p1", "House")])
+        exceptions = [
+            _doc_exception("p1", 2025, c)
+            # maintenance has only one of twelve months on file (a single
+            # bundled line), so it is partial, not present — mark it too.
+            for c in ("rental_invoice", "loan", "tax", "upkeep", "insurance", "maintenance")
+        ]
+        result = _summary(docs, [_prop("p1", "House")], document_exceptions=exceptions)
         # 12 x 1000 rent, fully rented so the proration factor is 1.0
         self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0 - 840.40)
 
@@ -985,3 +1019,84 @@ class DocumentExceptionCoverageTests(unittest.TestCase):
         row = next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
         self.assertEqual(row["partial_categories"], [])
         self.assertIn("maintenance", row["unavailable"])
+
+
+class IncompleteYearStatutoryTests(unittest.TestCase):
+    def test_complete_year_is_flagged_and_counted(self):
+        # A landed, unmortgaged property's full expected list is
+        # rental_invoice, assessment, quit_rent, insurance, upkeep — every
+        # one needs real evidence for this year to count as complete.
+        # rental_invoice matches the lease amount so the total is unchanged;
+        # the upkeep line is amount 0.0 so it satisfies the slot (spec
+        # never requires an upkeep charge to exist) without moving the
+        # expense total.
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0,
+                                 "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
+            _doc("p1", "upkeep", {"amount": 0.0, "service_date": "2025-06-01"}),
+        ]
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)
+        docs.append(_doc("p1", "tax", {"subtype": "assessment", "amount": 400.0, "period_year": 2025}))
+        docs.append(_doc("p1", "tax", {"subtype": "quit_rent", "amount": 200.0, "period_year": 2025}))
+        docs.append(_doc("p1", "insurance", {"premium": 150.0,
+                                             "policy_start": "2025-01-01", "policy_end": "2025-12-31"}))
+        result = _summary(docs, [prop])
+        block = result["properties"][0]
+        self.assertTrue(block["complete"])
+        self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0 - 750.0)
+
+    def test_incomplete_year_is_flagged_and_excluded_from_statutory(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)
+        result = _summary(docs, [prop])  # missing assessment, quit_rent, insurance
+        block = result["properties"][0]
+        self.assertFalse(block["complete"])
+        self.assertEqual(result["totals"]["statutory_rental_income"], 0.0)
+
+    def test_received_and_expenses_are_never_withheld_by_incompleteness(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)
+        result = _summary(docs, [prop])
+        self.assertEqual(result["properties"][0]["received_rent"], 12000.0)
+
+    def test_incompleteness_is_named_in_a_caveat(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)
+        result = _summary(docs, [prop])
+        self.assertTrue(any("excluded from the statutory estimate" in c for c in result["caveats"]))
+
+    def test_one_incomplete_property_does_not_zero_out_a_complete_one(self):
+        complete_docs = [
+            _doc("p2", "lease", {"monthly_rent": 500.0,
+                                 "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            _doc("p2", "rental_invoice", {"amount": 500.0, "period_month": "2025-01"}),
+            _doc("p2", "upkeep", {"amount": 0.0, "service_date": "2025-06-01"}),
+            _doc("p2", "tax", {"subtype": "assessment", "amount": 100.0, "period_year": 2025}),
+            _doc("p2", "tax", {"subtype": "quit_rent", "amount": 50.0, "period_year": 2025}),
+            _doc("p2", "insurance", {"premium": 60.0,
+                                     "policy_start": "2025-01-01", "policy_end": "2025-12-31"}),
+        ]
+        incomplete_docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                                "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        props = [
+            dict(_prop("p1", "House 1"), property_type="landed", has_mortgage=False),
+            dict(_prop("p2", "House 2"), property_type="landed", has_mortgage=False),
+        ]
+        result = _summary(incomplete_docs + complete_docs, props)
+        self.assertEqual(result["totals"]["statutory_rental_income"], 6000.0 - 210.0)
+
+    def test_a_year_marked_unavailable_for_every_remaining_gap_is_complete(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)
+        exceptions = [
+            _doc_exception("p1", 2025, c)
+            for c in ("rental_invoice", "assessment", "quit_rent", "insurance", "upkeep")
+        ]
+        result = _summary(docs, [prop], document_exceptions=exceptions)
+        self.assertTrue(result["properties"][0]["complete"])
+        self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0)

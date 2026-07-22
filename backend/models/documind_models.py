@@ -211,6 +211,7 @@ class PropertyFinance(BaseModel):
     property_id: str
     name: str
     ownership_share: float = 1.0
+    complete: bool = True
     received_rent: float
     derived_rent: float
     direct_expenses: float
