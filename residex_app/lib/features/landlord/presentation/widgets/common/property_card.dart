@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/theme/app_dimensions.dart';
 import '../../../domain/entities/property.dart';
+import '../../providers/finance_logic.dart';
+import '../../providers/finance_providers.dart';
 import '../../providers/unit_providers.dart';
+import 'registration_document_steps_sheet.dart';
 
 /// Property card for portfolio screen
 ///
@@ -34,6 +37,18 @@ class PropertyCard extends ConsumerWidget {
     final occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0.0;
     final isFullyOccupied = totalUnits > 0 && occupiedUnits == totalUnits;
     final hasVacancy = occupiedUnits < totalUnits;
+
+    final year = DateTime.now().year;
+    final summaryAsync = ref.watch(financeSummaryProvider(year));
+    final block = summaryAsync.value?.properties
+        .where((p) => p.propertyId == property.id)
+        .toList();
+    final yearRow = block != null && block.isNotEmpty
+        ? yearCoverageFor(block.first.coverage, year)
+        : null;
+    final completeness = (block != null && block.isNotEmpty && yearRow != null)
+        ? yearCompleteness(yearRow, block.first.expectedCategories)
+        : null;
 
     return GestureDetector(
       onTap: onTap,
@@ -206,6 +221,28 @@ class PropertyCard extends ConsumerWidget {
                       ],
                     ),
                   ),
+                  if (completeness != null && completeness.expect > 0) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      '$year: ${completeness.have} of ${completeness.expect}',
+                      style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+                    ),
+                  ],
+                  if (property.nextSetupStep != 0) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => showRegistrationDocumentSteps(
+                          context,
+                          property: property,
+                          startAtStep: property.nextSetupStep,
+                        ),
+                        icon: const Icon(Icons.arrow_forward, size: 16),
+                        label: const Text('Continue setup'),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

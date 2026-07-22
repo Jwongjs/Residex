@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/documind_document.dart';
+import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
 import 'package:residex_app/features/landlord/presentation/providers/finance_logic.dart';
 
 DocuMindDocument _doc(String category, Map<String, dynamic>? facts) {
@@ -49,5 +50,24 @@ void main() {
 
   test('topMissingDocumentBanner is null when nothing is missing', () {
     expect(topMissingDocumentBanner(2025, []), isNull);
+  });
+
+  test('yearCompleteness counts maintenance months and installments as separate slots', () {
+    final coverage = YearCoverage(
+      year: 2025,
+      missing: const ['loan'],
+      partialCategories: [PartialCategory(category: 'maintenance', have: 4, expect: 12)],
+      partialInstallments: [InstallmentGap(label: 'Assessment tax', have: 1, expect: 2)],
+    );
+    final result = yearCompleteness(coverage, ['loan', 'maintenance', 'assessment']);
+    // loan: 0/1, maintenance: 4/12, assessment: 1/2 -> 5 of 15
+    expect(result.have, 5);
+    expect(result.expect, 15);
+  });
+
+  test('yearCompleteness treats an acknowledged gap as settled, not missing', () {
+    final coverage = YearCoverage(year: 2025, unavailable: const ['insurance']);
+    final result = yearCompleteness(coverage, ['insurance']);
+    expect(result, (have: 1, expect: 1));
   });
 }

@@ -61,6 +61,43 @@ YearCoverage? yearCoverageFor(List<YearCoverage> coverage, int year) {
   return null;
 }
 
+/// Slot-level completeness for one year, used by the property-card
+/// indicator ("2025: 8 of 14") — counts maintenance's 12 months and a
+/// tax's N installments as separate slots, not one flat category each.
+({int have, int expect}) yearCompleteness(
+    YearCoverage coverage, List<String> expectedCategories) {
+  var have = 0;
+  var expect = 0;
+  for (final category in expectedCategories) {
+    if (coverage.unavailable.contains(category)) {
+      expect += 1;
+      have += 1;
+      continue;
+    }
+    if (category == 'maintenance') {
+      final partial = coverage.partialCategories.where((p) => p.category == 'maintenance');
+      if (partial.isNotEmpty) {
+        expect += partial.first.expect;
+        have += partial.first.have;
+      } else {
+        expect += 12;
+        have += coverage.missing.contains('maintenance') ? 0 : 12;
+      }
+      continue;
+    }
+    final label = coverageLabels[category] ?? category;
+    final gap = coverage.partialInstallments.where((g) => g.label == label);
+    if (gap.isNotEmpty) {
+      expect += gap.first.expect;
+      have += gap.first.have;
+      continue;
+    }
+    expect += 1;
+    have += coverage.missing.contains(category) ? 0 : 1;
+  }
+  return (have: have, expect: expect);
+}
+
 /// Ranking for the landlord-facing "most damaging first" missing-document
 /// ordering (spec §7.1). Lower index sorts first. 'upkeep' is deliberately
 /// absent — it is never flagged missing.
