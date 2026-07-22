@@ -163,3 +163,16 @@ class TestValidateExpenseLines(unittest.TestCase):
     def test_non_deductible_subtypes_are_declared_subtypes(self):
         for subtype in NEVER_DEDUCTIBLE_SUBTYPES | LANDLORD_BORNE_SUBTYPES:
             self.assertIn(subtype, EXPENSE_SUBTYPE_CATEGORY)
+
+    def test_installment_passes_through_on_a_bundled_line(self):
+        lines = validate_expense_lines([
+            {"subtype": "assessment_tax", "amount": 400.0, "period_year": 2025,
+             "installment": "1/2"},
+        ])
+        self.assertEqual(lines[0]["installment"], "1/2")
+
+    def test_installment_omitted_when_blank(self):
+        lines = validate_expense_lines([
+            {"subtype": "maintenance", "amount": 250.0, "date": "2025-03-01"},
+        ])
+        self.assertNotIn("installment", lines[0])

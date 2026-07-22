@@ -183,10 +183,18 @@ class UnitFinance(BaseModel):
     expense_lines: List[ExpenseLine] = Field(default_factory=list)
 
 
+class InstallmentGap(BaseModel):
+    """A tax whose own bill declares N installments, with fewer uploaded."""
+    label: str
+    have: int
+    expect: int
+
+
 class YearCoverage(BaseModel):
     """One year's document-completeness report for a property."""
     year: int
     missing: List[str] = Field(default_factory=list)
+    partial_installments: List[InstallmentGap] = Field(default_factory=list)
 
 
 class PropertyFinance(BaseModel):
@@ -229,6 +237,7 @@ class ExpenseLineEdit(BaseModel):
     description: Optional[str] = None
     date: Optional[str] = None
     period_year: Optional[int] = None
+    installment: Optional[str] = None
 
 
 class FactsUpdateRequest(BaseModel):

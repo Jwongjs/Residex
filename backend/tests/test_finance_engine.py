@@ -4,6 +4,8 @@ from datetime import date, datetime
 from rag.finance_engine import (
     LOSS_FLOOR_NOTE,
     STATUTORY_NOTE,
+    _installment_gaps,
+    _parse_installment,
     compute_finance_summary,
 )
 
@@ -747,3 +749,112 @@ class TaxSubtypeCoverageTests(unittest.TestCase):
         self.assertIn("tax", row["missing"])
         self.assertNotIn("quit_rent", row["missing"])
         self.assertNotIn("land_office_tax", row["missing"])
+
+
+class InstallmentGapTests(unittest.TestCase):
+    def test_parses_common_installment_labels(self):
+        self.assertEqual(_parse_installment("1/2"), (1, 2))
+        self.assertEqual(_parse_installment("2 of 2"), (2, 2))
+        self.assertEqual(_parse_installment("ansuran 1/3"), (1, 3))
+        self.assertEqual(_parse_installment("First half"), (None, None))
+        self.assertEqual(_parse_installment(None), (None, None))
+        self.assertEqual(_parse_installment("3/2"), (None, None))
+
+    def test_flags_a_missing_second_installment_from_a_typed_tax_doc(self):
+        docs = [_doc("p1", "tax", {
+            "subtype": "assessment", "amount": 400.0,
+            "period_year": 2025, "installment": "1/2",
+        })]
+        self.assertEqual(
+            _installment_gaps(docs, 2025),
+            [{"label": "Assessment tax", "have": 1, "expect": 2}],
+        )
+
+    def test_no_gap_when_both_installments_present(self):
+        docs = [
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "1/2"}),
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "2/2"}),
+        ]
+        self.assertEqual(_installment_gaps(docs, 2025), [])
+
+    def test_duplicate_installment_still_counts_as_one(self):
+        docs = [
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "1/2"}),
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "1/2"}),
+        ]
+        self.assertEqual(
+            _installment_gaps(docs, 2025),
+            [{"label": "Assessment tax", "have": 1, "expect": 2}],
+        )
+
+    def test_annual_billing_council_never_triggers(self):
+        docs = [_doc("p1", "tax", {"subtype": "assessment", "amount": 800.0,
+                                   "period_year": 2025})]
+        self.assertEqual(_installment_gaps(docs, 2025), [])
+
+    def test_bundled_expenses_line_installment_counts_too(self):
+        # A management statement lists the second assessment installment as
+        # one line among several — the same statement that already
+        # satisfies maintenance for the month (Stage A precedent).
+        docs = [
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "1/2"}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "assessment_tax", "amount": 400.0,
+                 "period_year": 2025, "installment": "2/2"},
+            ]}),
+        ]
+        self.assertEqual(_installment_gaps(docs, 2025), [])
+
+    def test_bundled_line_installment_resolves_year_from_its_date(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "assessment_tax", "amount": 400.0,
+             "date": "2025-06-01", "installment": "1/2"},
+        ]})]
+        self.assertEqual(
+            _installment_gaps(docs, 2025),
+            [{"label": "Assessment tax", "have": 1, "expect": 2}],
+        )
+
+    def test_quit_rent_and_parcel_rent_installments_normalise_like_assessment(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "quit_rent", "amount": 200.0, "period_year": 2025,
+             "installment": "1/2"},
+        ]})]
+        self.assertEqual(
+            _installment_gaps(docs, 2025),
+            [{"label": "Quit rent", "have": 1, "expect": 2}],
+        )
+
+
+class PartialInstallmentCoverageTests(unittest.TestCase):
+    def test_coverage_reports_a_partial_installment_year(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0,
+                                 "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "1/2"}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")])
+        row = next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
+        self.assertEqual(
+            row["partial_installments"],
+            [{"label": "Assessment tax", "have": 1, "expect": 2}],
+        )
+
+    def test_complete_year_reports_no_partials(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0,
+                                 "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "1/2"}),
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 400.0,
+                               "period_year": 2025, "installment": "2/2"}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")])
+        row = next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
+        self.assertEqual(row["partial_installments"], [])

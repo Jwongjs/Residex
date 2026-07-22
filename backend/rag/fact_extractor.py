@@ -229,6 +229,9 @@ def validate_expense_lines(lines: Any) -> List[Dict[str, Any]]:
         year_value = FactExtractor._coerce("expenses", "year", str(line.get("period_year", "")))
         if year_value is not None:
             entry["period_year"] = year_value
+        installment_value = str(line.get("installment") or "").strip()
+        if installment_value:
+            entry["installment"] = installment_value[:20]
         cleaned.append(entry)
     return cleaned
 

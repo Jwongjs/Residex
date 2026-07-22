@@ -8,6 +8,7 @@ missing_categories/caveats, never as errors.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -372,6 +373,76 @@ _EXPENSE_TAX_SUBTYPE = {
 }
 
 
+_INSTALLMENT_RE = re.compile(r"(\d+)\s*(?:/|of|drpd|daripada)\s*(\d+)", re.IGNORECASE)
+
+
+def _parse_installment(value: Any) -> Tuple[Optional[int], Optional[int]]:
+    """(sequence, total) from a label like '1/2', '2 of 2', 'ansuran 1/3'.
+    (None, None) when the text declares no sane numeric pair — including a
+    council that simply never mentions installments, which must never
+    false-trigger a gap."""
+    if not isinstance(value, str):
+        return (None, None)
+    match = _INSTALLMENT_RE.search(value)
+    if not match:
+        return (None, None)
+    sequence, total = int(match.group(1)), int(match.group(2))
+    if sequence < 1 or total < 1 or sequence > total:
+        return (None, None)
+    return (sequence, total)
+
+
+def _installment_gaps(prop_docs: List[Dict[str, Any]], year: int) -> List[Dict[str, Any]]:
+    """Tax subtypes for `year` whose own bills declare N installments but
+    fewer distinct ones were uploaded — from a typed 'tax' document or an
+    'installment' marker on a bundled 'expenses' line alike, so a strata
+    statement that lists a second installment among its other charges
+    counts exactly as a standalone tax bill would.
+
+    The expectation is evidence-based: it comes only from an 'x/N' label on
+    the landlord's own bill, never a hardcoded council schedule."""
+    seen: Dict[str, set] = {}
+    expected: Dict[str, int] = {}
+
+    def record(subtype: Optional[str], installment: Any, year_matches: bool) -> None:
+        if not subtype or not year_matches:
+            return
+        sequence, total = _parse_installment(installment)
+        if total is None:
+            return
+        expected[subtype] = max(expected.get(subtype, 0), total)
+        seen.setdefault(subtype, set()).add(sequence)
+
+    for doc in prop_docs:
+        facts = doc.get("extracted_facts")
+        if not isinstance(facts, dict):
+            continue
+        category = doc.get("category")
+        if category == "tax":
+            record(facts.get("subtype"), facts.get("installment"), facts.get("period_year") == year)
+        elif category == "expenses":
+            for item in (facts.get("expense_lines") or []):
+                if not isinstance(item, dict):
+                    continue
+                subtype = _EXPENSE_TAX_SUBTYPE.get(item.get("subtype"))
+                item_year = item.get("period_year")
+                if not isinstance(item_year, int):
+                    ym = _ym(item.get("date"))
+                    item_year = ym[0] if ym else None
+                record(subtype, item.get("installment"), item_year == year)
+
+    gaps = []
+    for subtype, total in sorted(expected.items()):
+        have = len(seen.get(subtype, set()))
+        if have < total:
+            gaps.append({
+                "label": _TAX_LABELS.get(subtype, "Property tax"),
+                "have": have,
+                "expect": total,
+            })
+    return gaps
+
+
 def _expected_tax_subtypes(prop: Dict[str, Any]) -> List[Tuple[str, Tuple[str, ...]]]:
     """(label, subtypes that satisfy it) pairs this property should hold.
 
@@ -513,7 +584,11 @@ def _property_coverage(
                 continue
             if year not in years_with_category[category]:
                 missing.append(category)
-        coverage.append({"year": year, "missing": missing})
+        coverage.append({
+            "year": year,
+            "missing": missing,
+            "partial_installments": _installment_gaps(prop_docs, year),
+        })
     return coverage
 
 
