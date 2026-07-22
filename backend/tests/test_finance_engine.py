@@ -1243,3 +1243,31 @@ class RentRecoveryTests(unittest.TestCase):
             ],
         )
         self.assertEqual(result["totals"]["statutory_rental_income"], 3000.0)
+
+
+class TrackFromYearTests(unittest.TestCase):
+    def _docs(self):
+        return [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2020-01-01",
+                                     "lease_end": "2026-12-31"})]
+
+    def test_years_before_track_from_year_are_never_flagged(self):
+        prop = dict(_prop("p1", "House"), track_from_year=2023)
+        result = _summary(self._docs(), [prop], today=date(2026, 7, 16))
+        years = [r["year"] for r in result["properties"][0]["coverage"]]
+        self.assertNotIn(2020, years)
+        self.assertNotIn(2021, years)
+        self.assertNotIn(2022, years)
+        self.assertIn(2023, years)
+        self.assertIn(2026, years)
+
+    def test_absent_track_from_year_keeps_todays_behaviour(self):
+        prop = _prop("p1", "House")
+        result = _summary(self._docs(), [prop], today=date(2026, 7, 16))
+        years = [r["year"] for r in result["properties"][0]["coverage"]]
+        self.assertIn(2020, years)
+
+    def test_track_from_year_never_produces_years_after_today(self):
+        prop = dict(_prop("p1", "House"), track_from_year=2030)
+        result = _summary(self._docs(), [prop], today=date(2026, 7, 16))
+        self.assertEqual(result["properties"][0]["coverage"], [])

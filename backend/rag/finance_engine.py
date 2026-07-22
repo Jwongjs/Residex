@@ -581,6 +581,7 @@ def _property_coverage(
     expected: Optional[List[str]] = None,
     tax_subtypes: Optional[List[Tuple[str, Tuple[str, ...]]]] = None,
     unavailable: Optional[Dict[int, Set[str]]] = None,
+    track_from_year: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Per-year document-completeness report from the property's earliest
     lease_start (fallback: earliest document year found) through
@@ -611,6 +612,8 @@ def _property_coverage(
     else:
         return []
     start_year = min(start_year, current_year)
+    if isinstance(track_from_year, int):
+        start_year = max(start_year, track_from_year)
 
     years_covered_by_lease = {y for (s, e) in lease_spans for y in range(s[0], e[0] + 1)}
 
@@ -830,7 +833,7 @@ def compute_finance_summary(
 
         coverage_rows = _property_coverage(
             prop_docs, today.year, _expected_categories(prop),
-            _expected_tax_subtypes(prop), prop_unavailable,
+            _expected_tax_subtypes(prop), prop_unavailable, prop.get("track_from_year"),
         )
         complete = _year_is_complete(coverage_rows, year)
 

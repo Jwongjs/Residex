@@ -30,6 +30,25 @@ enum PropertyType {
   }
 }
 
+/// The spec's structural classification (landed | strata) — gates which
+/// expense categories the finance engine expects. Deliberately distinct
+/// from [PropertyType] above, which is a display classification for the
+/// property card's icon.
+enum PropertyStructureType {
+  landed,
+  strata;
+
+  String toJson() => name;
+
+  static PropertyStructureType? fromJson(String? json) {
+    if (json == null) return null;
+    for (final type in PropertyStructureType.values) {
+      if (type.name == json) return type;
+    }
+    return null;
+  }
+}
+
 /// Address value object
 class PropertyAddress {
   final String street;
@@ -98,6 +117,22 @@ class Property {
   /// by this. 1.0 = solely owned.
   final double ownershipShare;
 
+  /// landed | strata; null = "not sure" at registration, generic fallback.
+  final PropertyStructureType? structureType;
+
+  /// null = "not sure" at registration, generic fallback.
+  final bool? hasMortgage;
+
+  /// Earliest year expected to be tracked; null = not set (defaults to the
+  /// current tax year for coverage purposes). Years before it can still be
+  /// uploaded — they are simply never flagged missing.
+  final int? trackFromYear;
+
+  /// 'tenant' (default) | 'landlord' — whether utility lines on a bundled
+  /// statement are deductible. Set later by Stage D's confirm-once flow;
+  /// no registration-wizard UI for this field yet.
+  final String utilitiesPaidBy;
+
   final List<String> photos;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -111,6 +146,10 @@ class Property {
     required this.purchasePrice,
     required this.currentValue,
     this.ownershipShare = 1.0,
+    this.structureType,
+    this.hasMortgage,
+    this.trackFromYear,
+    this.utilitiesPaidBy = 'tenant',
     this.photos = const [],
     required this.createdAt,
     this.updatedAt,
@@ -141,6 +180,10 @@ class Property {
     double? purchasePrice,
     double? currentValue,
     double? ownershipShare,
+    PropertyStructureType? structureType,
+    bool? hasMortgage,
+    int? trackFromYear,
+    String? utilitiesPaidBy,
     List<String>? photos,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -154,6 +197,10 @@ class Property {
       purchasePrice: purchasePrice ?? this.purchasePrice,
       currentValue: currentValue ?? this.currentValue,
       ownershipShare: ownershipShare ?? this.ownershipShare,
+      structureType: structureType ?? this.structureType,
+      hasMortgage: hasMortgage ?? this.hasMortgage,
+      trackFromYear: trackFromYear ?? this.trackFromYear,
+      utilitiesPaidBy: utilitiesPaidBy ?? this.utilitiesPaidBy,
       photos: photos ?? this.photos,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
