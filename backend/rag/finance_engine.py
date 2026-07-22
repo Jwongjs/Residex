@@ -556,6 +556,7 @@ def _property_coverage(
     current_year: int,
     expected: Optional[List[str]] = None,
     tax_subtypes: Optional[List[Tuple[str, Tuple[str, ...]]]] = None,
+    unavailable: Optional[Dict[int, Set[str]]] = None,
 ) -> List[Dict[str, Any]]:
     """Per-year document-completeness report from the property's earliest
     lease_start (fallback: earliest document year found) through
@@ -617,12 +618,20 @@ def _property_coverage(
     coverage: List[Dict[str, Any]] = []
     for year in range(start_year, current_year + 1):
         missing = []
+        unavailable_list: List[str] = []
+        unavailable_for_year = (unavailable or {}).get(year, set())
         partial_categories: List[Dict[str, Any]] = []
         for category in (expected if expected is not None else FINANCE_CATEGORIES):
             if category == "rental_invoice" and year not in years_covered_by_lease:
                 continue  # no tenancy that year — nothing to invoice
+            if category in unavailable_for_year:
+                unavailable_list.append(category)
+                continue
             if category == "tax" and tax_subtypes:
                 for label, satisfying in tax_subtypes:
+                    if label in unavailable_for_year:
+                        unavailable_list.append(label)
+                        continue
                     if not any(year in subtype_years.get(s, set()) for s in satisfying):
                         missing.append(label)
                 continue
@@ -640,6 +649,7 @@ def _property_coverage(
             "missing": missing,
             "partial_installments": _installment_gaps(prop_docs, year),
             "partial_categories": partial_categories,
+            "unavailable": unavailable_list,
         })
     return coverage
 
@@ -652,6 +662,7 @@ def compute_finance_summary(
     properties: List[Dict[str, Any]],
     units_by_property: Dict[str, List[Dict[str, Any]]],
     payment_exceptions: Optional[List[Dict[str, Any]]] = None,
+    document_exceptions: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     months = _months_in_scope(year, today)
 
@@ -684,6 +695,13 @@ def compute_finance_summary(
             e for e in (payment_exceptions or [])
             if isinstance(e, dict) and e.get("property_id") == pid
         ]
+        prop_unavailable: Dict[int, set] = {}
+        for exc in (document_exceptions or []):
+            if not isinstance(exc, dict) or exc.get("property_id") != pid:
+                continue
+            exc_year, category = exc.get("year"), exc.get("category")
+            if isinstance(exc_year, int) and category:
+                prop_unavailable.setdefault(exc_year, set()).add(category)
 
         # Income scopes: each real unit, plus a synthetic whole-property scope
         # when property-wide income documents exist (or the property has no
@@ -821,7 +839,7 @@ def compute_finance_summary(
             "property_expense_lines": property_level_lines,
             "coverage": _property_coverage(
                 prop_docs, today.year, _expected_categories(prop),
-                _expected_tax_subtypes(prop),
+                _expected_tax_subtypes(prop), prop_unavailable,
             ),
         })
 

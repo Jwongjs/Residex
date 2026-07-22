@@ -712,6 +712,42 @@ Rules:
             ref.delete()
         return {"property_id": property_id, "unit_id": unit_id, "month": month}
 
+    def _document_exception_doc_id(self, property_id: str, year: int, category: str) -> str:
+        return f"{property_id}__{year}__{category}"
+
+    async def set_document_unavailable(
+        self, *, landlord_id: str, property_id: str, year: int, category: str,
+    ) -> Dict[str, Any]:
+        """Acknowledge that a coverage gap cannot be filled, so the year
+        settles as complete-with-gaps instead of nagging permanently.
+        Idempotent — re-marking the same scope is a no-op."""
+        property_ref = self.db.collection('properties').document(property_id)
+        property_snapshot = property_ref.get()
+        if not property_snapshot.exists or (property_snapshot.to_dict() or {}).get('landlordId') != landlord_id:
+            raise ValueError(f"Property {property_id} not found for landlord {landlord_id}")
+        doc_id = self._document_exception_doc_id(property_id, year, category)
+        ref = self.db.collection('documind_document_exceptions').document(doc_id)
+        ref.set({
+            'landlord_id': landlord_id,
+            'property_id': property_id,
+            'year': year,
+            'category': category,
+            'marked_at': firestore.SERVER_TIMESTAMP,
+        })
+        return {"property_id": property_id, "year": year, "category": category}
+
+    async def clear_document_unavailable(
+        self, *, landlord_id: str, property_id: str, year: int, category: str,
+    ) -> Dict[str, Any]:
+        """Clear an 'unavailable' mark. Idempotent — clearing an unmarked
+        scope is a no-op, not an error."""
+        doc_id = self._document_exception_doc_id(property_id, year, category)
+        ref = self.db.collection('documind_document_exceptions').document(doc_id)
+        snapshot = ref.get()
+        if snapshot.exists and (snapshot.to_dict() or {}).get("landlord_id") == landlord_id:
+            ref.delete()
+        return {"property_id": property_id, "year": year, "category": category}
+
     async def ask_documind(self, payload: AskRequest) -> AskResponse:
         """
         Answer question using Firestore Vector Search.
@@ -1397,6 +1433,18 @@ Rules:
                 "reason": data.get("reason"),
             })
 
+        document_exceptions = []
+        doc_exceptions_query = self.db.collection('documind_document_exceptions').where(
+            filter=FieldFilter('landlord_id', '==', landlord_id)
+        )
+        for snap in doc_exceptions_query.stream():
+            data = snap.to_dict() or {}
+            document_exceptions.append({
+                "property_id": data.get("property_id"),
+                "year": data.get("year"),
+                "category": data.get("category"),
+            })
+
         summary = compute_finance_summary(
             year=year,
             today=date.today(),
@@ -1404,6 +1452,7 @@ Rules:
             properties=properties,
             units_by_property=units_by_property,
             payment_exceptions=payment_exceptions,
+            document_exceptions=document_exceptions,
         )
         return FinanceSummaryResponse(**summary)
 

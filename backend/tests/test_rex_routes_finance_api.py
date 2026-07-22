@@ -128,5 +128,34 @@ class FinanceSummaryApiTests(unittest.TestCase):
         self.assertEqual(
             body["properties"][0]["coverage"],
             [{"year": 2024, "missing": ["tax", "insurance"], "partial_installments": [],
-              "partial_categories": []}],
+              "partial_categories": [], "unavailable": []}],
         )
+
+    def test_set_document_unavailable_returns_200_and_forwards_params(self):
+        with patch(
+            "api.rex_routes.documind_service.set_document_unavailable",
+            new=AsyncMock(return_value={"property_id": "p1", "year": 2025, "category": "loan"}),
+        ) as mocked:
+            response = self.client.put(
+                "/api/rex/documind/finance/document-exception",
+                json={"landlord_id": "landlord-1", "property_id": "p1", "year": 2025, "category": "loan"},
+            )
+            kwargs = mocked.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["category"], "loan")
+        self.assertEqual(kwargs["year"], 2025)
+
+    def test_clear_document_unavailable_returns_200(self):
+        with patch(
+            "api.rex_routes.documind_service.clear_document_unavailable",
+            new=AsyncMock(return_value={"property_id": "p1", "year": 2025, "category": "loan"}),
+        ) as mocked:
+            response = self.client.delete(
+                "/api/rex/documind/finance/document-exception",
+                params={"landlord_id": "landlord-1", "property_id": "p1", "year": 2025, "category": "loan"},
+            )
+            kwargs = mocked.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(kwargs["property_id"], "p1")

@@ -150,6 +150,8 @@ class _FakeCollectionQuery:
             rows = self._db.properties_rows
         elif self._name == "documind_payment_exceptions":
             rows = self._db.payment_exceptions
+        elif self._name == "documind_document_exceptions":
+            rows = self._db.document_exceptions
         else:
             rows = []
 
@@ -256,6 +258,29 @@ class _FakePaymentExceptionRef:
         ]
 
 
+class _FakeDocumentExceptionRef:
+    def __init__(self, db, doc_id):
+        self._db = db
+        self._doc_id = doc_id
+
+    def set(self, data):
+        self._db.document_exceptions = [
+            row for row in self._db.document_exceptions if row.get("doc_id") != self._doc_id
+        ]
+        self._db.document_exceptions.append({**data, "doc_id": self._doc_id})
+
+    def get(self):
+        for row in self._db.document_exceptions:
+            if row.get("doc_id") == self._doc_id:
+                return _FakePropertyDoc(exists=True, data=row)
+        return _FakePropertyDoc(exists=False, data={})
+
+    def delete(self):
+        self._db.document_exceptions = [
+            row for row in self._db.document_exceptions if row.get("doc_id") != self._doc_id
+        ]
+
+
 class _FakeBatch:
     def __init__(self):
         self._ops = []
@@ -298,15 +323,19 @@ class _FakeCollection:
             return _FakeChunkDocRef(self._db)
         if self._name == "documind_payment_exceptions":
             return _FakePaymentExceptionRef(self._db, _doc_id)
-        raise NotImplementedError("document() only used for properties, documind_docs, documind_chunks, documind_payment_exceptions in these tests")
+        if self._name == "documind_document_exceptions":
+            return _FakeDocumentExceptionRef(self._db, _doc_id)
+        raise NotImplementedError("document() only used for properties, documind_docs, documind_chunks, documind_payment_exceptions, documind_document_exceptions in these tests")
 
 
 class _FakeDB:
-    def __init__(self, docs=None, chunks=None, property_name="Test Property", units=None, payment_exceptions=None, property_owners=None):
+    def __init__(self, docs=None, chunks=None, property_name="Test Property", units=None,
+                 payment_exceptions=None, property_owners=None, document_exceptions=None):
         self.docs = docs or []
         self.units = units or []
         self.chunks = chunks or []
         self.properties_rows = []
+        self.document_exceptions = document_exceptions or []
         self.payment_exceptions = payment_exceptions or []
         self.property_name = property_name
         self.property_owners = property_owners or {}
@@ -1938,6 +1967,66 @@ class PaymentExceptionServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(march.source, "unpaid")
         self.assertEqual(march.reason, "tenant requested deferral")
         self.assertEqual(summary.totals.received_rent, 11000.0)
+
+
+class DocumentExceptionServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_set_document_unavailable_stores_the_mark(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        result = await service.set_document_unavailable(
+            landlord_id="l1", property_id="p1", year=2025, category="loan",
+        )
+
+        self.assertEqual(result, {"property_id": "p1", "year": 2025, "category": "loan"})
+        self.assertEqual(len(fake_db.document_exceptions), 1)
+
+    async def test_set_document_unavailable_rejects_wrong_owner(self):
+        fake_db = _FakeDB(property_owners={"p1": "someone-else"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        with self.assertRaises(ValueError):
+            await service.set_document_unavailable(
+                landlord_id="l1", property_id="p1", year=2025, category="loan",
+            )
+        self.assertEqual(fake_db.document_exceptions, [])
+
+    async def test_clear_document_unavailable_is_idempotent(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        first = await service.clear_document_unavailable(
+            landlord_id="l1", property_id="p1", year=2025, category="loan",
+        )
+        await service.set_document_unavailable(landlord_id="l1", property_id="p1", year=2025, category="loan")
+        await service.clear_document_unavailable(landlord_id="l1", property_id="p1", year=2025, category="loan")
+
+        self.assertEqual(first, {"property_id": "p1", "year": 2025, "category": "loan"})
+        self.assertEqual(fake_db.document_exceptions, [])
+
+    async def test_get_finance_summary_reads_document_exceptions(self):
+        fake_db = _FakeDB(
+            docs=[{
+                "doc_id": "doc-1", "landlord_id": "l1", "property_id": "p1", "unit_id": None,
+                "unit_label": None, "category": "lease",
+                "extracted_facts": {"monthly_rent": 1000.0, "lease_start": "2025-01-01", "lease_end": "2025-12-31"},
+                "uploaded_at": datetime(2025, 1, 1),
+            }],
+            document_exceptions=[
+                {"landlord_id": "l1", "property_id": "p1", "year": 2025, "category": "loan"},
+            ],
+        )
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "House",
+             "property_type": "landed", "has_mortgage": True},
+        ]
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        row = next(r for r in summary.properties[0].coverage if r.year == 2025)
+        self.assertIn("loan", row.unavailable)
+        self.assertNotIn("loan", row.missing)
 
 
 if __name__ == "__main__":

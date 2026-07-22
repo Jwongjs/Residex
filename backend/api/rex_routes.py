@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -162,6 +162,41 @@ async def clear_payment_exception(
         property_id=property_id,
         unit_id=unit_id,
         month=month,
+    )
+
+
+@router.put("/documind/finance/document-exception", response_model=DocumentExceptionResponse)
+async def set_document_unavailable(payload: DocumentExceptionRequest):
+    """
+    Acknowledge that a coverage gap cannot be filled for one (year, category).
+    The year then settles as complete-with-gaps: no longer counted as
+    'missing' in the coverage grid, and no longer blocks the statutory
+    estimate. Idempotent — re-marking the same scope is a no-op.
+    """
+    try:
+        return await documind_service.set_document_unavailable(
+            landlord_id=payload.landlord_id,
+            property_id=payload.property_id,
+            year=payload.year,
+            category=payload.category,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/documind/finance/document-exception")
+async def clear_document_unavailable(
+    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+    property_id: str = Query(..., description="Property ID"),
+    year: int = Query(..., ge=2000, le=2100),
+    category: str = Query(..., description="The category or tax label previously marked unavailable"),
+):
+    """
+    Clear an 'unavailable' mark. Idempotent — clearing an unmarked scope is
+    a no-op, not an error.
+    """
+    return await documind_service.clear_document_unavailable(
+        landlord_id=landlord_id, property_id=property_id, year=year, category=category,
     )
 
 

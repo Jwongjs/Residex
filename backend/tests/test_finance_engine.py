@@ -34,7 +34,12 @@ def _exception(pid, month, unit_id=None, reason=None):
     return {"property_id": pid, "unit_id": unit_id, "month": month, "reason": reason}
 
 
-def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 16), payment_exceptions=None):
+def _doc_exception(pid, year, category):
+    return {"property_id": pid, "year": year, "category": category}
+
+
+def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 16),
+             payment_exceptions=None, document_exceptions=None):
     return compute_finance_summary(
         year=year,
         today=today,
@@ -42,6 +47,7 @@ def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 1
         properties=properties,
         units_by_property=units or {},
         payment_exceptions=payment_exceptions,
+        document_exceptions=document_exceptions,
     )
 
 
@@ -929,3 +935,53 @@ class PartialMaintenanceCoverageTests(unittest.TestCase):
         prop = dict(_prop("p1", "House"), property_type="landed")
         row = self._row(prop, self._docs(1, 2))
         self.assertEqual(row["partial_categories"], [])
+
+
+class DocumentExceptionCoverageTests(unittest.TestCase):
+    def _docs(self):
+        return [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+
+    def _row(self, prop, exceptions):
+        result = _summary(self._docs(), [prop], document_exceptions=exceptions)
+        return next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
+
+    def test_marked_category_moves_from_missing_to_unavailable(self):
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=True)
+        row = self._row(prop, [_doc_exception("p1", 2025, "loan")])
+        self.assertNotIn("loan", row["missing"])
+        self.assertIn("loan", row["unavailable"])
+
+    def test_unmarked_categories_stay_missing(self):
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=True)
+        row = self._row(prop, [_doc_exception("p1", 2025, "loan")])
+        self.assertIn("insurance", row["missing"])
+
+    def test_marks_a_granular_tax_label_too(self):
+        prop = dict(_prop("p1", "House"), property_type="landed")
+        row = self._row(prop, [_doc_exception("p1", 2025, "quit_rent")])
+        self.assertNotIn("quit_rent", row["missing"])
+        self.assertIn("quit_rent", row["unavailable"])
+        self.assertIn("assessment", row["missing"])  # unrelated slot untouched
+
+    def test_other_property_and_year_are_ignored(self):
+        prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=True)
+        row = self._row(prop, [
+            _doc_exception("p2", 2025, "loan"),
+            _doc_exception("p1", 2024, "loan"),
+        ])
+        self.assertIn("loan", row["missing"])
+
+    def test_marking_maintenance_unavailable_suppresses_a_partial_too(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0,
+                                 "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 250.0, "date": "2025-01-01"},
+            ]}),
+        ]
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        result = _summary(docs, [prop], document_exceptions=[_doc_exception("p1", 2025, "maintenance")])
+        row = next(r for r in result["properties"][0]["coverage"] if r["year"] == 2025)
+        self.assertEqual(row["partial_categories"], [])
+        self.assertIn("maintenance", row["unavailable"])

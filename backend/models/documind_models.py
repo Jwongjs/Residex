@@ -203,6 +203,7 @@ class YearCoverage(BaseModel):
     missing: List[str] = Field(default_factory=list)
     partial_installments: List[InstallmentGap] = Field(default_factory=list)
     partial_categories: List[PartialCategory] = Field(default_factory=list)
+    unavailable: List[str] = Field(default_factory=list)
 
 
 class PropertyFinance(BaseModel):
@@ -273,3 +274,22 @@ class PaymentExceptionResponse(BaseModel):
     unit_id: Optional[str] = None
     month: str
     reason: Optional[str] = None
+
+
+# ========== DOCUMENT EXCEPTION MODELS ==========
+
+class DocumentExceptionRequest(BaseModel):
+    landlord_id: str
+    property_id: str
+    year: int = Field(..., ge=2000, le=2100)
+    category: str = Field(
+        ..., min_length=1,
+        description="A label from that year's coverage 'missing' list, e.g. "
+                    "maintenance, loan, assessment, quit_rent, land_office_tax",
+    )
+
+
+class DocumentExceptionResponse(BaseModel):
+    property_id: str
+    year: int
+    category: str
