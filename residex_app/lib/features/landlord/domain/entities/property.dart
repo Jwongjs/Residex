@@ -133,6 +133,10 @@ class Property {
   /// no registration-wizard UI for this field yet.
   final String utilitiesPaidBy;
 
+  /// 0 = nothing to resume (legacy property, or setup fully finished).
+  /// 2 or 3 = the registration wizard step to reopen via "Continue setup".
+  final int nextSetupStep;
+
   final List<String> photos;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -150,6 +154,7 @@ class Property {
     this.hasMortgage,
     this.trackFromYear,
     this.utilitiesPaidBy = 'tenant',
+    this.nextSetupStep = 0,
     this.photos = const [],
     required this.createdAt,
     this.updatedAt,
@@ -184,6 +189,7 @@ class Property {
     bool? hasMortgage,
     int? trackFromYear,
     String? utilitiesPaidBy,
+    int? nextSetupStep,
     List<String>? photos,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -201,6 +207,7 @@ class Property {
       hasMortgage: hasMortgage ?? this.hasMortgage,
       trackFromYear: trackFromYear ?? this.trackFromYear,
       utilitiesPaidBy: utilitiesPaidBy ?? this.utilitiesPaidBy,
+      nextSetupStep: nextSetupStep ?? this.nextSetupStep,
       photos: photos ?? this.photos,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

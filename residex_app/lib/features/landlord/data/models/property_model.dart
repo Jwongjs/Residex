@@ -19,6 +19,7 @@ class PropertyModel extends Property {
     super.hasMortgage,
     super.trackFromYear,
     super.utilitiesPaidBy = 'tenant',
+    super.nextSetupStep = 0,
     super.photos,
     required super.createdAt,
     super.updatedAt,
@@ -39,6 +40,7 @@ class PropertyModel extends Property {
       hasMortgage: property.hasMortgage,
       trackFromYear: property.trackFromYear,
       utilitiesPaidBy: property.utilitiesPaidBy,
+      nextSetupStep: property.nextSetupStep,
       photos: property.photos,
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,
@@ -60,6 +62,7 @@ class PropertyModel extends Property {
       hasMortgage: hasMortgage,
       trackFromYear: trackFromYear,
       utilitiesPaidBy: utilitiesPaidBy,
+      nextSetupStep: nextSetupStep,
       photos: photos,
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -92,6 +95,7 @@ class PropertyModel extends Property {
       hasMortgage: json['has_mortgage'] as bool?,
       trackFromYear: (json['track_from_year'] as num?)?.toInt(),
       utilitiesPaidBy: json['utilities_paid_by'] as String? ?? 'tenant',
+      nextSetupStep: (json['next_setup_step'] as num?)?.toInt() ?? 0,
       photos: (json['photos'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
@@ -123,6 +127,7 @@ class PropertyModel extends Property {
       'has_mortgage': hasMortgage,
       'track_from_year': trackFromYear,
       'utilities_paid_by': utilitiesPaidBy,
+      'next_setup_step': nextSetupStep,
       'photos': photos,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,

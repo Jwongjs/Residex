@@ -6,7 +6,7 @@ import '../../../domain/entities/unit.dart';
 import '../../providers/property_providers.dart';
 import '../../providers/unit_providers.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
-import 'guided_document_checklist_sheet.dart';
+import 'registration_document_steps_sheet.dart';
 
 /// Add/Edit property dialog.
 ///
@@ -39,6 +39,10 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   PropertyType _selectedType = PropertyType.apartment;
   bool _isLoading = false;
 
+  PropertyStructureType? _selectedStructureType;
+  bool? _hasMortgage;
+  final _trackFromYearController = TextEditingController();
+
   bool get _isEditMode => widget.property != null;
 
   @override
@@ -56,6 +60,9 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       _ownershipShareController.text =
           (property.ownershipShare * 100).toStringAsFixed(0);
       _selectedType = property.type;
+      _selectedStructureType = property.structureType;
+      _hasMortgage = property.hasMortgage;
+      _trackFromYearController.text = property.trackFromYear?.toString() ?? '';
     }
   }
 
@@ -70,6 +77,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     _currentValueController.dispose();
     _ownershipShareController.dispose();
     _totalUnitsController.dispose();
+    _trackFromYearController.dispose();
     super.dispose();
   }
 
@@ -96,6 +104,9 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       final ownershipShare =
           double.parse(_ownershipShareController.text) / 100.0;
 
+      final trackFromYearText = _trackFromYearController.text.trim();
+      final trackFromYear = trackFromYearText.isEmpty ? null : int.parse(trackFromYearText);
+
       final controller = ref.read(propertyControllerProvider);
       final existing = widget.property;
 
@@ -109,6 +120,9 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           purchasePrice: double.parse(_purchasePriceController.text),
           currentValue: double.parse(_currentValueController.text),
           ownershipShare: ownershipShare,
+          structureType: _selectedStructureType,
+          hasMortgage: _hasMortgage,
+          trackFromYear: trackFromYear,
         );
         await controller.updateProperty(updatedProperty);
       } else {
@@ -123,6 +137,10 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           ownershipShare: ownershipShare,
           photos: [],
           createdAt: DateTime.now(),
+          structureType: _selectedStructureType,
+          hasMortgage: _hasMortgage,
+          trackFromYear: trackFromYear,
+          nextSetupStep: 2,
         );
         final propertyId = await controller.createProperty(property);
 
@@ -140,12 +158,10 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         }
 
         if (mounted) {
-          // Guided, skippable document checklist (spec): offer the key
-          // finance documents right after creation; nothing blocks.
-          await showGuidedDocumentChecklist(
+          // Steps 2-3 of guided registration (spec §6): skippable, resumable.
+          await showRegistrationDocumentSteps(
             context,
-            propertyId: propertyId,
-            propertyName: property.name,
+            property: property.copyWith(id: propertyId),
           );
         }
       }
@@ -365,6 +381,28 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 20),
+                      Text(
+                        'Property profile',
+                        style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Three quick facts — tailors which expenses the app ever asks you for.',
+                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildStructureTypeSelector(),
+                      const SizedBox(height: 16),
+                      _buildMortgageSelector(),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: _trackFromYearController,
+                        label: 'Track expenses from year (optional)',
+                        hint: 'Leave blank if not sure — defaults to ${DateTime.now().year}',
+                        keyboardType: TextInputType.number,
+                        validator: _validateOptionalYear,
+                      ),
                     ],
                   ),
                 ),
@@ -507,6 +545,75 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         );
       }).toList(),
     );
+  }
+
+  Widget _buildStructureTypeSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Property structure', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Landed'),
+              selected: _selectedStructureType == PropertyStructureType.landed,
+              onSelected: (_) => setState(() => _selectedStructureType = PropertyStructureType.landed),
+            ),
+            ChoiceChip(
+              label: const Text('Strata'),
+              selected: _selectedStructureType == PropertyStructureType.strata,
+              onSelected: (_) => setState(() => _selectedStructureType = PropertyStructureType.strata),
+            ),
+            ChoiceChip(
+              label: const Text('Not sure'),
+              selected: _selectedStructureType == null,
+              onSelected: (_) => setState(() => _selectedStructureType = null),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMortgageSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Do you have a mortgage on this property?',
+            style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Yes'),
+              selected: _hasMortgage == true,
+              onSelected: (_) => setState(() => _hasMortgage = true),
+            ),
+            ChoiceChip(
+              label: const Text('No'),
+              selected: _hasMortgage == false,
+              onSelected: (_) => setState(() => _hasMortgage = false),
+            ),
+            ChoiceChip(
+              label: const Text('Not sure'),
+              selected: _hasMortgage == null,
+              onSelected: (_) => setState(() => _hasMortgage = null),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String? _validateOptionalYear(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final year = int.tryParse(value.trim());
+    if (year == null) return 'Must be a whole year';
+    if (year < 2000 || year > DateTime.now().year) return 'Between 2000 and ${DateTime.now().year}';
+    return null;
   }
 
   String? _validateNumber(String? value) {
