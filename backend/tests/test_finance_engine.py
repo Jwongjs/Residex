@@ -674,3 +674,76 @@ class ProfileExpectationTests(unittest.TestCase):
         self.assertNotIn("insurance", missing)
         self.assertNotIn("loan", missing)
         self.assertIn("maintenance", missing)
+
+
+class TaxSubtypeCoverageTests(unittest.TestCase):
+    def _docs(self, *tax_subtypes):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01",
+                                     "lease_end": "2025-12-31"})]
+        for subtype in tax_subtypes:
+            docs.append(_doc("p1", "tax", {"subtype": subtype, "amount": 400.0,
+                                           "period_year": 2025}))
+        return docs
+
+    def _row(self, prop, docs):
+        result = _summary(docs, [prop])
+        return next(
+            r for r in result["properties"][0]["coverage"] if r["year"] == 2025
+        )
+
+    def test_landed_expects_quit_rent(self):
+        prop = dict(_prop("p1", "House"), property_type="landed")
+        row = self._row(prop, self._docs("assessment"))
+        self.assertIn("quit_rent", row["missing"])
+        self.assertNotIn("parcel_rent", row["missing"])
+        self.assertNotIn("assessment", row["missing"])
+        self.assertNotIn("tax", row["missing"])
+
+    def test_strata_land_office_slot_satisfied_by_parcel_rent(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        row = self._row(prop, self._docs("assessment", "parcel_rent"))
+        self.assertNotIn("land_office_tax", row["missing"])
+
+    def test_strata_land_office_slot_also_satisfied_by_quit_rent(self):
+        # Master-title strata: the management apportions quit rent to the
+        # parcel, so no parcel-rent bill will ever exist. Real Ayer@8 case.
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        row = self._row(prop, self._docs("assessment", "quit_rent"))
+        self.assertNotIn("land_office_tax", row["missing"])
+        self.assertNotIn("parcel_rent", row["missing"])
+
+    def test_strata_with_neither_is_flagged_exactly_once(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        row = self._row(prop, self._docs("assessment"))
+        self.assertEqual(row["missing"].count("land_office_tax"), 1)
+
+    def test_missing_assessment_is_flagged_separately(self):
+        prop = dict(_prop("p1", "House"), property_type="landed")
+        row = self._row(prop, self._docs("quit_rent"))
+        self.assertIn("assessment", row["missing"])
+        self.assertNotIn("quit_rent", row["missing"])
+
+    def test_bundled_expenses_line_satisfies_the_land_office_slot(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        docs = self._docs("assessment")
+        docs.append(_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "quit_rent", "amount": 434.56, "period_year": 2025},
+        ]}))
+        row = self._row(prop, docs)
+        self.assertNotIn("land_office_tax", row["missing"])
+
+    def test_bundled_assessment_line_satisfies_the_assessment_slot(self):
+        prop = dict(_prop("p1", "Condo"), property_type="strata")
+        docs = self._docs()
+        docs.append(_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "assessment_tax", "amount": 400.0, "date": "2025-02-01"},
+        ]}))
+        row = self._row(prop, docs)
+        self.assertNotIn("assessment", row["missing"])
+
+    def test_unknown_type_keeps_the_generic_tax_bucket(self):
+        row = self._row(_prop("p1", "House"), self._docs())
+        self.assertIn("tax", row["missing"])
+        self.assertNotIn("quit_rent", row["missing"])
+        self.assertNotIn("land_office_tax", row["missing"])

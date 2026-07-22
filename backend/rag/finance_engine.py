@@ -363,6 +363,64 @@ def _document_years(doc: Dict[str, Any]) -> List[int]:
     return years
 
 
+# Bundled 'expenses' lines name the assessment differently from a typed tax
+# document's subtype; normalise so coverage counts evidence from both.
+_EXPENSE_TAX_SUBTYPE = {
+    "assessment_tax": "assessment",
+    "quit_rent": "quit_rent",
+    "parcel_rent": "parcel_rent",
+}
+
+
+def _expected_tax_subtypes(prop: Dict[str, Any]) -> List[Tuple[str, Tuple[str, ...]]]:
+    """(label, subtypes that satisfy it) pairs this property should hold.
+
+    Assessment always. For the land-office tax, landed is always quit rent;
+    strata may be billed parcel rent (individual strata titles) OR an
+    apportioned quit rent via the management (master title), so either
+    satisfies one shared slot — never assert which. Empty when the type is
+    unknown, which keeps the generic 'tax' bucket."""
+    property_type = prop.get("property_type")
+    if property_type == "landed":
+        return [("assessment", ("assessment",)), ("quit_rent", ("quit_rent",))]
+    if property_type == "strata":
+        return [
+            ("assessment", ("assessment",)),
+            ("land_office_tax", ("quit_rent", "parcel_rent")),
+        ]
+    return []
+
+
+def _tax_subtype_years(prop_docs: List[Dict[str, Any]]) -> Dict[str, set]:
+    """Years each tax subtype has evidence for, from typed tax documents and
+    from bundled 'expenses' lines alike."""
+    years: Dict[str, set] = {}
+    for doc in prop_docs:
+        facts = doc.get("extracted_facts")
+        if not isinstance(facts, dict):
+            continue
+        category = doc.get("category")
+        if category == "tax":
+            subtype = facts.get("subtype")
+            year = facts.get("period_year")
+            if subtype and isinstance(year, int):
+                years.setdefault(subtype, set()).add(year)
+        elif category == "expenses":
+            for item in (facts.get("expense_lines") or []):
+                if not isinstance(item, dict):
+                    continue
+                subtype = _EXPENSE_TAX_SUBTYPE.get(item.get("subtype"))
+                if subtype is None:
+                    continue
+                year = item.get("period_year")
+                if not isinstance(year, int):
+                    ym = _ym(item.get("date"))
+                    year = ym[0] if ym else None
+                if isinstance(year, int):
+                    years.setdefault(subtype, set()).add(year)
+    return years
+
+
 def _expected_categories(prop: Dict[str, Any]) -> List[str]:
     """Finance categories this property should hold documents for.
 
@@ -383,6 +441,7 @@ def _property_coverage(
     prop_docs: List[Dict[str, Any]],
     current_year: int,
     expected: Optional[List[str]] = None,
+    tax_subtypes: Optional[List[Tuple[str, Tuple[str, ...]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Per-year document-completeness report from the property's earliest
     lease_start (fallback: earliest document year found) through
@@ -439,12 +498,19 @@ def _property_coverage(
             for year in _document_years(doc):
                 years_with_category[category].add(year)
 
+    subtype_years = _tax_subtype_years(prop_docs) if tax_subtypes else {}
+
     coverage: List[Dict[str, Any]] = []
     for year in range(start_year, current_year + 1):
         missing = []
         for category in (expected if expected is not None else FINANCE_CATEGORIES):
             if category == "rental_invoice" and year not in years_covered_by_lease:
                 continue  # no tenancy that year — nothing to invoice
+            if category == "tax" and tax_subtypes:
+                for label, satisfying in tax_subtypes:
+                    if not any(year in subtype_years.get(s, set()) for s in satisfying):
+                        missing.append(label)
+                continue
             if year not in years_with_category[category]:
                 missing.append(category)
         coverage.append({"year": year, "missing": missing})
@@ -627,7 +693,8 @@ def compute_finance_summary(
             "expense_lines": expense_lines,
             "property_expense_lines": property_level_lines,
             "coverage": _property_coverage(
-                prop_docs, today.year, _expected_categories(prop)
+                prop_docs, today.year, _expected_categories(prop),
+                _expected_tax_subtypes(prop),
             ),
         })
 

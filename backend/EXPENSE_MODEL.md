@@ -4,7 +4,12 @@ _How each Malaysian landlord expense is captured, what the app expects per prope
 
 Companion to [END_TO_END_FLOW.md](END_TO_END_FLOW.md) (the upload→ingest→finance→chat pipeline) and [rag/DOCUMENT_TYPE_CATEGORIES_AND_FILE_FORMATS.md](rag/DOCUMENT_TYPE_CATEGORIES_AND_FILE_FORMATS.md) (the 7 upload categories and their extracted fields). This doc adds the layer those don't: the **capture-vs-derive decision**, **per-property expectations**, and the **recurring-charge + coverage design**.
 
-> **Status: design of record.** Rows marked 🟡 are specified here but **not yet implemented** — see [Build status](#build-status). Rows marked ✅ are live in the engine today. Where planned behaviour differs from today, each section states both.
+> **Status: partially superseded.** Rows #2 and #3 (the derive-once maintenance
+> rate and the `documind_recurring_charges` collection) are **void** — replaced by
+> the document-first model in
+> [`docs/superpowers/specs/2026-07-21-document-first-expense-model-design.md`](../docs/superpowers/specs/2026-07-21-document-first-expense-model-design.md),
+> under which every figure traces to an uploaded document and nothing is derived
+> from a typed rate. The remaining rows stand; see [Build status](#build-status).
 
 ---
 
@@ -31,19 +36,22 @@ Two intrinsic, stable facts captured when the property is registered. They don't
 |---|---|---|
 | `property_type` | `landed` \| `strata` | Quit-rent vs parcel-rent, maintenance/sinking applicability, insurance applicability, the water-pump/common-area boundary |
 | `has_mortgage` | `yes` \| `no` | Whether loan interest is expected at all |
+| `utilities_paid_by` | `tenant` (default) \| `landlord` | Whether water/sewerage lines on a bundled statement are deductible |
 
 Missing/unknown → the engine falls back to today's generic behaviour (no property-type gating), so **existing properties keep working** until the owner sets the profile. The `properties` collection is Flutter-owned; registration writes these fields and the backend reads them in [`_list_landlord_properties`](rag/documind_service.py#L433) (which today reads only `name` + `ownership_share`).
 
 ### One Property, One Tax
 
-Quit rent and parcel rent are **mutually exclusive**, decided by structure (holds for residential *and* commercial):
+Assessment tax is always payable to the council. The **land-office** tax depends on structure — and, for strata, on titling:
 
 | Structure | Land-office tax | Council tax | Maintenance + sinking | Fire insurance |
 |---|---|---|---|---|
 | **Landed** (house, shop-office, factory, warehouse) | **Quit rent** (cukai tanah) | Assessment (always) | ❌ none¹ | Owner buys — **1 doc/yr** |
-| **Strata** (condo, office lot, SoHo/SoVo, serviced apt) | **Parcel rent** (cukai petak) | Assessment (always) | ✅ MC-billed | MC master policy — **bundled line or inside maintenance; no standalone doc** |
+| **Strata** (condo, office lot, SoHo/SoVo, serviced apt) | **Quit rent _or_ parcel rent**² | Assessment (always) | ✅ MC-billed | MC master policy — **bundled line or inside maintenance; no standalone doc** |
 
 ¹ Unless a guarded/managed landed scheme charges a fee — the owner may still upload it; the app just won't *nag* for it.
+
+² **Never assert which one.** Parcel rent (cukai petak) applies once individual strata titles are issued and the land office bills parcel owners directly. Where the development is still on a **master title**, the management apportions the land's **quit rent** to each parcel instead — verified against a real Ayer@8 statement (unit B2-1-02), which bills "QUIT RENT YEAR 2025" to a *strata* parcel. Coverage therefore expects *a land-office tax*, satisfied by **either**.
 
 ---
 
@@ -73,6 +81,29 @@ A strata management statement usually lists **several charges on one document** 
 - **Separate bills still use their typed folder.** Parcel/quit rent usually arrive as their own land-office bills; whatever is itemised together goes under `Expenses`, whatever arrives alone uses its category.
 
 > **⚠️ Reconciliation hazard (maintenance).** Maintenance/sinking can now arrive **two ways** — a bundled `expenses` line *and* the manual rate (#2/#3), booked in different engine branches. `_maintenance_lines` must treat the **actual** figure — from *either* a `maintenance`-category doc *or* an `expenses`-subtype line — as the value that cancels the derived rate for those months, or a strata owner who uploads statements **and** set a rate is counted twice. The same "read subtypes from both sources" rule applies to subtype-aware tax coverage (#4–6).
+
+---
+
+## Non-deductible lines on a landlord's bill
+
+A bundled statement carries charges the landlord is billed but **cannot deduct**. Verified against a real Ayer@8 statement (unit B2-1-02, Feb 2025) where **RM137.92 of RM1,626.81** outstanding is non-deductible:
+
+| Line on the statement | Subtype | Deductible? |
+|---|---|---|
+| Water meter billing, water sewerage billing | `utilities` | **Only when the landlord bears them** — see below |
+| Late payment charges / interest | `late_penalty` | **Never** — penalties are not deductible |
+
+These subtypes are **captured, displayed, and reviewable, but excluded from the fold**: every line carries `deductible: bool`, and only deductible lines feed `direct_expenses`, the breakdown, and the statutory estimate. Capture-but-exclude beats dropping — the landlord still sees the water charges on their statement; they just don't inflate a tax deduction.
+
+> **Before this rule, utilities were silently deducted.** The extractor's synonym table routed *"Indah Water, utility bills paid by the owner"* into `upkeep`, which **is** deductible. Utilities move to their own subtype.
+
+### Who pays utilities is a setting, not an extraction
+
+Whether the tenant or landlord bears utilities is fixed by the **tenancy agreement** — but the agreement never enters the computation:
+
+- **Fact extraction only *classifies*** — "this line is a utility charge." It does **not** read the tenancy agreement and does **not** decide deductibility.
+- **The engine applies the policy** from `utilities_paid_by` on the property profile, defaulting to `tenant` — the common Malaysian case, and the safe direction, since under-claiming beats over-claiming.
+- **The agreement stays advisory.** DocuMind chat already answers *"who pays the water bill?"* from the scanned agreement via RAG. That is the right use of the document — informing the landlord, never silently driving a figure. Signed agreements are typically **scanned PDFs with no text layer** (the Ayer@8 tenancy is 15 such pages), so deciding a deduction from them would mean OCR plus legal interpretation, invisibly.
 
 ---
 
@@ -109,16 +140,16 @@ All amounts are deductible against **s.4(d)** rental income (YA = calendar year)
 - **Today:** any single tax doc marks "tax" covered for the year ([finance_engine.py:282](rag/finance_engine.py#L282)) — a forgotten second installment silently under-counts and isn't flagged.
 
 ### 5. Quit rent — cukai tanah 🟡
-- **Who / cadence:** state land office, **annual** (due ~end-May).
-- **Applies to:** **landed only** (`tax` subtype `quit_rent`).
-- **Capture:** upload the annual bill (document-based).
-- **Coverage (planned):** expected **only when `property_type = landed`**; a strata owner is never asked for it. Today it's an ungated `tax` subtype with no type awareness.
+- **Who / cadence:** state land office, **annual** (due ~end-May). For strata on a **master title**, billed instead **via the management** as an apportioned parcel share.
+- **Applies to:** **all landed**, and **strata on a master title** (`tax` subtype `quit_rent`).
+- **Capture:** upload the annual bill, or let it arrive as a line on the bundled management statement.
+- **Coverage (planned):** for landed, expected outright. For strata it satisfies the shared land-office slot — see #6.
 
 ### 6. Parcel rent — cukai petak 🟡
-- **Who / cadence:** state land office, annual; replaced the strata share of quit rent (Strata Titles Act reforms, KL/Selangor from ~2018).
-- **Applies to:** **strata only** (`tax` subtype `parcel_rent`).
+- **Who / cadence:** state land office, annual; billed directly to parcel owners **once individual strata titles are issued** (Strata Titles Act reforms, KL/Selangor from ~2018).
+- **Applies to:** **strata with individual titles** (`tax` subtype `parcel_rent`).
 - **Capture:** upload the annual bill (document-based).
-- **Coverage (planned):** expected **only when `property_type = strata`**; a landed owner is never asked for it.
+- **Coverage (planned):** strata expects **one land-office tax**, satisfied by `parcel_rent` **or** `quit_rent` — never both demanded, and never a specific one named, because titling status decides which arrives. A landed property is never asked for parcel rent.
 
 ### 7. Fire insurance 🟡
 - **Who / cadence:** **annual.**
@@ -139,6 +170,7 @@ All amounts are deductible against **s.4(d)** rental income (YA = calendar year)
 - **Who / cadence:** ad-hoc, variable, unbilled (plumbing, water pump on landed title, aircon servicing…).
 - **Applies to:** all — landed: whole property; **strata: inside the unit only** (common-area plant like the water pump is the MC's job, funded from sinking fund, so a strata owner does *not* book it as upkeep).
 - **Capture:** **upload the receipt per event** — the one category where dynamic upload is unarguably correct; nothing to derive or schedule (`upkeep` category, folds at `service_date`'s year, [finance_engine.py:220](rag/finance_engine.py#L220)).
+- **Not upkeep:** water and sewerage charges. They are `utilities` (see [Non-deductible lines](#non-deductible-lines-on-a-landlords-bill)) — previously mis-routed here and silently deducted.
 - **Coverage:** soft only. Never hard-flagged (you can't predict repairs).
 - **Known limitation (out of scope here):** Malaysian tax deducts *repairs* (restoring) but not *improvements/renovations* (capital); the engine treats all upkeep as deductible today.
 
@@ -149,7 +181,7 @@ All amounts are deductible against **s.4(d)** rental income (YA = calendar year)
 Today `_property_coverage` ([finance_engine.py:301](rag/finance_engine.py#L301)) checks a flat `FINANCE_CATEGORIES` list ([finance_engine.py:28](rag/finance_engine.py#L28)) against every property, so it can't tell quit from parcel from assessment, and nags landed owners for maintenance. Planned per-year logic:
 
 1. **Expected set from the profile** — assessment tax for all; quit rent iff landed; parcel rent iff strata; maintenance + sinking iff strata; insurance iff landed; loan interest iff mortgaged; rental invoice iff the lease covered that year (unchanged). Unknown profile → today's generic set.
-2. **Subtype-aware tax** — split the `tax` check into `assessment` / `quit_rent` / `parcel_rent` (reading subtypes from both `tax`-category docs and `expenses`-subtype lines) so a missing land-office tax is named specifically.
+2. **Subtype-aware tax** — check `assessment` separately from the **land-office slot** (reading subtypes from both `tax`-category docs and `expenses`-subtype lines). Landed expects `quit_rent`; strata expects `quit_rent` **or** `parcel_rent` and is satisfied by either.
 3. **Installment-aware** — for tax subtypes present, run the `x/N` gap check (#4). A partial year surfaces distinctly from a fully-missing one (amber "incomplete" vs red "missing"), via a new `partial_installments` field on `YearCoverage` ([models/documind_models.py:182](models/documind_models.py#L182)).
 
 Keep the two new checks in small isolated helpers (`_expected_categories(profile)`, `_installment_gaps(prop_docs, year)`, `_parse_installment("1/2")→(1,2)`) for unit-testability.
@@ -169,18 +201,25 @@ Keep the two new checks in small isolated helpers (`_expected_categories(profile
 
 | # | Expense | Applies to | Capture | Status |
 |---|---|---|---|---|
-| 0 | Profile: `property_type` + `has_mortgage` | Every property | 2 toggles at registration | 🟡 Designed |
+| 0 | Profile: `property_type` + `has_mortgage` | Every property | 2 toggles at registration | ✅ Backend |
 | 1 | Rental income | Any tenancy | Invoice + lease-derive + unpaid | ✅ Live |
-| 2 | Maintenance | Strata | **Set rate once** + doc override | 🟡 Designed |
-| 3 | Sinking fund | Strata | Same as maintenance (→ maintenance bucket) | 🟡 Designed |
+| 2 | Maintenance | Strata | **Set rate once** + doc override | ❌ Void — superseded |
+| 3 | Sinking fund | Strata | Same as maintenance (→ maintenance bucket) | ❌ Void — superseded |
 | 4 | Assessment tax | All | Upload / installment `x/N` aware | 🟡 Designed |
-| 5 | Quit rent | Landed | Upload (1/yr) | 🟡 Designed |
-| 6 | Parcel rent | Strata | Upload (1/yr) | 🟡 Designed |
-| 7 | Insurance | Landed (standalone) · strata (bundled line only) | Upload (1/yr) | 🟡 Designed |
-| 8 | Loan interest | If mortgaged | Upload annual statement (no schedules) | 🟡 Designed |
+| 5 | Quit rent | Landed · strata on master title | Upload (1/yr) or bundled line | ✅ Backend |
+| 6 | Parcel rent | Strata with individual titles | Upload (1/yr) — shares #5's land-office slot | ✅ Backend |
+| 7 | Insurance | Landed (standalone) · strata (bundled line only) | Upload (1/yr) | ✅ Backend |
+| 8 | Loan interest | If mortgaged | Upload annual statement (no schedules) | ✅ Backend |
 | 9 | Upkeep / repairs | All (strata: inside unit) | Upload per event | ✅ Live capture · 🟡 coverage gating |
+| 10 | Utilities (water, sewerage) | Tenant by default | Captured, **not deducted** unless `utilities_paid_by=landlord` | ✅ Backend |
+| 11 | Late payment penalties | — | Captured, **never deducted** | ✅ Backend |
 
-Legend: ✅ live in the engine · 🟡 designed here, pending build.
+Legend: ✅ live in the engine · 🟡 designed, pending build · ❌ void, superseded.
+
+Stage A of the document-first plan is complete (deductibility rules, expanded
+subtype catalogue, profile-gated coverage, land-office tax slot). Stage B
+(period-based coverage, `x/N` installments, `track_from_year`, rent payment
+states) and the Flutter stages are pending.
 
 ---
 
@@ -193,3 +232,17 @@ Legend: ✅ live in the engine · 🟡 designed here, pending build.
 - **Models:** `ExpenseLine.source` ([models/documind_models.py:160](models/documind_models.py#L160)); `YearCoverage.partial_installments`; `RecurringCharge` request/response; property-profile fields.
 - **Flutter:** registration adds the two profile toggles; a maintenance-rate entry field; an "estimated" badge on derived lines.
 - **Docs:** fold a finance-expenses section into [END_TO_END_FLOW.md](END_TO_END_FLOW.md) once built.
+
+## Personal Question
+I have came to know that:
+- Maintenance and sinking funds are the only expenses paid monthly
+- Assessment tax (cukai taksiran) are paid semi annually 
+- Whereas expenses such as insurance types (fire...not sure applicable to all companies in malaysia) and upkeep (e.g. water pump...)
+
+I was thinking that for maintenance and sinking funds, do we still need document uploads for this (report if there are mispayments like rental payment) or just allow landlord to manually input it during property registration
+
+Assessment tax would still be needed documents as the value of rental income yearly (nilai tahunan) affects the total tax payment
+
+And then yearly payments like insurance and upkeep just require one document per year?
+
+Take into account which payment price is variable which may need frequent uploads
