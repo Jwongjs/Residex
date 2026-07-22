@@ -40,6 +40,26 @@ void main() {
     expect(find.byIcon(Icons.remove_circle_outline), findsOneWidget); // land_office_tax: unavailable
   });
 
+  test('land_office_tax shows partial (not present) when the gap is labeled Quit rent', () {
+    final coverage = YearCoverage(
+      year: 2025,
+      partialInstallments: [InstallmentGap(label: 'Quit rent', have: 1, expect: 2)],
+    );
+    final cell = recordCellFor(coverage, 'land_office_tax');
+    expect(cell.state, RecordCellState.partial);
+    expect(cell.partialLabel, '1/2');
+  });
+
+  test('generic tax bucket shows partial when the gap is labeled with the Property tax fallback', () {
+    final coverage = YearCoverage(
+      year: 2025,
+      partialInstallments: [InstallmentGap(label: 'Property tax', have: 1, expect: 4)],
+    );
+    final cell = recordCellFor(coverage, 'tax');
+    expect(cell.state, RecordCellState.partial);
+    expect(cell.partialLabel, '1/4');
+  });
+
   testWidgets('empty coverage shows a friendly placeholder, not an empty table',
       (tester) async {
     final property = PropertyFinance(

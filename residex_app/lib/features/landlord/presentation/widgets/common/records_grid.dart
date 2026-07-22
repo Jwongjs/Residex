@@ -14,6 +14,23 @@ class RecordCell {
   const RecordCell(this.state, {this.partialLabel});
 }
 
+/// Maps a Records-grid category code to the raw tax-subtype display labels
+/// (`InstallmentGap.label`) that could produce a partial-installment gap
+/// for it. Composite/fallback categories (a strata `land_office_tax` slot,
+/// or the profile-less generic `tax` bucket) can be satisfied by more than
+/// one raw subtype — matching only the composite's own display text would
+/// silently show "present" for a real installment gap, since the backend
+/// never emits a `land_office_tax`-labeled gap (only 'Assessment tax' /
+/// 'Quit rent' / 'Parcel rent' / the 'Property tax' fallback, per
+/// `_TAX_LABELS` in `finance_engine.py`).
+const Map<String, Set<String>> _installmentLabelsForCategory = {
+  'assessment': {'Assessment tax'},
+  'quit_rent': {'Quit rent'},
+  'parcel_rent': {'Parcel rent'},
+  'land_office_tax': {'Quit rent', 'Parcel rent'},
+  'tax': {'Assessment tax', 'Quit rent', 'Parcel rent', 'Property tax'},
+};
+
 /// Derives one grid cell's state from a year's coverage row. Pure and
 /// testable independent of any widget.
 RecordCell recordCellFor(YearCoverage coverage, String category) {
@@ -27,8 +44,8 @@ RecordCell recordCellFor(YearCoverage coverage, String category) {
       return RecordCell(RecordCellState.partial, partialLabel: '${p.have}/${p.expect}');
     }
   }
-  final label = coverageLabels[category] ?? category;
-  final installmentGap = coverage.partialInstallments.where((g) => g.label == label);
+  final matchLabels = _installmentLabelsForCategory[category] ?? {coverageLabels[category] ?? category};
+  final installmentGap = coverage.partialInstallments.where((g) => matchLabels.contains(g.label));
   if (installmentGap.isNotEmpty) {
     final g = installmentGap.first;
     return RecordCell(RecordCellState.partial, partialLabel: '${g.have}/${g.expect}');
