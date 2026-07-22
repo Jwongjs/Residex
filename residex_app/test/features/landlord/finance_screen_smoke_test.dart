@@ -70,7 +70,8 @@ void main() {
     expect(find.textContaining('Estimate'), findsWidgets);
     expect(find.text('Unit A'), findsOneWidget);
     expect(find.textContaining('50%'), findsOneWidget); // ownership badge
-    expect(find.textContaining('Insurance policy'), findsOneWidget); // missing category
+    expect(find.textContaining('Insurance policy'), findsWidgets); // missing category + banner
+    expect(find.textContaining('missing your Insurance policy'), findsOneWidget); // banner
     expect(find.textContaining('1 missing'), findsOneWidget); // coverage chip for 2025
   });
 }

@@ -61,6 +61,52 @@ YearCoverage? yearCoverageFor(List<YearCoverage> coverage, int year) {
   return null;
 }
 
+/// Ranking for the landlord-facing "most damaging first" missing-document
+/// ordering (spec §7.1). Lower index sorts first. 'upkeep' is deliberately
+/// absent — it is never flagged missing.
+const List<String> missingDocumentRank = [
+  'lease', 'maintenance', 'loan', 'assessment', 'quit_rent',
+  'parcel_rent', 'land_office_tax', 'tax', 'insurance',
+];
+
+const Map<String, String> _missingDocumentCostNote = {
+  'lease': "derives every month's rent automatically",
+  'maintenance': 'usually the largest recurring deduction for strata owners',
+  'loan': 'usually the largest single deduction',
+  'assessment': 'a required council bill',
+  'quit_rent': 'a required land-office bill',
+  'parcel_rent': 'a required land-office bill',
+  'land_office_tax': 'a required land-office bill',
+  'tax': 'a required tax bill',
+  'insurance': 'protects against the largest one-off loss',
+};
+
+/// Missing-category/tax-subtype labels ordered by landlord impact, not
+/// alphabetically. Unranked labels sort after ranked ones, alphabetically
+/// among themselves, so a future subtype never disappears from the list.
+List<String> rankMissingDocuments(List<String> missing) {
+  final ranked = [...missing];
+  ranked.sort((a, b) {
+    final ra = missingDocumentRank.indexOf(a);
+    final rb = missingDocumentRank.indexOf(b);
+    if (ra == -1 && rb == -1) return a.compareTo(b);
+    if (ra == -1) return 1;
+    if (rb == -1) return -1;
+    return ra.compareTo(rb);
+  });
+  return ranked;
+}
+
+/// The one-line "N is missing X — cost note" banner for the single most
+/// damaging missing item, or null when nothing is missing.
+String? topMissingDocumentBanner(int year, List<String> missing) {
+  if (missing.isEmpty) return null;
+  final top = rankMissingDocuments(missing).first;
+  final label = coverageLabels[top] ?? top;
+  final note = _missingDocumentCostNote[top];
+  return note == null ? '$year is missing your $label' : '$year is missing your $label — $note';
+}
+
 const List<String> monthAbbrev = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',

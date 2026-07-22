@@ -31,4 +31,23 @@ void main() {
   test('financeYearOptions with no docs is just the current year', () {
     expect(financeYearOptions(const [], 2026), [2026]);
   });
+
+  test('rankMissingDocuments orders by landlord impact, not alphabetically', () {
+    final ranked = rankMissingDocuments(['insurance', 'lease', 'loan', 'maintenance']);
+    expect(ranked, ['lease', 'maintenance', 'loan', 'insurance']);
+  });
+
+  test('rankMissingDocuments keeps unranked labels after ranked ones, alphabetically', () {
+    final ranked = rankMissingDocuments(['zzz_future_subtype', 'loan', 'aaa_future_subtype']);
+    expect(ranked, ['loan', 'aaa_future_subtype', 'zzz_future_subtype']);
+  });
+
+  test('topMissingDocumentBanner names the single most damaging gap with its cost note', () {
+    final banner = topMissingDocumentBanner(2025, ['insurance', 'loan']);
+    expect(banner, '2025 is missing your Loan interest statement — usually the largest single deduction');
+  });
+
+  test('topMissingDocumentBanner is null when nothing is missing', () {
+    expect(topMissingDocumentBanner(2025, []), isNull);
+  });
 }

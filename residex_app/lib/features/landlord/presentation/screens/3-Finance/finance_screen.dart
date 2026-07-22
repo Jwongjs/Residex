@@ -368,27 +368,27 @@ class FinanceScreen extends ConsumerWidget {
           if (missing.isNotEmpty) ...[
             const Divider(height: 20, color: AppColors.hairline),
             Text(
-              'Missing for ${summary.year} — figures may be incomplete',
-              style:
-                  AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+              topMissingDocumentBanner(summary.year, missing) ??
+                  'Missing for ${summary.year} — figures may be incomplete',
+              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: missing
+              children: rankMissingDocuments(missing)
                   .map((category) => ActionChip(
                         avatar: const Icon(Icons.upload_file_outlined,
                             size: 16, color: AppColors.registry),
                         label: Text(
-                          financeCategoryLabels[category] ?? category,
+                          coverageLabels[category] ?? category,
                           style: AppTextStyles.labelSmall,
                         ),
                         onPressed: () => uploadDocumentForCategory(
                           context,
                           ref,
                           propertyId: block.propertyId,
-                          category: category,
+                          category: uploadCategoryFor(category),
                         ),
                       ))
                   .toList(),
