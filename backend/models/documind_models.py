@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 
 
 class DocUploadResponse(BaseModel):
@@ -155,6 +155,8 @@ class MonthIncome(BaseModel):
     source: str  # actual | derived | unpaid | vacant
     amount: float
     reason: Optional[str] = None
+    payment_state: Optional[str] = None  # outstanding | written_off, only when source == 'unpaid'
+    billed_amount: Optional[float] = None  # what the month would have been worth, when known
 
 
 class ExpenseLine(BaseModel):
@@ -214,6 +216,7 @@ class PropertyFinance(BaseModel):
     complete: bool = True
     received_rent: float
     derived_rent: float
+    outstanding_rent: float = 0.0
     direct_expenses: float
     rental_income_or_loss: float
     units: List[UnitFinance]
@@ -225,6 +228,7 @@ class PropertyFinance(BaseModel):
 class FinanceTotals(BaseModel):
     received_rent: float
     derived_rent: float
+    outstanding_rent: float = 0.0
     direct_expenses: float
     net_pl: float
     statutory_rental_income: float
@@ -268,6 +272,7 @@ class PaymentExceptionRequest(BaseModel):
     month: str = Field(..., description="Calendar month, YYYY-MM")
     unit_id: Optional[str] = None
     reason: Optional[str] = None
+    state: Literal["outstanding", "written_off"] = "outstanding"
 
 
 class PaymentExceptionResponse(BaseModel):
@@ -275,6 +280,7 @@ class PaymentExceptionResponse(BaseModel):
     unit_id: Optional[str] = None
     month: str
     reason: Optional[str] = None
+    state: str = "outstanding"
 
 
 # ========== DOCUMENT EXCEPTION MODELS ==========

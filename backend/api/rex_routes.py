@@ -141,6 +141,7 @@ async def set_payment_exception(payload: PaymentExceptionRequest):
             unit_id=payload.unit_id,
             month=payload.month,
             reason=payload.reason,
+            state=payload.state,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -69,6 +69,27 @@ class FinanceSummaryApiTests(unittest.TestCase):
         self.assertEqual(call_kwargs["landlord_id"], "l1")
         self.assertEqual(call_kwargs["month"], "2025-03")
 
+    def test_set_payment_exception_forwards_state(self):
+        with patch(
+            "api.rex_routes.documind_service.set_payment_exception",
+            new=AsyncMock(return_value={
+                "property_id": "p1", "unit_id": None, "month": "2025-08",
+                "reason": None, "state": "written_off",
+            }),
+        ) as mocked:
+            response = self.client.put(
+                "/api/rex/documind/finance/payment-exception",
+                json={
+                    "landlord_id": "landlord-1", "property_id": "p1",
+                    "month": "2025-08", "state": "written_off",
+                },
+            )
+            kwargs = mocked.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["state"], "written_off")
+        self.assertEqual(kwargs["state"], "written_off")
+
     def test_set_payment_exception_bad_month_returns_400(self):
         with patch(
             "api.rex_routes.documind_service.set_payment_exception",

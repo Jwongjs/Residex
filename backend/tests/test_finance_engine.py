@@ -30,8 +30,11 @@ def _prop(pid, name, share=1.0):
     return {"property_id": pid, "name": name, "ownership_share": share}
 
 
-def _exception(pid, month, unit_id=None, reason=None):
-    return {"property_id": pid, "unit_id": unit_id, "month": month, "reason": reason}
+def _exception(pid, month, unit_id=None, reason=None, state=None):
+    row = {"property_id": pid, "unit_id": unit_id, "month": month, "reason": reason}
+    if state is not None:
+        row["state"] = state
+    return row
 
 
 def _doc_exception(pid, year, category):
@@ -1100,3 +1103,61 @@ class IncompleteYearStatutoryTests(unittest.TestCase):
         result = _summary(docs, [prop], document_exceptions=exceptions)
         self.assertTrue(result["properties"][0]["complete"])
         self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0)
+
+
+class RentPaymentStateTests(unittest.TestCase):
+    def test_outstanding_is_the_default_state(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        result = _summary(docs, [_prop("p1", "House")], payment_exceptions=[_exception("p1", "2025-03")])
+        march = next(m for m in result["properties"][0]["units"][0]["months"] if m["month"] == 3)
+        self.assertEqual(march["payment_state"], "outstanding")
+        self.assertEqual(march["billed_amount"], 1000.0)
+        self.assertEqual(march["source"], "unpaid")  # unchanged, Flutter still reads this today
+        self.assertEqual(march["amount"], 0.0)  # unchanged
+
+    def test_outstanding_amount_prefers_the_actual_invoice_over_the_lease(self):
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0,
+                                 "lease_start": "2025-01-01", "lease_end": "2025-12-31"}),
+            _doc("p1", "rental_invoice", {"amount": 1200.0, "period_month": "2025-03"}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")], payment_exceptions=[_exception("p1", "2025-03")])
+        march = next(m for m in result["properties"][0]["units"][0]["months"] if m["month"] == 3)
+        self.assertEqual(march["billed_amount"], 1200.0)
+
+    def test_outstanding_rent_is_reported_separately_from_received(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        result = _summary(docs, [_prop("p1", "House")],
+                           payment_exceptions=[_exception("p1", "2025-03"), _exception("p1", "2025-07")])
+        self.assertEqual(result["properties"][0]["outstanding_rent"], 2000.0)
+        self.assertEqual(result["totals"]["outstanding_rent"], 2000.0)
+        self.assertEqual(result["properties"][0]["received_rent"], 10000.0)
+
+    def test_written_off_is_distinguishable_and_not_counted_as_outstanding(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        result = _summary(docs, [_prop("p1", "House")],
+                           payment_exceptions=[_exception("p1", "2025-08", state="written_off")])
+        august = next(m for m in result["properties"][0]["units"][0]["months"] if m["month"] == 8)
+        self.assertEqual(august["payment_state"], "written_off")
+        self.assertEqual(result["properties"][0]["outstanding_rent"], 0.0)
+        self.assertEqual(result["properties"][0]["received_rent"], 11000.0)
+
+    def test_written_off_note_reads_differently_from_outstanding(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        result = _summary(docs, [_prop("p1", "House")],
+                           payment_exceptions=[_exception("p1", "2025-08", state="written_off")])
+        joined = " ".join(result["caveats"])
+        self.assertIn("Written off", joined)
+        self.assertNotIn("No payment received for Aug", joined)
+
+    def test_existing_exceptions_with_no_state_key_keep_todays_wording(self):
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
+        result = _summary(docs, [_prop("p1", "House")],
+                           payment_exceptions=[{"property_id": "p1", "unit_id": None, "month": "2025-03"}])
+        joined = " ".join(result["caveats"])
+        self.assertIn("No payment received for Mar", joined)

@@ -1583,6 +1583,20 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         # statutory: 0.5 * (2000 - 300 * (1 rented month / 12)) = 987.50
         self.assertEqual(summary.totals.statutory_rental_income, 987.5)
 
+    async def test_get_finance_summary_defaults_missing_state_to_outstanding(self):
+        fake_db = _FakeDB(payment_exceptions=[
+            {"landlord_id": "l1", "property_id": "p1", "unit_id": None, "month": "2025-03", "reason": None},
+        ])
+        fake_db.properties_rows = [{"doc_id": "p1", "landlordId": "l1", "name": "House"}]
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        summary = await service.get_finance_summary("l1", 2025)
+        march = next(
+            m for m in summary.properties[0].units[0].months if m.month == 3
+        )
+        self.assertEqual(march.payment_state, "outstanding")
+
     async def test_get_finance_summary_reads_utilities_policy(self):
         statement = {
             "doc_id": "exp-1", "landlord_id": "l1", "property_id": "p1",
@@ -1896,7 +1910,8 @@ class PaymentExceptionServiceTests(unittest.IsolatedAsyncioTestCase):
             landlord_id="l1", property_id="p1", unit_id="u1", month="2025-03", reason="bounced cheque",
         )
 
-        self.assertEqual(result, {"property_id": "p1", "unit_id": "u1", "month": "2025-03", "reason": "bounced cheque"})
+        self.assertEqual(result, {"property_id": "p1", "unit_id": "u1", "month": "2025-03",
+                                   "reason": "bounced cheque", "state": "outstanding"})
         self.assertEqual(len(fake_db.payment_exceptions), 1)
         row = fake_db.payment_exceptions[0]
         self.assertEqual(row["doc_id"], "p1__u1__2025-03")

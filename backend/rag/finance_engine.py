@@ -111,15 +111,18 @@ def _scope_income(
     `rented` — the tenant occupied and expenses were incurred, only the
     income is excluded. Returns (month_rows, rented, actual_sum,
     derived_sum, vacant_months, derived_months, unpaid_months) where
-    unpaid_months is a list of (month, reason|None)."""
-    exception_by_month: Dict[int, Optional[str]] = {}
+    unpaid_months is a list of (month, reason, state, billed_amount)."""
+    exception_by_month: Dict[int, Dict[str, Any]] = {}
     for exc in exceptions:
         if not isinstance(exc, dict) or exc.get("unit_id") != unit_id:
             continue
         ym = _ym(exc.get("month"))
         if ym is None or ym[0] != year:
             continue
-        exception_by_month[ym[1]] = exc.get("reason")
+        exception_by_month[ym[1]] = {
+            "reason": exc.get("reason"),
+            "state": exc.get("state") or "outstanding",
+        }
 
     invoice_by_month: Dict[int, float] = {}
     for doc in sorted(
@@ -154,16 +157,26 @@ def _scope_income(
     derived_sum = 0.0
     vacant_months: List[int] = []
     derived_months: List[int] = []
-    unpaid_months: List[Tuple[int, Optional[str]]] = []
+    unpaid_months: List[Tuple[int, Optional[str], str, Optional[float]]] = []
     for month in months:
         if month in exception_by_month:
-            reason = exception_by_month[month]
-            row: Dict[str, Any] = {"month": month, "source": "unpaid", "amount": 0.0}
+            info = exception_by_month[month]
+            reason, state = info["reason"], info["state"]
+            billed = invoice_by_month.get(month)
+            if billed is None and lease_facts is not None and (
+                _ym(lease_facts["lease_start"]) <= (year, month) <= _ym(lease_facts["lease_end"])
+            ):
+                billed = _amount(lease_facts, "monthly_rent")
+            row: Dict[str, Any] = {
+                "month": month, "source": "unpaid", "amount": 0.0, "payment_state": state,
+            }
+            if billed is not None:
+                row["billed_amount"] = _round2(billed)
             if reason:
                 row["reason"] = reason
             month_rows.append(row)
             rented += 1
-            unpaid_months.append((month, reason))
+            unpaid_months.append((month, reason, state, billed))
             continue
         if month in invoice_by_month:
             amount = invoice_by_month[month]
@@ -685,6 +698,7 @@ def compute_finance_summary(
     expense_breakdown: Dict[str, float] = {}
     total_received = 0.0
     total_derived = 0.0
+    total_outstanding = 0.0
     total_expenses = 0.0
     statutory_sum = 0.0
     derived_notes: List[str] = []
@@ -736,6 +750,7 @@ def compute_finance_summary(
         unit_blocks: List[Dict[str, Any]] = []
         prop_actual = 0.0
         prop_derived = 0.0
+        prop_outstanding = 0.0
         fractions: List[float] = []
         prorated_expenses = 0.0
 
@@ -773,8 +788,13 @@ def compute_finance_summary(
                 vacant_notes.append(
                     f"No invoice recorded for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
                 )
-            for m, reason in unpaid:
-                note = f"No payment received for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
+            for m, reason, state, billed in unpaid:
+                if state == "written_off":
+                    note = f"Written off as unrecoverable for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
+                else:
+                    note = f"No payment received for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
+                    if billed:
+                        prop_outstanding += billed
                 if reason:
                     note += f": {reason}"
                 unpaid_notes.append(note)
@@ -846,6 +866,7 @@ def compute_finance_summary(
 
         total_received += received
         total_derived += prop_derived
+        total_outstanding += prop_outstanding
         total_expenses += direct
 
         property_blocks.append({
@@ -854,6 +875,7 @@ def compute_finance_summary(
             "ownership_share": share,
             "received_rent": _round2(received),
             "derived_rent": _round2(prop_derived),
+            "outstanding_rent": _round2(prop_outstanding),
             "direct_expenses": _round2(direct),
             "rental_income_or_loss": _round2(received - direct),
             "units": unit_blocks,
@@ -884,6 +906,7 @@ def compute_finance_summary(
         "totals": {
             "received_rent": _round2(total_received),
             "derived_rent": _round2(total_derived),
+            "outstanding_rent": _round2(total_outstanding),
             "direct_expenses": _round2(total_expenses),
             "net_pl": _round2(total_received - total_expenses),
             "statutory_rental_income": statutory,

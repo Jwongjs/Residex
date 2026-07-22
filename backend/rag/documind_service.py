@@ -674,6 +674,7 @@ Rules:
         month: str,
         unit_id: Optional[str] = None,
         reason: Optional[str] = None,
+        state: str = "outstanding",
     ) -> Dict[str, Any]:
         """Upsert a 'no payment received' mark for one month. Deterministic
         doc id keeps set/clear idempotent — no duplicate marks possible."""
@@ -691,9 +692,10 @@ Rules:
             'unit_id': unit_id,
             'month': month,
             'reason': reason,
+            'state': state,
             'created_at': firestore.SERVER_TIMESTAMP,
         })
-        return {"property_id": property_id, "unit_id": unit_id, "month": month, "reason": reason}
+        return {"property_id": property_id, "unit_id": unit_id, "month": month, "reason": reason, "state": state}
 
     async def clear_payment_exception(
         self,
@@ -1431,6 +1433,7 @@ Rules:
                 "unit_id": data.get("unit_id"),
                 "month": data.get("month"),
                 "reason": data.get("reason"),
+                "state": data.get("state") or "outstanding",
             })
 
         document_exceptions = []
