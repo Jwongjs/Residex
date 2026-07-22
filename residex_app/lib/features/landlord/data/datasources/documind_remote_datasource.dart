@@ -315,13 +315,16 @@ class DocuMindRemoteDataSource {
   }
 
   /// Mark one month as "no payment received". Excludes that month from
-  /// Received Rent, Net P/L, and Statutory Rental Income.
+  /// Received Rent, Net P/L, and Statutory Rental Income. [state] is
+  /// 'outstanding' (still being chased, default) or 'written_off' (given
+  /// up on, irrecoverable).
   Future<void> setPaymentException({
     required String landlordId,
     required String propertyId,
     required String month,
     String? unitId,
     String? reason,
+    String state = 'outstanding',
   }) async {
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindPaymentException}');
     final response = await httpClient.put(
@@ -333,6 +336,7 @@ class DocuMindRemoteDataSource {
         'unit_id': unitId,
         'month': month,
         'reason': reason,
+        'state': state,
       }),
     );
     if (response.statusCode != 200) {
@@ -358,6 +362,100 @@ class DocuMindRemoteDataSource {
     final response = await httpClient.delete(uri);
     if (response.statusCode != 200) {
       throw Exception('Failed to clear payment mark: ${response.body}');
+    }
+  }
+
+  /// Acknowledge that a coverage gap cannot be filled for one (year,
+  /// category). The year then settles as complete-with-gaps.
+  Future<void> setDocumentUnavailable({
+    required String landlordId,
+    required String propertyId,
+    required int year,
+    required String category,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindDocumentException}');
+    final response = await httpClient.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'landlord_id': landlordId,
+        'property_id': propertyId,
+        'year': year,
+        'category': category,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to mark document unavailable: ${response.body}');
+    }
+  }
+
+  /// Clear an 'unavailable' mark. Idempotent.
+  Future<void> clearDocumentUnavailable({
+    required String landlordId,
+    required String propertyId,
+    required int year,
+    required String category,
+  }) async {
+    final queryParameters = {
+      'landlord_id': landlordId,
+      'property_id': propertyId,
+      'year': '$year',
+      'category': category,
+    };
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindDocumentException}')
+        .replace(queryParameters: queryParameters);
+    final response = await httpClient.delete(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to clear unavailable mark: ${response.body}');
+    }
+  }
+
+  /// Book a written-off month's rent as income in the year it actually
+  /// arrived. Requires the month to already be on file as written_off.
+  Future<void> recordRentRecovery({
+    required String landlordId,
+    required String propertyId,
+    required String originalMonth,
+    required double amount,
+    required int receivedYear,
+    String? unitId,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindRentRecovery}');
+    final response = await httpClient.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'landlord_id': landlordId,
+        'property_id': propertyId,
+        'unit_id': unitId,
+        'original_month': originalMonth,
+        'amount': amount,
+        'received_year': receivedYear,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to record rent recovery: ${response.body}');
+    }
+  }
+
+  /// Remove a recorded rent recovery. Idempotent.
+  Future<void> clearRentRecovery({
+    required String landlordId,
+    required String propertyId,
+    required String originalMonth,
+    String? unitId,
+  }) async {
+    final queryParameters = {
+      'landlord_id': landlordId,
+      'property_id': propertyId,
+      'original_month': originalMonth,
+      if (unitId != null) 'unit_id': unitId,
+    };
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindRentRecovery}')
+        .replace(queryParameters: queryParameters);
+    final response = await httpClient.delete(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to clear rent recovery: ${response.body}');
     }
   }
 }

@@ -257,12 +257,14 @@ final setPaymentExceptionActionProvider = Provider<Future<void> Function({
   required String month,
   String? unitId,
   String? reason,
+  String? state,
 })>((ref) {
   return ({
     required String propertyId,
     required String month,
     String? unitId,
     String? reason,
+    String? state,
   }) async {
     final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
@@ -272,6 +274,7 @@ final setPaymentExceptionActionProvider = Provider<Future<void> Function({
       unitId: unitId,
       month: month,
       reason: reason,
+      state: state ?? 'outstanding',
     );
     ref.invalidate(financeSummaryProvider);
   };
@@ -295,6 +298,91 @@ final clearPaymentExceptionActionProvider = Provider<Future<void> Function({
       propertyId: propertyId,
       unitId: unitId,
       month: month,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// Acknowledge a coverage gap cannot be filled for one (year, category).
+final setDocumentUnavailableActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required int year,
+  required String category,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required int year,
+    required String category,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.setDocumentUnavailable(
+      landlordId: landlordId, propertyId: propertyId, year: year, category: category,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// Clear an 'unavailable' mark.
+final clearDocumentUnavailableActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required int year,
+  required String category,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required int year,
+    required String category,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.clearDocumentUnavailable(
+      landlordId: landlordId, propertyId: propertyId, year: year, category: category,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// Book a written-off month's rent as income in the year it arrived.
+final recordRentRecoveryActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required String originalMonth,
+  required double amount,
+  required int receivedYear,
+  String? unitId,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required String originalMonth,
+    required double amount,
+    required int receivedYear,
+    String? unitId,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.recordRentRecovery(
+      landlordId: landlordId, propertyId: propertyId, unitId: unitId,
+      originalMonth: originalMonth, amount: amount, receivedYear: receivedYear,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// Remove a recorded rent recovery.
+final clearRentRecoveryActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required String originalMonth,
+  String? unitId,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required String originalMonth,
+    String? unitId,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.clearRentRecovery(
+      landlordId: landlordId, propertyId: propertyId, unitId: unitId, originalMonth: originalMonth,
     );
     ref.invalidate(financeSummaryProvider);
   };

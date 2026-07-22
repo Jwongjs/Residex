@@ -142,4 +142,108 @@ void main() {
     expect(month.source, 'unpaid');
     expect(month.reason, 'tenant requested deferral');
   });
+
+  test('fromJson parses Stage B coverage, completeness, recovery and payment-state fields', () {
+    final summary = FinanceSummaryModel.fromJson({
+      'year': 2025,
+      'totals': {
+        'received_rent': 10000.0,
+        'derived_rent': 0.0,
+        'outstanding_rent': 3000.0,
+        'direct_expenses': 4000.0,
+        'net_pl': 6000.0,
+        'statutory_rental_income': 6000.0,
+        'statutory_note': 'Estimate — for your tax agent',
+      },
+      'properties': [
+        {
+          'property_id': 'p1',
+          'name': 'Ayer 8',
+          'received_rent': 10000.0,
+          'derived_rent': 0.0,
+          'outstanding_rent': 3000.0,
+          'direct_expenses': 4000.0,
+          'rental_income_or_loss': 6000.0,
+          'complete': false,
+          'recovered_rent': [
+            {'unit_id': 'u1', 'original_month': '2025-08', 'amount': 3000.0, 'label': 'Recovered rent — Aug 2025'},
+          ],
+          'coverage': [
+            {
+              'year': 2025,
+              'missing': ['loan'],
+              'partial_installments': [
+                {'label': 'Assessment tax', 'have': 1, 'expect': 2},
+              ],
+              'partial_categories': [
+                {'category': 'maintenance', 'have': 4, 'expect': 12},
+              ],
+              'unavailable': ['insurance'],
+            },
+          ],
+          'units': [
+            {
+              'unit_id': 'u1',
+              'label': 'Unit A',
+              'rented_months': 12,
+              'contribution': 10000.0,
+              'months': [
+                {
+                  'month': 8, 'source': 'unpaid', 'amount': 0.0,
+                  'payment_state': 'written_off', 'billed_amount': 3000.0,
+                },
+              ],
+            },
+          ],
+          'expense_lines': [
+            {'doc_id': 'd1', 'category': 'upkeep', 'amount': 137.92, 'deductible': false},
+          ],
+        }
+      ],
+    });
+
+    expect(summary.totals.outstandingRent, 3000.0);
+    final block = summary.properties.single;
+    expect(block.complete, isFalse);
+    expect(block.outstandingRent, 3000.0);
+    expect(block.recoveredRent.single.label, 'Recovered rent — Aug 2025');
+    expect(block.recoveredRent.single.amount, 3000.0);
+    final coverage = block.coverage.single;
+    expect(coverage.partialInstallments.single.label, 'Assessment tax');
+    expect(coverage.partialInstallments.single.have, 1);
+    expect(coverage.partialCategories.single.category, 'maintenance');
+    expect(coverage.partialCategories.single.expect, 12);
+    expect(coverage.unavailable, ['insurance']);
+    final month = block.units.single.months.single;
+    expect(month.paymentState, 'written_off');
+    expect(month.billedAmount, 3000.0);
+    expect(block.expenseLines.single.deductible, isFalse);
+  });
+
+  test('fromJson defaults complete/deductible to true and outstanding/recovered to empty when absent', () {
+    final summary = FinanceSummaryModel.fromJson({
+      'year': 2025,
+      'totals': {
+        'received_rent': 0, 'derived_rent': 0, 'direct_expenses': 0,
+        'net_pl': 0, 'statutory_rental_income': 0,
+        'statutory_note': 'Estimate — for your tax agent',
+      },
+      'properties': [
+        {
+          'property_id': 'p1', 'name': 'Ayer 8',
+          'received_rent': 0, 'derived_rent': 0, 'direct_expenses': 0,
+          'rental_income_or_loss': 0,
+          'expense_lines': [
+            {'doc_id': 'd1', 'category': 'upkeep', 'amount': 100.0},
+          ],
+        }
+      ],
+    });
+    expect(summary.totals.outstandingRent, 0.0);
+    final block = summary.properties.single;
+    expect(block.complete, isTrue);
+    expect(block.outstandingRent, 0.0);
+    expect(block.recoveredRent, isEmpty);
+    expect(block.expenseLines.single.deductible, isTrue);
+  });
 }

@@ -22,6 +22,7 @@ class FinanceSummary {
 class FinanceTotals {
   final double receivedRent;
   final double derivedRent;
+  final double outstandingRent;
   final double directExpenses;
   final double netPl;
   final double statutoryRentalIncome;
@@ -30,6 +31,7 @@ class FinanceTotals {
   FinanceTotals({
     required this.receivedRent,
     required this.derivedRent,
+    this.outstandingRent = 0.0,
     required this.directExpenses,
     required this.netPl,
     required this.statutoryRentalIncome,
@@ -41,35 +43,80 @@ class PropertyFinance {
   final String propertyId;
   final String name;
   final double ownershipShare;
+  final bool complete;
   final double receivedRent;
   final double derivedRent;
+  final double outstandingRent;
   final double directExpenses;
   final double rentalIncomeOrLoss;
   final List<UnitFinance> units;
   final List<ExpenseLine> expenseLines;
   final List<ExpenseLine> propertyExpenseLines;
+  final List<RecoveredRentLine> recoveredRent;
   final List<YearCoverage> coverage;
 
   PropertyFinance({
     required this.propertyId,
     required this.name,
     this.ownershipShare = 1.0,
+    this.complete = true,
     required this.receivedRent,
     required this.derivedRent,
+    this.outstandingRent = 0.0,
     required this.directExpenses,
     required this.rentalIncomeOrLoss,
     this.units = const [],
     this.expenseLines = const [],
     this.propertyExpenseLines = const [],
+    this.recoveredRent = const [],
     this.coverage = const [],
   });
+}
+
+class InstallmentGap {
+  final String label;
+  final int have;
+  final int expect;
+
+  InstallmentGap({required this.label, required this.have, required this.expect});
+}
+
+class PartialCategory {
+  final String category;
+  final int have;
+  final int expect;
+
+  PartialCategory({required this.category, required this.have, required this.expect});
 }
 
 class YearCoverage {
   final int year;
   final List<String> missing;
+  final List<InstallmentGap> partialInstallments;
+  final List<PartialCategory> partialCategories;
+  final List<String> unavailable;
 
-  YearCoverage({required this.year, this.missing = const []});
+  YearCoverage({
+    required this.year,
+    this.missing = const [],
+    this.partialInstallments = const [],
+    this.partialCategories = const [],
+    this.unavailable = const [],
+  });
+}
+
+class RecoveredRentLine {
+  final String? unitId;
+  final String originalMonth;
+  final double amount;
+  final String label;
+
+  RecoveredRentLine({
+    this.unitId,
+    required this.originalMonth,
+    required this.amount,
+    required this.label,
+  });
 }
 
 class UnitFinance {
@@ -98,8 +145,17 @@ class MonthIncome {
   final String source; // actual | derived | unpaid | vacant
   final double amount;
   final String? reason;
+  final String? paymentState; // outstanding | written_off, only when source == 'unpaid'
+  final double? billedAmount;
 
-  MonthIncome({required this.month, required this.source, required this.amount, this.reason});
+  MonthIncome({
+    required this.month,
+    required this.source,
+    required this.amount,
+    this.reason,
+    this.paymentState,
+    this.billedAmount,
+  });
 }
 
 class ExpenseLine {
@@ -110,6 +166,7 @@ class ExpenseLine {
   final double amount;
   final String? date;
   final String? unitId; // null = property-level expense
+  final bool deductible;
 
   ExpenseLine({
     required this.docId,
@@ -119,5 +176,6 @@ class ExpenseLine {
     required this.amount,
     this.date,
     this.unitId,
+    this.deductible = true,
   });
 }

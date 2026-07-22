@@ -78,12 +78,14 @@ void main() {
             required String month,
             String? unitId,
             String? reason,
+            String? state,
           }) async {
             captured = {
               'propertyId': propertyId,
               'month': month,
               'unitId': unitId,
               'reason': reason,
+              'state': state,
             };
           }),
         ],

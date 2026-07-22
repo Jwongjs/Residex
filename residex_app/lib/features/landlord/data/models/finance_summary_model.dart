@@ -27,6 +27,7 @@ class FinanceSummaryModel {
     return FinanceTotals(
       receivedRent: _d(json['received_rent']),
       derivedRent: _d(json['derived_rent']),
+      outstandingRent: _d(json['outstanding_rent']),
       directExpenses: _d(json['direct_expenses']),
       netPl: _d(json['net_pl']),
       statutoryRentalIncome: _d(json['statutory_rental_income']),
@@ -39,8 +40,10 @@ class FinanceSummaryModel {
       propertyId: json['property_id'] as String? ?? '',
       name: json['name'] as String? ?? 'Property',
       ownershipShare: json['ownership_share'] == null ? 1.0 : _d(json['ownership_share']),
+      complete: json['complete'] as bool? ?? true,
       receivedRent: _d(json['received_rent']),
       derivedRent: _d(json['derived_rent']),
+      outstandingRent: _d(json['outstanding_rent']),
       directExpenses: _d(json['direct_expenses']),
       rentalIncomeOrLoss: _d(json['rental_income_or_loss']),
       units: (json['units'] as List<dynamic>? ?? const [])
@@ -48,12 +51,40 @@ class FinanceSummaryModel {
           .toList(),
       expenseLines: _lines(json['expense_lines']),
       propertyExpenseLines: _lines(json['property_expense_lines']),
+      recoveredRent: (json['recovered_rent'] as List<dynamic>? ?? const [])
+          .map((r) => r as Map<String, dynamic>)
+          .map((r) => RecoveredRentLine(
+                unitId: r['unit_id'] as String?,
+                originalMonth: r['original_month'] as String? ?? '',
+                amount: _d(r['amount']),
+                label: r['label'] as String? ?? 'Recovered rent',
+              ))
+          .toList(),
       coverage: (json['coverage'] as List<dynamic>? ?? const [])
           .map((c) => c as Map<String, dynamic>)
           .map((c) => YearCoverage(
                 year: (c['year'] as num?)?.toInt() ?? 0,
                 missing: (c['missing'] as List<dynamic>? ?? const [])
                     .map((m) => m.toString())
+                    .toList(),
+                partialInstallments: (c['partial_installments'] as List<dynamic>? ?? const [])
+                    .map((g) => g as Map<String, dynamic>)
+                    .map((g) => InstallmentGap(
+                          label: g['label'] as String? ?? '',
+                          have: (g['have'] as num?)?.toInt() ?? 0,
+                          expect: (g['expect'] as num?)?.toInt() ?? 0,
+                        ))
+                    .toList(),
+                partialCategories: (c['partial_categories'] as List<dynamic>? ?? const [])
+                    .map((p) => p as Map<String, dynamic>)
+                    .map((p) => PartialCategory(
+                          category: p['category'] as String? ?? '',
+                          have: (p['have'] as num?)?.toInt() ?? 0,
+                          expect: (p['expect'] as num?)?.toInt() ?? 0,
+                        ))
+                    .toList(),
+                unavailable: (c['unavailable'] as List<dynamic>? ?? const [])
+                    .map((u) => u.toString())
                     .toList(),
               ))
           .toList(),
@@ -73,6 +104,8 @@ class FinanceSummaryModel {
                 source: m['source'] as String? ?? 'vacant',
                 amount: _d(m['amount']),
                 reason: m['reason'] as String?,
+                paymentState: m['payment_state'] as String?,
+                billedAmount: m['billed_amount'] == null ? null : _d(m['billed_amount']),
               ))
           .toList(),
       missingInvoiceMonths: (json['missing_invoice_months'] as List<dynamic>? ?? const [])
@@ -93,6 +126,7 @@ class FinanceSummaryModel {
               amount: _d(l['amount']),
               date: l['date'] as String?,
               unitId: l['unit_id'] as String?,
+              deductible: l['deductible'] as bool? ?? true,
             ))
         .toList();
   }
