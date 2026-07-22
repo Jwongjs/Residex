@@ -325,8 +325,18 @@ class FinanceScreen extends ConsumerWidget {
           ],
           _headlineRow('Received Rent', block.receivedRent),
           _headlineRow('Direct Expenses', block.directExpenses),
-          _headlineRow('Rental Income/Loss', block.rentalIncomeOrLoss,
-              emphasized: true),
+          _headlineRow(
+            block.complete ? 'Rental Income/Loss' : 'Rental Income/Loss — so far',
+            block.rentalIncomeOrLoss,
+            emphasized: true,
+          ),
+          if (!block.complete) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${summary.year} records are incomplete — this total will change as documents arrive.',
+              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+            ),
+          ],
           if (block.units.isNotEmpty) ...[
             const Divider(height: 20, color: AppColors.hairline),
             ...block.units.map((unit) => InkWell(
@@ -373,29 +383,104 @@ class FinanceScreen extends ConsumerWidget {
               style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: rankMissingDocuments(missing)
-                  .map((category) => ActionChip(
-                        avatar: const Icon(Icons.upload_file_outlined,
-                            size: 16, color: AppColors.registry),
-                        label: Text(
-                          coverageLabels[category] ?? category,
-                          style: AppTextStyles.labelSmall,
-                        ),
+            ...rankMissingDocuments(missing).map((category) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.circle, size: 6, color: AppColors.textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(coverageLabels[category] ?? category,
+                            style: AppTextStyles.labelSmall),
+                      ),
+                      TextButton(
                         onPressed: () => uploadDocumentForCategory(
-                          context,
-                          ref,
+                          context, ref,
                           propertyId: block.propertyId,
                           category: uploadCategoryFor(category),
                         ),
-                      ))
-                  .toList(),
-            ),
+                        child: const Text('Upload'),
+                      ),
+                      TextButton(
+                        onPressed: () => _showMarkUnavailableConfirm(
+                          context, ref,
+                          propertyId: block.propertyId,
+                          year: summary.year,
+                          category: category,
+                        ),
+                        child: const Text('Mark unavailable'),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+          if ((yearCoverageFor(block.coverage, summary.year)?.unavailable ?? const []).isNotEmpty) ...[
+            const SizedBox(height: 4),
+            ...yearCoverageFor(block.coverage, summary.year)!.unavailable.map((category) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.remove_circle_outline, size: 14, color: AppColors.textMuted),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${coverageLabels[category] ?? category} — acknowledged unavailable',
+                          style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => ref.read(clearDocumentUnavailableActionProvider)(
+                          propertyId: block.propertyId, year: summary.year, category: category,
+                        ),
+                        child: const Text('Undo'),
+                      ),
+                    ],
+                  ),
+                )),
           ],
         ],
       ),
     );
+  }
+
+  Future<void> _showMarkUnavailableConfirm(
+    BuildContext context,
+    WidgetRef ref, {
+    required String propertyId,
+    required int year,
+    required String category,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Mark ${coverageLabels[category] ?? category} unavailable for $year?'),
+        content: const Text(
+          'Use this when you genuinely cannot obtain the document — the year '
+          'settles as complete, with this gap acknowledged, instead of nagging '
+          'permanently.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Mark unavailable'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await ref.read(setDocumentUnavailableActionProvider)(
+        propertyId: propertyId, year: year, category: category,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed to mark unavailable: $e')));
+      }
+    }
   }
 }
