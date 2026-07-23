@@ -117,7 +117,6 @@ void main() {
 
   testWidgets('an outstanding month shows OUTSTANDING and offers write-off or clear',
       (tester) async {
-    var cleared = false;
     var wroteOff = false;
     final summary = FinanceSummary(
       year: 2026,
@@ -147,13 +146,6 @@ void main() {
         overrides: [
           financeYearsProvider.overrideWith((ref) async => [2026]),
           financeSummaryProvider.overrideWith((ref, year) async => summary),
-          clearPaymentExceptionActionProvider.overrideWithValue(({
-            required String propertyId,
-            required String month,
-            String? unitId,
-          }) async {
-            cleared = true;
-          }),
           setPaymentExceptionActionProvider.overrideWithValue(({
             required String propertyId,
             required String month,
@@ -185,6 +177,69 @@ void main() {
     await tester.tap(find.text('Mark as written off'));
     await tester.pumpAndSettle();
     expect(wroteOff, isTrue);
+  });
+
+  testWidgets('an outstanding month can also be cleared back to received',
+      (tester) async {
+    Map<String, dynamic>? cleared;
+    final summary = FinanceSummary(
+      year: 2026,
+      totals: FinanceTotals(
+        receivedRent: 0.0, derivedRent: 0.0, directExpenses: 0.0,
+        netPl: 0.0, statutoryRentalIncome: 0.0,
+        statutoryNote: 'Estimate — for your tax agent',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8',
+          receivedRent: 0.0, derivedRent: 0.0, directExpenses: 0.0, rentalIncomeOrLoss: 0.0,
+          units: [
+            UnitFinance(
+              unitId: 'u1', label: 'Unit A', rentedMonths: 1, contribution: 0.0,
+              months: [
+                MonthIncome(month: 1, source: 'unpaid', amount: 0.0,
+                    paymentState: 'outstanding', billedAmount: 700.0),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2026]),
+          financeSummaryProvider.overrideWith((ref, year) async => summary),
+          clearPaymentExceptionActionProvider.overrideWithValue(({
+            required String propertyId,
+            required String month,
+            String? unitId,
+          }) async {
+            cleared = {'propertyId': propertyId, 'month': month, 'unitId': unitId};
+          }),
+        ],
+        child: MaterialApp(
+          home: UnitFinanceDetailScreen(
+            propertyId: 'p1', propertyName: 'Ayer 8',
+            unit: UnitFinance(unitId: 'u1', label: 'Unit A', rentedMonths: 1, contribution: 0.0),
+            year: 2026,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('OUTSTANDING'));
+    await tester.pumpAndSettle();
+    expect(find.text('Clear mark'), findsOneWidget);
+
+    await tester.tap(find.text('Clear mark'));
+    await tester.pumpAndSettle();
+
+    expect(cleared, isNotNull);
+    expect(cleared!['propertyId'], 'p1');
+    expect(cleared!['unitId'], 'u1');
+    expect(cleared!['month'], '2026-01');
   });
 
   testWidgets('a written-off month shows WRITTEN OFF and offers a recovery flow',
