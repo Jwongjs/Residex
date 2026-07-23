@@ -82,6 +82,13 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     });
   }
 
+  Future<void> _toggleFoldersEnabled(Property property) async {
+    final controller = ref.read(propertyControllerProvider);
+    await controller.updateProperty(
+      property.copyWith(foldersEnabled: !property.foldersEnabled),
+    );
+  }
+
   Widget _buildMainUI(List<Property> properties) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -130,7 +137,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
           Expanded(
             child: _selectedCategory == null
                 ? _buildCategoryGrid()
-                : _buildCategoryDocuments(),
+                : _buildCategoryDocuments(properties),
           ),
         ],
       ),
@@ -335,10 +342,14 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     );
   }
 
-  Widget _buildCategoryDocuments() {
+  Widget _buildCategoryDocuments(List<Property> properties) {
     if (_selectedPropertyId == null || _selectedCategory == null) {
       return _buildLoadingState();
     }
+    final property = properties.firstWhere(
+      (p) => p.id == _selectedPropertyId,
+      orElse: () => properties.first,
+    );
 
     final documentsAsync =
         ref.watch(documindDocumentsProvider(_selectedPropertyId!));
@@ -350,7 +361,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
             .toList();
 
         if (categoryDocs.isEmpty) {
-          return _buildEmptyCategoryState(_selectedCategory!);
+          return _buildEmptyCategoryState(_selectedCategory!, property);
         }
 
         return Stack(
@@ -360,6 +371,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                 _buildCategorySectionHeader(
                   category: _selectedCategory!,
                   documentCount: categoryDocs.length,
+                  property: property,
                 ),
                 Expanded(child: _buildDocumentsList(categoryDocs)),
               ],
@@ -427,7 +439,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     );
   }
 
-  Widget _buildEmptyCategoryState(String category) {
+  Widget _buildEmptyCategoryState(String category, Property property) {
     final categoryColor = getCategoryColor(category);
     final categoryIcon = getCategoryIcon(category);
 
@@ -435,7 +447,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
       children: [
         Column(
           children: [
-            _buildCategorySectionHeader(category: category),
+            _buildCategorySectionHeader(category: category, property: property),
             Expanded(
               child: Center(
                 child: SingleChildScrollView(
@@ -546,6 +558,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
 
   Widget _buildCategorySectionHeader({
     required String category,
+    required Property property,
     int? documentCount,
   }) {
     final categoryColor = getCategoryColor(category);
@@ -597,6 +610,20 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              if (category == 'expenses') ...[
+                IconButton(
+                  onPressed: () => _toggleFoldersEnabled(property),
+                  icon: Icon(
+                    property.foldersEnabled ? Icons.folder_special_outlined : Icons.folder_outlined,
+                    size: 18,
+                    color: AppColors.primaryCyan,
+                  ),
+                  tooltip: 'Organise into folders',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                ),
+                const SizedBox(width: 4),
+              ],
               if (isCompact)
                 IconButton(
                   onPressed: widget.onOpenDocumind,

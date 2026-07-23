@@ -20,6 +20,9 @@ class PropertyModel extends Property {
     super.trackFromYear,
     super.utilitiesPaidBy = 'tenant',
     super.nextSetupStep = 0,
+    super.foldersEnabled = false,
+    super.folderNames = const {},
+    super.folderMoves = const {},
     super.photos,
     required super.createdAt,
     super.updatedAt,
@@ -41,6 +44,9 @@ class PropertyModel extends Property {
       trackFromYear: property.trackFromYear,
       utilitiesPaidBy: property.utilitiesPaidBy,
       nextSetupStep: property.nextSetupStep,
+      foldersEnabled: property.foldersEnabled,
+      folderNames: property.folderNames,
+      folderMoves: property.folderMoves,
       photos: property.photos,
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,
@@ -63,6 +69,9 @@ class PropertyModel extends Property {
       trackFromYear: trackFromYear,
       utilitiesPaidBy: utilitiesPaidBy,
       nextSetupStep: nextSetupStep,
+      foldersEnabled: foldersEnabled,
+      folderNames: folderNames,
+      folderMoves: folderMoves,
       photos: photos,
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -96,6 +105,13 @@ class PropertyModel extends Property {
       trackFromYear: (json['track_from_year'] as num?)?.toInt(),
       utilitiesPaidBy: json['utilities_paid_by'] as String? ?? 'tenant',
       nextSetupStep: (json['next_setup_step'] as num?)?.toInt() ?? 0,
+      foldersEnabled: json['folders_enabled'] as bool? ?? false,
+      folderNames: (json['folder_names'] as Map<String, dynamic>?)
+              ?.map((k, v) => MapEntry(k, v as String)) ??
+          const {},
+      folderMoves: (json['folder_moves'] as Map<String, dynamic>?)
+              ?.map((k, v) => MapEntry(k, v as String)) ??
+          const {},
       photos: (json['photos'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
@@ -128,6 +144,9 @@ class PropertyModel extends Property {
       'track_from_year': trackFromYear,
       'utilities_paid_by': utilitiesPaidBy,
       'next_setup_step': nextSetupStep,
+      'folders_enabled': foldersEnabled,
+      'folder_names': folderNames,
+      'folder_moves': folderMoves,
       'photos': photos,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,

@@ -138,6 +138,19 @@ class Property {
   /// 2 or 3 = the registration wizard step to reopen via "Continue setup".
   final int nextSetupStep;
 
+  /// "Organise into folders" toggle (spec §9), off by default. Applies to
+  /// the Documents tab's Expenses folder only.
+  final bool foldersEnabled;
+
+  /// Landlord-chosen folder name overrides, keyed by folder key (the
+  /// sorted, comma-joined tag set — see document_folders.dart). Absent key
+  /// = use the app-proposed name.
+  final Map<String, String> folderNames;
+
+  /// Sticky manual folder placements, keyed by docId -> target folder key.
+  /// Overrides the natural clustering key for that one document.
+  final Map<String, String> folderMoves;
+
   final List<String> photos;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -156,6 +169,9 @@ class Property {
     this.trackFromYear,
     this.utilitiesPaidBy = 'tenant',
     this.nextSetupStep = 0,
+    this.foldersEnabled = false,
+    this.folderNames = const {},
+    this.folderMoves = const {},
     this.photos = const [],
     required this.createdAt,
     this.updatedAt,
@@ -191,6 +207,9 @@ class Property {
     int? trackFromYear,
     String? utilitiesPaidBy,
     int? nextSetupStep,
+    bool? foldersEnabled,
+    Map<String, String>? folderNames,
+    Map<String, String>? folderMoves,
     List<String>? photos,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -209,6 +228,9 @@ class Property {
       trackFromYear: trackFromYear ?? this.trackFromYear,
       utilitiesPaidBy: utilitiesPaidBy ?? this.utilitiesPaidBy,
       nextSetupStep: nextSetupStep ?? this.nextSetupStep,
+      foldersEnabled: foldersEnabled ?? this.foldersEnabled,
+      folderNames: folderNames ?? this.folderNames,
+      folderMoves: folderMoves ?? this.folderMoves,
       photos: photos ?? this.photos,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

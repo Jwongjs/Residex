@@ -3,10 +3,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/documind_document.dart';
 import 'package:residex_app/features/landlord/domain/entities/property.dart';
+import 'package:residex_app/features/landlord/domain/repositories/property_repository.dart';
 import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/5-Documents/documents_screen.dart';
 import 'package:residex_app/features/landlord/presentation/widgets/common/document_categories.dart';
+
+class _FakePropertyRepository implements PropertyRepository {
+  final Property property;
+  Property? lastUpdated;
+  _FakePropertyRepository(this.property);
+
+  @override
+  Future<void> updateProperty(Property property) async {
+    lastUpdated = property;
+  }
+
+  @override
+  Future<String> createProperty(Property property) async => property.id;
+  @override
+  Future<void> deleteProperty(String propertyId) async {}
+  @override
+  Future<Property?> getPropertyById(String propertyId) async => property;
+  @override
+  Future<List<Property>> getPropertiesByLandlord(String landlordId) async => [property];
+  @override
+  Future<List<Property>> searchProperties(String landlordId, String query) async => [];
+  @override
+  Stream<List<Property>> streamPropertiesByLandlord(String landlordId) => const Stream.empty();
+}
 
 void main() {
   final testProperty = Property(
@@ -109,5 +134,34 @@ void main() {
 
     // The tag label should be displayed on the document tile
     expect(find.text('Quit rent'), findsOneWidget);
+  });
+
+  testWidgets('the folder toggle is visible only on the Expenses folder and persists', (tester) async {
+    final fakeRepo = _FakePropertyRepository(testProperty);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
+        documindDocumentsProvider.overrideWith((ref, propertyId) async => const <DocuMindDocument>[]),
+        propertyRepositoryProvider.overrideWithValue(fakeRepo),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Organise into folders'), findsNothing);
+
+    // Scroll down to find the Expenses card (same as the tag-chip test above).
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Expenses'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Organise into folders'), findsOneWidget);
+    await tester.tap(find.byTooltip('Organise into folders'));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated?.id, 'prop-1');
+    expect(fakeRepo.lastUpdated?.foldersEnabled, true);
   });
 }
