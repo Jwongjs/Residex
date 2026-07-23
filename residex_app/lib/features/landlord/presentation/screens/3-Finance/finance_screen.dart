@@ -10,6 +10,7 @@ import '../../widgets/common/expense_lines_review_sheet.dart';
 import '../../widgets/common/upload_source_sheet.dart';
 import '../../widgets/common/finance_ledger_strip.dart';
 import '../../widgets/common/finance_year_picker.dart';
+import '../../widgets/common/rent_payment_sheets.dart';
 import '../2-Documind/documind_screen.dart' show isAllowedUploadFilename;
 import '../2-Documind/documind_upload_summary.dart';
 import 'unit_finance_detail_screen.dart';
@@ -375,6 +376,7 @@ class FinanceScreen extends ConsumerWidget {
                   ),
                 )),
           ],
+          _buildRentIssuesSection(context, ref, block, summary.year),
           if (missing.isNotEmpty) ...[
             const Divider(height: 20, color: AppColors.hairline),
             Text(
@@ -440,6 +442,66 @@ class FinanceScreen extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildRentIssuesSection(
+      BuildContext context, WidgetRef ref, PropertyFinance block, int year) {
+    final issues = <(UnitFinance unit, MonthIncome month)>[];
+    for (final unit in block.units) {
+      for (final month in unit.months) {
+        if (month.source == 'unpaid') {
+          issues.add((unit, month));
+        }
+      }
+    }
+    if (issues.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 20, color: AppColors.hairline),
+        Text('Rent payment issues — $year', style: AppTextStyles.titleMedium),
+        const SizedBox(height: 8),
+        ...issues.map((issue) {
+          final unit = issue.$1;
+          final month = issue.$2;
+          final monthLabel = '${monthAbbrev[month.month - 1]} $year';
+          final isWrittenOff = month.paymentState == 'written_off';
+          return InkWell(
+            onTap: () => showManageUnpaidSheet(
+              context, ref,
+              propertyId: block.propertyId, unitId: unit.unitId,
+              month: '$year-${month.month.toString().padLeft(2, '0')}',
+              monthLabel: monthLabel,
+              paymentState: month.paymentState ?? 'outstanding',
+              reason: month.reason, billedAmount: month.billedAmount,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Icon(
+                    isWrittenOff ? Icons.block_outlined : Icons.error_outline,
+                    size: 16,
+                    color: isWrittenOff ? AppColors.textMuted : AppColors.sealRed,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('${unit.label} — $monthLabel', style: AppTextStyles.bodyMedium),
+                  ),
+                  Text(
+                    isWrittenOff ? 'Written off' : 'Outstanding',
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: isWrittenOff ? AppColors.textMuted : AppColors.sealRed,
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, size: 16, color: AppColors.textMuted),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 

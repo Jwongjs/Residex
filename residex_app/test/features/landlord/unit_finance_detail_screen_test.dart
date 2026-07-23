@@ -105,18 +105,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Mark Jan 2026 as no payment received'), findsOneWidget);
 
-    await tester.tap(find.text('Mark as unpaid'));
+    await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
     expect(captured, isNotNull);
     expect(captured!['propertyId'], 'p1');
     expect(captured!['unitId'], 'u1');
     expect(captured!['month'], '2026-01');
+    expect(captured!['state'], 'outstanding');
   });
 
-  testWidgets('tapping an unpaid month offers to clear the mark',
+  testWidgets('an outstanding month shows OUTSTANDING and offers write-off or clear',
       (tester) async {
     var cleared = false;
+    var wroteOff = false;
     final summary = FinanceSummary(
       year: 2026,
       totals: FinanceTotals(
@@ -132,7 +134,8 @@ void main() {
             UnitFinance(
               unitId: 'u1', label: 'Unit A', rentedMonths: 1, contribution: 0.0,
               months: [
-                MonthIncome(month: 1, source: 'unpaid', amount: 0.0, reason: 'tenant requested deferral'),
+                MonthIncome(month: 1, source: 'unpaid', amount: 0.0,
+                    reason: 'tenant requested deferral', paymentState: 'outstanding', billedAmount: 700.0),
               ],
             ),
           ],
@@ -151,11 +154,19 @@ void main() {
           }) async {
             cleared = true;
           }),
+          setPaymentExceptionActionProvider.overrideWithValue(({
+            required String propertyId,
+            required String month,
+            String? unitId,
+            String? reason,
+            String? state,
+          }) async {
+            wroteOff = state == 'written_off';
+          }),
         ],
         child: MaterialApp(
           home: UnitFinanceDetailScreen(
-            propertyId: 'p1',
-            propertyName: 'Ayer 8',
+            propertyId: 'p1', propertyName: 'Ayer 8',
             unit: UnitFinance(unitId: 'u1', label: 'Unit A', rentedMonths: 1, contribution: 0.0),
             year: 2026,
           ),
@@ -164,14 +175,84 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('UNPAID'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('is marked as no payment received'), findsOneWidget);
-    expect(find.text('tenant requested deferral'), findsOneWidget);
+    expect(find.text('OUTSTANDING'), findsOneWidget);
 
-    await tester.tap(find.text('Clear mark'));
+    await tester.tap(find.text('OUTSTANDING'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('is marked outstanding'), findsOneWidget);
+    expect(find.text('Mark as written off'), findsOneWidget);
+
+    await tester.tap(find.text('Mark as written off'));
+    await tester.pumpAndSettle();
+    expect(wroteOff, isTrue);
+  });
+
+  testWidgets('a written-off month shows WRITTEN OFF and offers a recovery flow',
+      (tester) async {
+    ({double amount, int receivedYear})? recorded;
+    final summary = FinanceSummary(
+      year: 2026,
+      totals: FinanceTotals(
+        receivedRent: 0.0, derivedRent: 0.0, directExpenses: 0.0,
+        netPl: 0.0, statutoryRentalIncome: 0.0,
+        statutoryNote: 'Estimate — for your tax agent',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8',
+          receivedRent: 0.0, derivedRent: 0.0, directExpenses: 0.0, rentalIncomeOrLoss: 0.0,
+          units: [
+            UnitFinance(
+              unitId: 'u1', label: 'Unit A', rentedMonths: 1, contribution: 0.0,
+              months: [
+                MonthIncome(month: 8, source: 'unpaid', amount: 0.0,
+                    paymentState: 'written_off', billedAmount: 3000.0),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2026]),
+          financeSummaryProvider.overrideWith((ref, year) async => summary),
+          recordRentRecoveryActionProvider.overrideWithValue(({
+            required String propertyId,
+            required String originalMonth,
+            required double amount,
+            required int receivedYear,
+            String? unitId,
+          }) async {
+            recorded = (amount: amount, receivedYear: receivedYear);
+          }),
+        ],
+        child: MaterialApp(
+          home: UnitFinanceDetailScreen(
+            propertyId: 'p1', propertyName: 'Ayer 8',
+            unit: UnitFinance(unitId: 'u1', label: 'Unit A', rentedMonths: 1, contribution: 0.0),
+            year: 2026,
+          ),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(cleared, isTrue);
+    expect(find.text('WRITTEN OFF'), findsOneWidget);
+
+    await tester.tap(find.text('WRITTEN OFF'));
+    await tester.pumpAndSettle();
+    expect(find.text('Record a recovery'), findsOneWidget);
+
+    await tester.tap(find.text('Record a recovery'));
+    await tester.pumpAndSettle();
+    expect(find.text('Amount received (RM)'), findsOneWidget);
+
+    await tester.tap(find.text('Record recovery'));
+    await tester.pumpAndSettle();
+
+    expect(recorded?.amount, 3000.0);
+    expect(recorded?.receivedYear, DateTime.now().year);
   });
 }

@@ -154,4 +154,55 @@ void main() {
     expect(clearedUnavailable!['year'], year);
     expect(clearedUnavailable!['category'], 'insurance');
   });
+
+  testWidgets('rent payment issues are reachable from the property block, not just the unit screen',
+      (tester) async {
+    var manageOpened = false;
+    final year = DateTime.now().year;
+    final summary = FinanceSummary(
+      year: year,
+      // receivedRent/directExpenses non-zero: FinanceScreen's isEmpty check
+      // treats an all-zero summary as "no financial documents" and never
+      // renders the property block (see _incompleteSummaryWithUnavailableGap
+      // above, which sidesteps the same gate).
+      totals: FinanceTotals(
+        receivedRent: 7700.0, derivedRent: 0.0, directExpenses: 0.0,
+        netPl: 7700.0, statutoryRentalIncome: 7700.0,
+        statutoryNote: 'Estimate — for your tax agent',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8',
+          receivedRent: 7700.0, derivedRent: 0.0, directExpenses: 0.0, rentalIncomeOrLoss: 7700.0,
+          units: [
+            UnitFinance(
+              unitId: 'u1', label: 'Unit A', rentedMonths: 11, contribution: 7700.0,
+              months: [
+                MonthIncome(month: 3, source: 'unpaid', amount: 0.0, paymentState: 'outstanding'),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [year]),
+          financeSummaryProvider.overrideWith((ref, y) async => summary),
+        ],
+        child: const MaterialApp(home: FinanceScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Rent payment issues'), findsOneWidget);
+    expect(find.textContaining('Unit A — Mar'), findsOneWidget);
+
+    await tester.ensureVisible(find.textContaining('Unit A — Mar'));
+    await tester.tap(find.textContaining('Unit A — Mar'));
+    await tester.pumpAndSettle();
+    manageOpened = find.textContaining('is marked outstanding').evaluate().isNotEmpty;
+    expect(manageOpened, isTrue);
+  });
 }

@@ -4,8 +4,8 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/finance_summary.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
-import '../../providers/documind_provider.dart';
 import '../../widgets/common/finance_year_picker.dart';
+import '../../widgets/common/rent_payment_sheets.dart';
 import '../2-Documind/document_viewer_screen.dart';
 import 'finance_screen.dart' show uploadDocumentForCategory;
 
@@ -150,14 +150,14 @@ class _UnitFinanceDetailScreenState
     );
   }
 
-  Color _sourceColor(String source) {
-    switch (source) {
+  Color _sourceColor(MonthIncome month) {
+    switch (month.source) {
       case 'actual':
         return AppColors.registry;
       case 'derived':
         return AppColors.catUpkeep;
       case 'unpaid':
-        return AppColors.sealRed;
+        return month.paymentState == 'written_off' ? AppColors.textMuted : AppColors.sealRed;
       default:
         return AppColors.hairline;
     }
@@ -168,7 +168,7 @@ class _UnitFinanceDetailScreenState
       spacing: 8,
       runSpacing: 8,
       children: unit.months.map((month) {
-        final color = _sourceColor(month.source);
+        final color = _sourceColor(month);
         return InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: month.source == 'vacant'
@@ -203,10 +203,10 @@ class _UnitFinanceDetailScreenState
                   month.source == 'vacant'
                       ? '—'
                       : month.source == 'unpaid'
-                          ? 'UNPAID'
+                          ? (month.paymentState == 'written_off' ? 'WRITTEN OFF' : 'OUTSTANDING')
                           : formatRM(month.amount),
                   style: AppTextStyles.bodySmall.copyWith(
-                    color: month.source == 'unpaid' ? AppColors.sealRed : null,
+                    color: month.source == 'unpaid' ? _sourceColor(month) : null,
                     fontWeight: month.source == 'unpaid' ? FontWeight.w600 : null,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -225,123 +225,19 @@ class _UnitFinanceDetailScreenState
       BuildContext context, WidgetRef ref, MonthIncome month) async {
     final monthLabel = '${monthAbbrev[month.month - 1]} $_displayedYear';
     if (month.source == 'unpaid') {
-      await _showClearUnpaidSheet(context, ref, month, monthLabel);
+      await showManageUnpaidSheet(
+        context, ref,
+        propertyId: widget.propertyId, unitId: widget.unit.unitId,
+        month: _monthKey(_displayedYear, month.month), monthLabel: monthLabel,
+        paymentState: month.paymentState ?? 'outstanding',
+        reason: month.reason, billedAmount: month.billedAmount,
+      );
     } else {
-      await _showMarkUnpaidSheet(context, ref, month, monthLabel);
-    }
-  }
-
-  Future<void> _showMarkUnpaidSheet(BuildContext context, WidgetRef ref,
-      MonthIncome month, String monthLabel) async {
-    final controller = TextEditingController();
-    try {
-      final confirmed = await showModalBottomSheet<bool>(
-        context: context,
-        backgroundColor: AppColors.paper,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        isScrollControlled: true,
-        builder: (sheetContext) => Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: 24 + MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Mark $monthLabel as no payment received',
-                  style: AppTextStyles.titleLarge),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                decoration:
-                    const InputDecoration(hintText: 'Reason (optional)'),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(sheetContext).pop(true),
-                  child: const Text('Mark as unpaid'),
-                ),
-              ),
-            ],
-          ),
-        ),
+      await showMarkUnpaidSheet(
+        context, ref,
+        propertyId: widget.propertyId, unitId: widget.unit.unitId,
+        month: _monthKey(_displayedYear, month.month), monthLabel: monthLabel,
       );
-      if (confirmed != true || !context.mounted) return;
-      final action = ref.read(setPaymentExceptionActionProvider);
-      try {
-        await action(
-          propertyId: widget.propertyId,
-          unitId: widget.unit.unitId,
-          month: _monthKey(_displayedYear, month.month),
-          reason:
-              controller.text.trim().isEmpty ? null : controller.text.trim(),
-        );
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to mark month: $e')));
-        }
-      }
-    } finally {
-      controller.dispose();
-    }
-  }
-
-  Future<void> _showClearUnpaidSheet(BuildContext context, WidgetRef ref,
-      MonthIncome month, String monthLabel) async {
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: AppColors.paper,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('$monthLabel is marked as no payment received',
-                  style: AppTextStyles.titleLarge),
-              if (month.reason != null && month.reason!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(month.reason!, style: AppTextStyles.bodyMedium),
-              ],
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.of(sheetContext).pop(true),
-                  child: const Text('Clear mark'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-    final action = ref.read(clearPaymentExceptionActionProvider);
-    try {
-      await action(
-        propertyId: widget.propertyId,
-        unitId: widget.unit.unitId,
-        month: _monthKey(_displayedYear, month.month),
-      );
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed to clear mark: $e')));
-      }
     }
   }
 
@@ -363,7 +259,8 @@ class _UnitFinanceDetailScreenState
       children: [
         item(AppColors.registry, 'Invoiced'),
         item(AppColors.catUpkeep, 'From lease terms'),
-        item(AppColors.sealRed, 'Unpaid'),
+        item(AppColors.sealRed, 'Outstanding'),
+        item(AppColors.textMuted, 'Written off'),
         item(AppColors.hairline, 'No record'),
       ],
     );
