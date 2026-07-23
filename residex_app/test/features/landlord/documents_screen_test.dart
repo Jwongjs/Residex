@@ -240,7 +240,10 @@ void main() {
       uploadedAt: DateTime(2026, 2, 1),
       tags: const [DocumentTag(tag: 'maintenance', rhythm: 'periodic')],
     );
-    final enabledProperty = testProperty.copyWith(foldersEnabled: true);
+    final enabledProperty = testProperty.copyWith(
+      foldersEnabled: true,
+      folderNames: const {'insurance_premium': 'Fire policy'},
+    );
     final fakeRepo = _FakePropertyRepository(enabledProperty);
 
     await tester.pumpWidget(ProviderScope(
@@ -268,6 +271,8 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
+    // Verify both the new rename landed and the pre-existing entry survived (merge, not clobber).
     expect(fakeRepo.lastUpdated?.folderNames['maintenance'], 'Strata bills');
+    expect(fakeRepo.lastUpdated?.folderNames['insurance_premium'], 'Fire policy');
   });
 }
