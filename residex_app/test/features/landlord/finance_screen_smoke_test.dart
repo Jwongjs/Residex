@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
+import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
 import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/3-Finance/finance_screen.dart';
 
@@ -101,11 +102,27 @@ void main() {
 
   testWidgets('incomplete year shows "so far" and an unavailable gap offers Undo', (tester) async {
     final year = DateTime.now().year;
+    Map<String, dynamic>? markedUnavailable;
+    Map<String, dynamic>? clearedUnavailable;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           financeYearsProvider.overrideWith((ref) async => [year]),
           financeSummaryProvider.overrideWith((ref, y) async => _incompleteSummaryWithUnavailableGap(y)),
+          setDocumentUnavailableActionProvider.overrideWithValue(({
+            required String propertyId,
+            required int year,
+            required String category,
+          }) async {
+            markedUnavailable = {'propertyId': propertyId, 'year': year, 'category': category};
+          }),
+          clearDocumentUnavailableActionProvider.overrideWithValue(({
+            required String propertyId,
+            required int year,
+            required String category,
+          }) async {
+            clearedUnavailable = {'propertyId': propertyId, 'year': year, 'category': category};
+          }),
         ],
         child: const MaterialApp(home: FinanceScreen()),
       ),
@@ -116,5 +133,25 @@ void main() {
     expect(find.textContaining('acknowledged unavailable'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
     expect(find.text('Mark unavailable'), findsWidgets);
+
+    await tester.ensureVisible(find.text('Mark unavailable').first);
+    await tester.tap(find.text('Mark unavailable').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Mark unavailable'));
+    await tester.pumpAndSettle();
+
+    expect(markedUnavailable, isNotNull);
+    expect(markedUnavailable!['propertyId'], 'p1');
+    expect(markedUnavailable!['year'], year);
+    expect(markedUnavailable!['category'], 'loan');
+
+    await tester.ensureVisible(find.text('Undo'));
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+
+    expect(clearedUnavailable, isNotNull);
+    expect(clearedUnavailable!['propertyId'], 'p1');
+    expect(clearedUnavailable!['year'], year);
+    expect(clearedUnavailable!['category'], 'insurance');
   });
 }
