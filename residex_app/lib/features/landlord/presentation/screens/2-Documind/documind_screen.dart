@@ -12,6 +12,7 @@ import '../../../domain/entities/documind_document.dart';
 import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
+import '../../widgets/common/utilities_liability_confirm_sheet.dart';
 import '../../widgets/common/records_grid.dart';
 import '../../widgets/common/upload_source_sheet.dart';
 import 'documind_chat_logic.dart';
@@ -1183,6 +1184,14 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
               for (final line in lines)
                 if (line is Map) Map<String, dynamic>.from(line),
             ],
+          );
+        }
+        if (mounted) {
+          await maybeShowUtilitiesLiabilityConfirm(
+            context, ref,
+            propertyId: _selectedPropertyId!,
+            category: category,
+            extractedFacts: uploaded.extractedFacts,
           );
         }
       }

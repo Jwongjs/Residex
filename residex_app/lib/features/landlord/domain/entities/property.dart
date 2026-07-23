@@ -129,8 +129,9 @@ class Property {
   final int? trackFromYear;
 
   /// 'tenant' (default) | 'landlord' — whether utility lines on a bundled
-  /// statement are deductible. Set later by Stage D's confirm-once flow;
-  /// no registration-wizard UI for this field yet.
+  /// statement are deductible. Set by the tenancy agreement's confirm-once
+  /// prompt (utilities_liability_confirm_sheet.dart) after the landlord
+  /// confirms what the extracted clause says; never written automatically.
   final String utilitiesPaidBy;
 
   /// 0 = nothing to resume (legacy property, or setup fully finished).

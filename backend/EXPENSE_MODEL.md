@@ -225,6 +225,11 @@ gate on year completeness, and the three-state rent model with recovery are
 all live in the engine. Registration/backfill UI, the Documents tab, and
 tags/folders (Stages C–F) are pending.
 
+Stage D is complete: the tenancy agreement's utilities-liability clause is
+extracted with a verbatim quote, and `utilities_paid_by` is set only after
+the landlord confirms the pre-filled answer once — never from an
+unconfirmed extraction.
+
 ---
 
 ## Implementation surface (planned)

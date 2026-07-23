@@ -7,6 +7,7 @@ import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
+import '../../widgets/common/utilities_liability_confirm_sheet.dart';
 import '../../widgets/common/upload_source_sheet.dart';
 import '../../widgets/common/finance_ledger_strip.dart';
 import '../../widgets/common/finance_year_picker.dart';
@@ -55,6 +56,14 @@ Future<void> uploadDocumentForCategory(
             for (final line in lines)
               if (line is Map) Map<String, dynamic>.from(line),
           ],
+        );
+      }
+      if (context.mounted) {
+        await maybeShowUtilitiesLiabilityConfirm(
+          context, ref,
+          propertyId: propertyId,
+          category: category,
+          extractedFacts: uploaded.extractedFacts,
         );
       }
     }
