@@ -445,6 +445,42 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     );
   }
 
+  Future<void> _moveDocument(
+    DocuMindDocument doc, List<DocuMindDocument> allCategoryDocs, Property property,
+  ) async {
+    final clusters = clusterIntoFolders(allCategoryDocs, manualMoves: property.folderMoves);
+    final currentKey = clusters.entries
+        .firstWhere((e) => e.value.any((d) => d.docId == doc.docId))
+        .key;
+    final targets = {...clusters.keys, untaggedFolderKey}..remove(currentKey);
+    final sortedTargets = targets.toList()
+      ..sort((a, b) => folderDisplayName(a, property.folderNames)
+          .compareTo(folderDisplayName(b, property.folderNames)));
+
+    if (!mounted) return;
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Move to folder', style: AppTextStyles.titleMedium),
+        children: [
+          for (final key in sortedTargets)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, key),
+              child: Text(folderDisplayName(key, property.folderNames)),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null || !mounted) return;
+
+    final propertyController = ref.read(propertyControllerProvider);
+    await propertyController.updateProperty(
+      property.copyWith(folderMoves: {...property.folderMoves, doc.docId: chosen}),
+    );
+  }
+
   Widget _buildFolderGrid(List<DocuMindDocument> docs, Property property) {
     final clusters = clusterIntoFolders(docs, manualMoves: property.folderMoves);
     final keys = clusters.keys.toList()
@@ -508,7 +544,10 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
         ));
         lastPeriod = period;
       }
-      items.add(_buildDocumentTile(doc, _selectedCategory!));
+      items.add(_buildDocumentTile(
+        doc, _selectedCategory!,
+        onMove: () => _moveDocument(doc, docs, property),
+      ));
     }
 
     return Column(
@@ -812,7 +851,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     );
   }
 
-  Widget _buildDocumentTile(DocuMindDocument doc, String category) {
+  Widget _buildDocumentTile(DocuMindDocument doc, String category, {VoidCallback? onMove}) {
     final displayUnitLabel = resolveUnitLabel(
       unitId: doc.unitId,
       storedLabel: doc.unitLabel,
@@ -1007,6 +1046,12 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
               ],
             ),
           ),
+          if (onMove != null)
+            IconButton(
+              onPressed: onMove,
+              icon: Icon(Icons.drive_file_move_outline, color: AppColors.textMuted, size: 20),
+              tooltip: 'Move to folder',
+            ),
           IconButton(
             onPressed: () => _deleteDocument(doc),
             icon: Icon(

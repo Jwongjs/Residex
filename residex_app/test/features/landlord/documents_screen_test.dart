@@ -275,4 +275,51 @@ void main() {
     expect(fakeRepo.lastUpdated?.folderNames['maintenance'], 'Strata bills');
     expect(fakeRepo.lastUpdated?.folderNames['insurance_premium'], 'Fire policy');
   });
+
+  testWidgets('moving a document persists a sticky folderMoves override', (tester) async {
+    final feb = DocuMindDocument(
+      docId: 'feb', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'expenses', filename: 'feb.pdf', chunksIndexed: 1,
+      uploadedAt: DateTime(2026, 2, 1),
+      tags: const [DocumentTag(tag: 'maintenance', rhythm: 'periodic')],
+    );
+    final fire = DocuMindDocument(
+      docId: 'fire', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'insurance', filename: 'fire.pdf', chunksIndexed: 1,
+      uploadedAt: DateTime(2026, 3, 1),
+      tags: const [DocumentTag(tag: 'insurance_premium', rhythm: 'one_off')],
+    );
+    final enabledProperty = testProperty.copyWith(
+      foldersEnabled: true,
+      folderMoves: const {'unrelated-doc': 'insurance_premium'},
+    );
+    final fakeRepo = _FakePropertyRepository(enabledProperty);
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([enabledProperty])),
+        documindDocumentsProvider.overrideWith((ref, propertyId) async => [feb, fire]),
+        propertyRepositoryProvider.overrideWithValue(fakeRepo),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    // Scroll down to find the Expenses card (same as the other folder tests above).
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Expenses'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Maintenance fees'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Move to folder'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Insurance premium').last);
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated?.folderMoves['feb'], 'insurance_premium');
+    expect(fakeRepo.lastUpdated?.folderMoves['unrelated-doc'], 'insurance_premium');
+  });
 }
