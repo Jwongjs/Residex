@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from rag.fact_extractor import (
     EXPENSE_SUBTYPE_CATEGORY,
+    EXPENSE_SUBTYPE_RHYTHM,
     LANDLORD_BORNE_SUBTYPES,
     NEVER_DEDUCTIBLE_SUBTYPES,
     RENEWAL_ONLY_SUBTYPES,
@@ -384,6 +385,40 @@ _EXPENSE_TAX_SUBTYPE = {
     "quit_rent": "quit_rent",
     "parcel_rent": "parcel_rent",
 }
+
+# Typed single-subtype documents (not a bundled 'expenses' statement) whose
+# own subtype maps onto the same tag vocabulary as expense_lines.
+_TAX_SUBTYPE_TAG = {v: k for k, v in _EXPENSE_TAX_SUBTYPE.items()}
+_LOAN_SUBTYPE_TAG = {"interest_statement": "loan_interest"}  # 'agreement' carries no expense tag
+_CATEGORY_FIXED_TAG = {"maintenance": "maintenance", "insurance": "insurance_premium", "upkeep": "upkeep"}
+
+
+def document_tags(category: str, facts: Optional[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Sub-category tags for one document (design spec §9) — derived at read
+    time from extracted_facts, never stored. Each tag carries its clustering
+    rhythm so callers never need their own copy of which tags are periodic."""
+    facts = facts or {}
+    names: List[str] = []
+    if category == "expenses":
+        seen: Set[str] = set()
+        for item in (facts.get("expense_lines") or []):
+            if not isinstance(item, dict):
+                continue
+            subtype = item.get("subtype")
+            if subtype in EXPENSE_SUBTYPE_CATEGORY and subtype not in seen:
+                seen.add(subtype)
+                names.append(subtype)
+    elif category == "tax":
+        tag = _TAX_SUBTYPE_TAG.get(facts.get("subtype"))
+        if tag:
+            names.append(tag)
+    elif category == "loan":
+        tag = _LOAN_SUBTYPE_TAG.get(facts.get("subtype"))
+        if tag:
+            names.append(tag)
+    elif category in _CATEGORY_FIXED_TAG:
+        names.append(_CATEGORY_FIXED_TAG[category])
+    return [{"tag": name, "rhythm": EXPENSE_SUBTYPE_RHYTHM[name]} for name in names]
 
 
 def _month_span(start: Tuple[int, int], end: Tuple[int, int]):

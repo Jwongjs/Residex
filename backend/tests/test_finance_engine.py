@@ -1307,3 +1307,74 @@ class ExpectedRecordCategoriesTests(unittest.TestCase):
         self.assertIn("tax", categories)
         self.assertNotIn("assessment", categories)
         self.assertNotIn("quit_rent", categories)
+
+
+from rag.finance_engine import document_tags
+from rag.fact_extractor import EXPENSE_SUBTYPE_CATEGORY, EXPENSE_SUBTYPE_RHYTHM
+
+
+class DocumentTagTests(unittest.TestCase):
+    def test_every_expense_subtype_has_exactly_one_rhythm(self):
+        self.assertEqual(set(EXPENSE_SUBTYPE_CATEGORY), set(EXPENSE_SUBTYPE_RHYTHM))
+        self.assertEqual(set(EXPENSE_SUBTYPE_RHYTHM.values()), {"periodic", "one_off", "ad_hoc"})
+
+    def test_expenses_category_returns_unique_subtypes_with_rhythm(self):
+        facts = {"expense_lines": [
+            {"subtype": "maintenance", "amount": 100.0},
+            {"subtype": "sinking_fund", "amount": 20.0},
+            {"subtype": "quit_rent", "amount": 50.0},
+        ]}
+        tags = document_tags("expenses", facts)
+        self.assertEqual(
+            {(t["tag"], t["rhythm"]) for t in tags},
+            {("maintenance", "periodic"), ("sinking_fund", "periodic"), ("quit_rent", "one_off")},
+        )
+
+    def test_expenses_category_dedupes_repeated_subtype(self):
+        facts = {"expense_lines": [
+            {"subtype": "maintenance", "amount": 100.0, "period_year": 2025},
+            {"subtype": "maintenance", "amount": 100.0, "period_year": 2025},
+        ]}
+        tags = document_tags("expenses", facts)
+        self.assertEqual(len(tags), 1)
+
+    def test_tax_category_maps_assessment_subtype_to_assessment_tax_tag(self):
+        tags = document_tags("tax", {"subtype": "assessment", "amount": 460.0})
+        self.assertEqual(tags, [{"tag": "assessment_tax", "rhythm": "one_off"}])
+
+    def test_tax_category_quit_rent_and_parcel_rent_map_directly(self):
+        self.assertEqual(
+            document_tags("tax", {"subtype": "quit_rent"}),
+            [{"tag": "quit_rent", "rhythm": "one_off"}],
+        )
+        self.assertEqual(
+            document_tags("tax", {"subtype": "parcel_rent"}),
+            [{"tag": "parcel_rent", "rhythm": "one_off"}],
+        )
+
+    def test_tax_category_unknown_subtype_returns_no_tags(self):
+        self.assertEqual(document_tags("tax", {"amount": 100.0}), [])
+
+    def test_loan_category_interest_statement_maps_to_loan_interest(self):
+        tags = document_tags("loan", {"subtype": "interest_statement", "interest_paid": 1000.0})
+        self.assertEqual(tags, [{"tag": "loan_interest", "rhythm": "one_off"}])
+
+    def test_loan_category_agreement_subtype_returns_no_tags(self):
+        self.assertEqual(document_tags("loan", {"subtype": "agreement"}), [])
+
+    def test_fixed_single_subtype_categories(self):
+        self.assertEqual(document_tags("maintenance", {"amount": 300.0}),
+                          [{"tag": "maintenance", "rhythm": "periodic"}])
+        self.assertEqual(document_tags("insurance", {"premium": 500.0}),
+                          [{"tag": "insurance_premium", "rhythm": "one_off"}])
+        self.assertEqual(document_tags("upkeep", {"amount": 80.0}),
+                          [{"tag": "upkeep", "rhythm": "ad_hoc"}])
+
+    def test_untagged_categories_return_no_tags(self):
+        self.assertEqual(document_tags("other", {"amount": 1.0}), [])
+        self.assertEqual(document_tags("lease", {"monthly_rent": 1500.0}), [])
+        self.assertEqual(document_tags("rental_invoice", {"amount": 1500.0}), [])
+
+    def test_no_facts_returns_no_tags(self):
+        self.assertEqual(document_tags("expenses", None), [])
+        self.assertEqual(document_tags("tax", None), [])

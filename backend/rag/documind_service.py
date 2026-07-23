@@ -37,7 +37,7 @@ from rag.pii_scrub import scrub_for_hosted
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
 from rag.retriever import HybridRetriever
-from rag.finance_engine import compute_finance_summary
+from rag.finance_engine import compute_finance_summary, document_tags
 
 EMBED_DIM = 768 # Default to 768 if not set
 OCR_TEXT_THRESHOLD = 200  # chars; below this a PDF is treated as scanned
@@ -1430,11 +1430,12 @@ Rules:
             elif hasattr(uploaded_at, 'to_pydantic'):
                 uploaded_at = uploaded_at.to_pydantic()
 
+            category = normalize_category(data.get('category'))
             documents.append(DocumentInfo(
                 doc_id=doc.id,
                 landlord_id=data.get('landlord_id'),
                 property_id=data.get('property_id'),
-                category=normalize_category(data.get('category')),
+                category=category,
                 filename=data.get('filename'),
                 uploaded_at=uploaded_at,
                 chunks_indexed=data.get('chunks_indexed'),
@@ -1443,6 +1444,7 @@ Rules:
                 unit_label=data.get('unit_label'),
                 extracted_facts=data.get('extracted_facts'),
                 facts_confidence=data.get('facts_confidence'),
+                tags=[DocumentTag(**t) for t in document_tags(category, data.get('extracted_facts'))],
             ))
         
         print(f"✅ Listed {len(documents)} documents")

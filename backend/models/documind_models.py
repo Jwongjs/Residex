@@ -117,6 +117,14 @@ class AskResponse(BaseModel):
     )
 
 
+class DocumentTag(BaseModel):
+    """One derived sub-category tag (design spec §9) — recomputed at read
+    time, never stored. rhythm drives folder clustering: 'periodic' tags
+    define a folder's identity, 'one_off' and 'ad_hoc' tags ride along."""
+    tag: str
+    rhythm: str  # 'periodic' | 'one_off' | 'ad_hoc'
+
+
 class DocumentInfo(BaseModel):
     """Metadata for a single document"""
     doc_id: str
@@ -131,6 +139,7 @@ class DocumentInfo(BaseModel):
     unit_label: str | None = None  # Denormalized label for display
     extracted_facts: Optional[dict] = None
     facts_confidence: Optional[float] = None
+    tags: list[DocumentTag] = []
 
 
 class DocListResponse(BaseModel):

@@ -161,6 +161,38 @@ RENEWAL_ONLY_SUBTYPES = {
     "agent_commission", "legal_fee", "stamp_duty", "advertising",
 }
 
+# Document-organization rhythm (design spec §9): which tags define a folder's
+# identity (periodic), which merely ride along without ever splitting a folder
+# (one_off), and which form their own folder only when they appear alone
+# (ad_hoc). sst, late_penalty and loan_principal are not itemised in the
+# spec's table — classified one_off because each always accompanies a real
+# charge (the fee SST taxes, the bill a late penalty is charged against, the
+# interest a principal portion amortises beside) and none is ever the sole
+# line on a bill.
+EXPENSE_SUBTYPE_RHYTHM: Dict[str, str] = {
+    "maintenance": "periodic",
+    "sinking_fund": "periodic",
+    "utilities": "periodic",
+    "management_fee": "periodic",
+    "security_fee": "periodic",
+    "rent_collection": "periodic",
+    "insurance_premium": "one_off",
+    "quit_rent": "one_off",
+    "parcel_rent": "one_off",
+    "assessment_tax": "one_off",
+    "loan_interest": "one_off",
+    "stamp_duty": "one_off",
+    "agent_commission": "one_off",
+    "legal_fee": "one_off",
+    "advertising": "one_off",
+    "sst": "one_off",
+    "late_penalty": "one_off",
+    "loan_principal": "one_off",
+    "upkeep": "ad_hoc",
+    "pest_control": "ad_hoc",
+    "renovation": "ad_hoc",
+}
+
 # Classification is a lookup against this table, not model judgment — the
 # Malay/English wording landlords actually see on Malaysian bills.
 _EXPENSE_SYNONYMS = (

@@ -1493,6 +1493,22 @@ class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(by_id["d2"].extracted_facts)
         self.assertIsNone(by_id["d2"].facts_confidence)
 
+    async def test_list_documents_computes_sub_category_tags(self):
+        fake_db = _FakeDB(docs=[{
+            "doc_id": "d1", "landlord_id": "l1", "property_id": "p1",
+            "category": "tax", "filename": "quitrent.pdf", "chunks_indexed": 1,
+            "file_size": 50, "uploaded_at": datetime(2026, 1, 1),
+            "extracted_facts": {"amount": 460.63, "period_year": 2026, "subtype": "quit_rent"},
+            "facts_confidence": 0.9,
+        }])
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        response = await service.list_documents("l1", "p1")
+        self.assertEqual(len(response.documents[0].tags), 1)
+        self.assertEqual(response.documents[0].tags[0].tag, "quit_rent")
+        self.assertEqual(response.documents[0].tags[0].rhythm, "one_off")
+
 
 class OcrIngestTests(unittest.IsolatedAsyncioTestCase):
     def _upload_file(self):
