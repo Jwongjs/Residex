@@ -38,6 +38,25 @@ const Map<String, String> coverageLabels = {
   'land_office_tax': 'Land-office tax (quit or parcel rent)',
 };
 
+/// Maps a coverage-report category code to the raw tax-subtype display
+/// labels (`InstallmentGap.label`) that could produce a partial-installment
+/// gap for it. Composite/fallback categories (a strata `land_office_tax`
+/// slot, or the profile-less generic `tax` bucket) can be satisfied by more
+/// than one raw subtype — matching only the composite's own display text
+/// would silently miscount a real installment gap, since the backend never
+/// emits a `land_office_tax`-labeled gap (only 'Assessment tax' / 'Quit
+/// rent' / 'Parcel rent' / the 'Property tax' fallback, per `_TAX_LABELS`
+/// in `finance_engine.py`). Shared by `recordCellFor` (records_grid.dart)
+/// and `yearCompleteness` below — both need the identical match, not two
+/// independently-maintained copies of it.
+const Map<String, Set<String>> installmentLabelsForCategory = {
+  'assessment': {'Assessment tax'},
+  'quit_rent': {'Quit rent'},
+  'parcel_rent': {'Parcel rent'},
+  'land_office_tax': {'Quit rent', 'Parcel rent'},
+  'tax': {'Assessment tax', 'Quit rent', 'Parcel rent', 'Property tax'},
+};
+
 /// A coverage-report label (e.g. 'quit_rent', 'land_office_tax') is not
 /// itself a valid upload category — typed tax documents are uploaded as
 /// 'tax' and the extractor reads the subtype off the bill. This maps a
@@ -85,8 +104,8 @@ YearCoverage? yearCoverageFor(List<YearCoverage> coverage, int year) {
       }
       continue;
     }
-    final label = coverageLabels[category] ?? category;
-    final gap = coverage.partialInstallments.where((g) => g.label == label);
+    final matchLabels = installmentLabelsForCategory[category] ?? {coverageLabels[category] ?? category};
+    final gap = coverage.partialInstallments.where((g) => matchLabels.contains(g.label));
     if (gap.isNotEmpty) {
       expect += gap.first.expect;
       have += gap.first.have;

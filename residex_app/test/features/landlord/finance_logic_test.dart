@@ -70,4 +70,25 @@ void main() {
     final result = yearCompleteness(coverage, ['insurance']);
     expect(result, (have: 1, expect: 1));
   });
+
+  test('yearCompleteness counts a strata land_office_tax installment gap correctly', () {
+    // The backend only ever labels a gap 'Quit rent'/'Parcel rent' — never
+    // the composite 'land_office_tax' display text. A landed-only match
+    // would silently read this as 1/1 (fully present) instead of 1/2.
+    final coverage = YearCoverage(
+      year: 2025,
+      partialInstallments: [InstallmentGap(label: 'Quit rent', have: 1, expect: 2)],
+    );
+    final result = yearCompleteness(coverage, ['land_office_tax']);
+    expect(result, (have: 1, expect: 2));
+  });
+
+  test('yearCompleteness counts the generic tax fallback installment gap correctly', () {
+    final coverage = YearCoverage(
+      year: 2025,
+      partialInstallments: [InstallmentGap(label: 'Property tax', have: 1, expect: 2)],
+    );
+    final result = yearCompleteness(coverage, ['tax']);
+    expect(result, (have: 1, expect: 2));
+  });
 }
