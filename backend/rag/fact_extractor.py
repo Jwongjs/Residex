@@ -273,6 +273,10 @@ class FactExtractor:
             return None
 
         facts = self._parse(category, fields, content)
+        if category == "lease":
+            clause_facts = self._extract_utilities_liability(cleaned[:MAX_INPUT_CHARS])
+            if clause_facts:
+                facts.update(clause_facts)
         if not [key for key in facts if key != "confidence"]:
             return None
         return facts
@@ -360,6 +364,68 @@ Respond with ONLY a JSON object, no markdown fences, shaped exactly like:
             facts["confidence"] = max(0.0, min(1.0, float(payload.get("confidence"))))
         except (TypeError, ValueError):
             pass
+        return facts
+
+    def _extract_utilities_liability(self, text: str) -> Optional[Dict[str, Any]]:
+        """Reads the tenancy agreement's utilities clause, quoting the exact
+        text that supports the answer (spec §8). A second, independent LLM
+        call kept separate from the semicolon-parsed lease fields above,
+        because a verbatim clause quote can itself contain a semicolon,
+        which would corrupt that format. Returns None unless BOTH a valid
+        liability value AND a supporting quote are found -- the confirm-once
+        prompt has nothing to show otherwise, and utilities_paid_by must
+        never be set from an unconfirmed extraction. Best-effort: any
+        failure here is non-blocking and never raises."""
+        prompt = f"""
+You are reading a Malaysian tenancy agreement to find the clause that says
+who is liable for utilities (electricity, water, sewerage) at the rented
+property.
+
+Document text (may be truncated):
+{text}
+
+Find the clause assigning utilities liability to the tenant or the landlord.
+Respond with ONLY a JSON object, no markdown fences, shaped exactly like:
+{{"utilities_liability": "tenant", "clause_ref": "Clause 5.2",
+ "quote": "the exact clause text, copied verbatim", "confidence": 0.9}}
+
+Rules:
+- utilities_liability must be exactly "tenant" or "landlord". If the clause
+  is not clearly present, respond with {{}} -- NEVER guess.
+- quote must be copied verbatim from the document text above, not paraphrased.
+- clause_ref is the clause number or heading as printed (e.g. "Clause 5.2" or
+  "Payment of Utilities"). Omit it if the document has no clause numbering.
+""".strip()
+        try:
+            response = self._llm.invoke(prompt)
+            content = str(response.content).strip()
+        except Exception as e:
+            print(f"Utilities-clause extraction LLM call failed: {e}")
+            return None
+
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        try:
+            payload = json.loads(content[start:end + 1])
+        except ValueError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        liability = str(payload.get("utilities_liability") or "").strip().lower()
+        quote = str(payload.get("quote") or "").strip()
+        if liability not in ("tenant", "landlord") or not quote:
+            return None
+
+        facts: Dict[str, Any] = {
+            "utilities_liability": liability,
+            "utilities_clause_quote": quote[:500],
+        }
+        clause_ref = str(payload.get("clause_ref") or "").strip()
+        if clause_ref:
+            facts["utilities_clause_ref"] = clause_ref[:60]
         return facts
 
     def _parse(self, category: str, fields: Dict[str, str], content: str) -> Dict[str, Any]:

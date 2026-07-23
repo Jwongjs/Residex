@@ -103,6 +103,116 @@ class FactExtractorTests(unittest.TestCase):
         self.assertLess(len(llm.last_prompt), 12000)
 
 
+class _SequenceLLM:
+    """Returns a different canned response per successive invoke() call,
+    holding the last content once the sequence is exhausted. Needed once a
+    single extract() call can trigger more than one LLM invocation."""
+
+    def __init__(self, contents):
+        self._contents = list(contents)
+        self.invocations = 0
+        self.prompts = []
+
+    def invoke(self, prompt):
+        self.prompts.append(prompt)
+        index = min(self.invocations, len(self._contents) - 1)
+        self.invocations += 1
+        return _LLMResponse(self._contents[index])
+
+
+class _FirstThenRaisingLLM:
+    """First invoke() succeeds; every call after that raises. Simulates the
+    clause-extraction call failing independently of the primary one."""
+
+    def __init__(self, first_content):
+        self._first_content = first_content
+        self.invocations = 0
+
+    def invoke(self, prompt):
+        self.invocations += 1
+        if self.invocations == 1:
+            return _LLMResponse(self._first_content)
+        raise RuntimeError("boom")
+
+
+class UtilitiesLiabilityExtractionTests(unittest.TestCase):
+    _LEASE_FIELDS = "monthly_rent=1500;lease_start=2025-09-01;confidence=0.9"
+
+    def test_lease_extraction_makes_two_llm_calls(self):
+        llm = _SequenceLLM([self._LEASE_FIELDS, "{}"])
+        FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertEqual(llm.invocations, 2)
+
+    def test_non_lease_category_makes_only_one_llm_call(self):
+        llm = _SequenceLLM(["amount=100;confidence=0.9"])
+        FactExtractor(llm).extract("tax", "CUKAI TAKSIRAN bill ...")
+        self.assertEqual(llm.invocations, 1)
+
+    def test_utilities_clause_with_quote_and_ref_is_captured(self):
+        clause_json = (
+            '{"utilities_liability": "tenant", "clause_ref": "Clause 5.2", '
+            '"quote": "To pay all charges due and incurred in respect of '
+            'electricity, water and all other utilities supplied to the '
+            'Said Premises.", "confidence": 0.9}'
+        )
+        llm = _SequenceLLM([self._LEASE_FIELDS, clause_json])
+        facts = FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertEqual(facts["utilities_liability"], "tenant")
+        self.assertEqual(facts["utilities_clause_ref"], "Clause 5.2")
+        self.assertTrue(facts["utilities_clause_quote"].startswith("To pay all charges"))
+        # Existing lease fields are untouched by the merge.
+        self.assertEqual(facts["monthly_rent"], 1500.0)
+        self.assertEqual(facts["lease_start"], "2025-09-01")
+
+    def test_utilities_clause_without_quote_is_dropped(self):
+        clause_json = '{"utilities_liability": "tenant", "clause_ref": "Clause 5.2"}'
+        llm = _SequenceLLM([self._LEASE_FIELDS, clause_json])
+        facts = FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertNotIn("utilities_liability", facts)
+        self.assertNotIn("utilities_clause_quote", facts)
+        self.assertNotIn("utilities_clause_ref", facts)
+
+    def test_utilities_clause_invalid_liability_value_is_dropped(self):
+        clause_json = '{"utilities_liability": "unclear", "quote": "some text"}'
+        llm = _SequenceLLM([self._LEASE_FIELDS, clause_json])
+        facts = FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertNotIn("utilities_liability", facts)
+
+    def test_utilities_clause_empty_response_is_dropped(self):
+        llm = _SequenceLLM([self._LEASE_FIELDS, "{}"])
+        facts = FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertNotIn("utilities_liability", facts)
+        self.assertEqual(facts["monthly_rent"], 1500.0)  # primary fields unaffected
+
+    def test_utilities_clause_bad_json_is_dropped(self):
+        llm = _SequenceLLM([self._LEASE_FIELDS, "not json at all"])
+        facts = FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertNotIn("utilities_liability", facts)
+        self.assertEqual(facts["monthly_rent"], 1500.0)
+
+    def test_utilities_clause_quote_truncated_to_500_chars(self):
+        long_quote = "x" * 600
+        clause_json = f'{{"utilities_liability": "landlord", "quote": "{long_quote}"}}'
+        llm = _SequenceLLM([self._LEASE_FIELDS, clause_json])
+        facts = FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertEqual(len(facts["utilities_clause_quote"]), 500)
+
+    def test_utilities_clause_llm_exception_is_non_blocking(self):
+        llm = _FirstThenRaisingLLM(self._LEASE_FIELDS)
+        facts = FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertEqual(facts["monthly_rent"], 1500.0)
+        self.assertNotIn("utilities_liability", facts)
+
+    def test_only_utilities_clause_found_still_returns_facts(self):
+        # Primary field extraction finds nothing in this document, but the
+        # clause is present -- the facts dict must not be discarded.
+        clause_json = '{"utilities_liability": "tenant", "quote": "Tenant pays all utilities."}'
+        llm = _SequenceLLM(["I could not find any lease fields.", clause_json])
+        facts = FactExtractor(llm).extract("lease", "TENANCY AGREEMENT ...")
+        self.assertEqual(facts["utilities_liability"], "tenant")
+        self.assertNotIn("monthly_rent", facts)
+
+
 class _FakeExpensesLlm:
     def __init__(self, content):
         self._content = content
