@@ -93,6 +93,37 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     );
   }
 
+  Future<void> _renameFolder(String folderKey, Property property) async {
+    final controller = TextEditingController(
+      text: folderDisplayName(folderKey, property.folderNames),
+    );
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Rename folder', style: AppTextStyles.titleMedium),
+        content: TextField(controller: controller, autofocus: true),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: Text('Save', style: AppTextStyles.labelLarge.copyWith(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (newName == null || newName.isEmpty || !mounted) return;
+
+    final propertyController = ref.read(propertyControllerProvider);
+    await propertyController.updateProperty(
+      property.copyWith(folderNames: {...property.folderNames, folderKey: newName}),
+    );
+  }
+
   Widget _buildMainUI(List<Property> properties) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -484,19 +515,31 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => setState(() => _selectedFolderKey = null),
-              icon: Icon(Icons.chevron_left_rounded, color: AppColors.primaryCyan),
-              label: Text(
-                folderDisplayName(key, property.folderNames),
-                style: AppTextStyles.bodySmall.copyWith(
-                  color: AppColors.primaryCyan,
-                  fontWeight: FontWeight.w600,
+          child: Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _selectedFolderKey = null),
+                    icon: Icon(Icons.chevron_left_rounded, color: AppColors.primaryCyan),
+                    label: Text(
+                      folderDisplayName(key, property.folderNames),
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.primaryCyan,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              IconButton(
+                onPressed: () => _renameFolder(key, property),
+                icon: Icon(Icons.edit_outlined, size: 18, color: AppColors.textMuted),
+                tooltip: 'Rename folder',
+              ),
+            ],
           ),
         ),
         Expanded(

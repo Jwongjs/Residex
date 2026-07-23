@@ -232,4 +232,42 @@ void main() {
     expect(find.text('feb.pdf'), findsOneWidget);
     expect(find.text('Maintenance fees'), findsOneWidget); // the tag chip, not a folder tile
   });
+
+  testWidgets('renaming a folder persists the override and shows it immediately', (tester) async {
+    final feb = DocuMindDocument(
+      docId: 'feb', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'expenses', filename: 'feb.pdf', chunksIndexed: 1,
+      uploadedAt: DateTime(2026, 2, 1),
+      tags: const [DocumentTag(tag: 'maintenance', rhythm: 'periodic')],
+    );
+    final enabledProperty = testProperty.copyWith(foldersEnabled: true);
+    final fakeRepo = _FakePropertyRepository(enabledProperty);
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([enabledProperty])),
+        documindDocumentsProvider.overrideWith((ref, propertyId) async => [feb]),
+        propertyRepositoryProvider.overrideWithValue(fakeRepo),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    // Scroll down to find the Expenses card.
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Expenses'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Maintenance fees'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Strata bills');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated?.folderNames['maintenance'], 'Strata bills');
+  });
 }
