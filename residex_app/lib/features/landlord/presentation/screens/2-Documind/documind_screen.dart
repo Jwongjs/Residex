@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dash_chat_2/dash_chat_2.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'dart:io';
 import '../../../../../core/theme/app_theme.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/property_providers.dart';
@@ -11,16 +10,14 @@ import '../../providers/unit_providers.dart';
 import '../../../domain/entities/documind_document.dart';
 import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
-import '../../widgets/common/expense_lines_review_sheet.dart';
-import '../../widgets/common/utilities_liability_confirm_sheet.dart';
-import '../../widgets/common/records_grid.dart';
-import '../../widgets/common/upload_source_sheet.dart';
+import '../../widgets/common/document_categories.dart';
 import 'documind_chat_logic.dart';
 import 'document_viewer_screen.dart';
-import 'documind_upload_summary.dart';
 import 'unit_label_resolver.dart';
 
-/// DocuMind Screen - Property Document Management + Q&A
+/// DocuMind Screen — the AI document Q&A assistant. Chat-only since Stage E
+/// split the document-manager folder view out into DocumentsScreen
+/// (5-Documents/documents_screen.dart) and its own bottom-nav tab.
 class DocuMindScreen extends ConsumerStatefulWidget {
   const DocuMindScreen({super.key});
 
@@ -30,10 +27,6 @@ class DocuMindScreen extends ConsumerStatefulWidget {
 
 class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   String? _selectedPropertyId;
-  String? _selectedCategory;
-  bool _showChatInterface = true;
-  bool _isUploading = false; // Track upload state
-  double _uploadProgress = 0.0; // Track progress
 
   // Chat state
   final List<ChatMessage> _messages = [];
@@ -46,18 +39,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   bool _awaitingUserAction = false;
   List<UnitOption> _pendingUnitOptions = const [];
 
-  // Display folders (stored categories collapse via displayCategoryFor;
-  // uploads from the Expenses folder send category 'expenses' so the
-  // backend runs line-item extraction).
-  final List<String> _categories = [
-    'lease',
-    'rental_invoice',
-    'expenses',
-  ];
-
-  // Granular category vocabulary the chat checkpoint can override to. Unlike
-  // the collapsed folder list, this stays granular so a user correcting the
-  // predicted category can still name any backend category (e.g. "upkeep").
+  // Granular category vocabulary the chat checkpoint can override to.
   static const List<String> _overrideCategories = [
     'lease',
     'insurance',
@@ -143,8 +125,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   void _switchToProperty(String propertyId, List<Property> properties) {
     setState(() {
       _selectedPropertyId = propertyId;
-      _selectedCategory = null;
-      _showChatInterface = true;
       _messages.clear();
       _docuMindSessionId = null;
       _docuMindConversationTurn = 1;
@@ -205,15 +185,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       body: Column(
         children: [
           _buildTopControlRow(properties),
-          if (!_showChatInterface && _selectedCategory != null)
-            _buildBackToCategoriesRow(),
-          Expanded(
-            child: _showChatInterface
-                ? _buildChatInterface()
-                : (_selectedCategory == null
-                    ? _buildCategoryGrid()
-                    : _buildCategoryDocuments()),
-          ),
+          Expanded(child: _buildChatInterface()),
         ],
       ),
     );
@@ -224,1133 +196,81 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
       color: AppColors.surface,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: PopupMenuButton<String>(
-                  tooltip: 'Switch Property',
-                  onSelected: (propertyId) =>
-                      _switchToProperty(propertyId, properties),
-                  itemBuilder: (context) => properties.map((property) {
-                    return PopupMenuItem<String>(
-                      value: property.id,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: _getPropertyColor(
-                                  properties.indexOf(property)),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              property.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyles.bodyMedium.copyWith(
-                                fontWeight: property.id == _selectedPropertyId
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              ),
-                            ),
-                          ),
-                          if (property.id == _selectedPropertyId)
-                            Icon(Icons.check,
-                                color: AppColors.success, size: 16),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceLight,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.home_work_outlined,
-                            size: 18, color: AppColors.primaryCyan),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _getPropertyName(properties, _selectedPropertyId),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(Icons.expand_more, color: AppColors.primaryCyan),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildModeToggleButton(
-                      icon: Icons.chat_outlined,
-                      label: 'Chat',
-                      selected: _showChatInterface,
-                      onTap: () {
-                        setState(() {
-                          _showChatInterface = true;
-                        });
-                      },
-                    ),
-                    _buildModeToggleButton(
-                      icon: Icons.folder_outlined,
-                      label: 'Docs',
-                      selected: !_showChatInterface,
-                      onTap: () {
-                        setState(() {
-                          _showChatInterface = false;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              if (!_showChatInterface && _selectedPropertyId != null) ...[
-                const SizedBox(width: 10),
-                Material(
-                  color: AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => RecordsGridScreen(
-                        propertyId: _selectedPropertyId!,
-                        propertyName: _getPropertyName(properties, _selectedPropertyId),
-                      ),
-                    )),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: const Icon(Icons.grid_view_outlined,
-                          size: 18, color: AppColors.primaryCyan),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeToggleButton({
-    required IconData icon,
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: selected
-              ? LinearGradient(
-                  colors: [AppColors.primaryCyan, AppColors.primaryBlue],
-                )
-              : null,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: selected ? Colors.white : AppColors.primaryCyan,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: AppTextStyles.bodySmall.copyWith(
-                color: selected ? Colors.white : AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBackToCategoriesRow() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      color: AppColors.background,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: () {
-            setState(() {
-              _selectedCategory = null;
-            });
-          },
-          icon: Icon(Icons.chevron_left_rounded, color: AppColors.primaryCyan),
-          label: Text(
-            'Back to Categories',
-            style: AppTextStyles.bodySmall.copyWith(
-              color: AppColors.primaryCyan,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Category grid (NO backend call)
-  Widget _buildCategoryGrid() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: GridView.builder(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.0,
-        ),
-        itemCount: _categories.length,
-        itemBuilder: (context, index) {
-          final category = _categories[index];
-          return _buildCategoryCard(category);
-        },
-      ),
-    );
-  }
-
-  Widget _buildCategoryCard(String category) {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedCategory = category;
-        });
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppColors.surface,
-              _getCategoryColor(category).withValues(alpha: 0.1),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: _getCategoryColor(category).withValues(alpha: 0.3),
-            width: 2,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                _getCategoryIcon(category).icon,
-                color: _getCategoryColor(category),
-                size: 48,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _getCategoryLabel(category),
-                style: AppTextStyles.titleMedium.copyWith(
-                  color: AppColors.textPrimary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Tap to view',
-                style: AppTextStyles.bodySmall.copyWith(
-                  color: AppColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryDocuments() {
-    if (_selectedPropertyId == null || _selectedCategory == null) {
-      return _buildLoadingState();
-    }
-
-    final documentsAsync =
-        ref.watch(documindDocumentsProvider(_selectedPropertyId!));
-
-    return documentsAsync.when(
-      data: (allDocuments) {
-        final categoryDocs = allDocuments
-            .where((doc) => displayCategoryFor(doc.category) == _selectedCategory)
-            .toList();
-
-        if (categoryDocs.isEmpty) {
-          return _buildEmptyCategoryState(_selectedCategory!);
-        }
-
-        return Stack(
-          children: [
-            Column(
-              children: [
-                _buildCategorySectionHeader(
-                  category: _selectedCategory!,
-                  documentCount: categoryDocs.length,
-                ),
-                Expanded(child: _buildDocumentsList(categoryDocs)),
-              ],
-            ),
-            if (_isUploading)
-              Container(
-                color: Colors.black.withOpacity(0.5),
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(
-                          color: _getCategoryColor(_selectedCategory!),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Uploading document...',
-                          style: AppTextStyles.bodyMedium.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Processing ${(_uploadProgress * 100).toInt()}%',
-                          style: AppTextStyles.bodySmall.copyWith(
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-      loading: () => _buildLoadingState(),
-      error: (error, stack) => _buildErrorState(error.toString()),
-    );
-  }
-
-  Widget _buildDocumentsList(List<DocuMindDocument> docs) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: docs.length + 1,
-      itemBuilder: (context, index) {
-        if (index == docs.length) {
-          return _buildAddMoreButton(_selectedCategory!);
-        }
-
-        return _buildDocumentTile(docs[index], _selectedCategory!);
-      },
-    );
-  }
-
-  Widget _buildEmptyCategoryState(String category) {
-    final categoryColor = _getCategoryColor(category);
-    final categoryIcon = _getCategoryIcon(category);
-
-    return Stack(
-      children: [
-        Column(
-          children: [
-            _buildCategorySectionHeader(category: category),
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: categoryColor.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: categoryColor.withOpacity(0.3),
-                            width: 2,
-                          ),
-                        ),
-                        child: Icon(
-                          categoryIcon.icon,
-                          size: 64,
-                          color: categoryColor.withOpacity(0.6),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'No ${_getCategoryLabel(category)} Yet',
-                        style: AppTextStyles.headlineMedium.copyWith(
-                          color: AppColors.textPrimary,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Upload your first document to get started',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: AppColors.textMuted,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 32),
-                      ElevatedButton.icon(
-                        onPressed: () => _uploadDocument(category),
-                        icon: Icon(Icons.upload_file, color: Colors.white),
-                        label: Text(
-                          'Upload ${_getCategoryLabel(category)}',
-                          style: AppTextStyles.labelLarge
-                              .copyWith(color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: categoryColor,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 16,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 0,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (_isUploading)
-          Container(
-            color: Colors.black.withOpacity(0.5),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: categoryColor),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Uploading document...',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Processing ${(_uploadProgress * 100).toInt()}%',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildCategorySectionHeader({
-    required String category,
-    int? documentCount,
-  }) {
-    final categoryColor = _getCategoryColor(category);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isCompact = constraints.maxWidth < 300;
-
-          return Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: categoryColor.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: categoryColor.withOpacity(0.3),
-                  ),
-                ),
-                child: _getCategoryIcon(category),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _getCategoryLabel(category),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.titleMedium.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      documentCount == null
-                          ? 'No uploaded documents yet'
-                          : '${documentCount} document${documentCount == 1 ? '' : 's'}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (isCompact)
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _showChatInterface = true;
-                    });
-                  },
-                  icon: Icon(Icons.chat_bubble_outline,
-                      size: 18, color: AppColors.primaryCyan),
-                  tooltip: 'Ask DocuMind',
-                  visualDensity: VisualDensity.compact,
-                  constraints:
-                      const BoxConstraints(minWidth: 36, minHeight: 36),
-                )
-              else
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _showChatInterface = true;
-                    });
-                  },
-                  icon: Icon(Icons.chat_bubble_outline,
-                      size: 16, color: AppColors.primaryCyan),
-                  label: Text(
-                    'Ask',
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: AppColors.primaryCyan,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  ),
-                ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildDocumentTile(DocuMindDocument doc, String category) {
-    final displayUnitLabel = resolveUnitLabel(
-      unitId: doc.unitId,
-      storedLabel: doc.unitLabel,
-      liveUnits: _liveUnits(),
-    );
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Row(
         children: [
-          // Document icon
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _getCategoryColor(category).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _getCategoryColor(category).withOpacity(0.3),
-              ),
-            ),
-            child: Icon(
-              Icons.description_outlined,
-              color: _getCategoryColor(category),
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 16),
-
-          // Document info
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Filename
-                Text(
-                  doc.filename,
-                  style: AppTextStyles.titleMedium.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-
-                // Category badge + metadata
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    // Category badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _getCategoryColor(category).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: _getCategoryColor(category).withOpacity(0.3),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _getCategoryIcon(category).icon,
-                            size: 12,
-                            color: _getCategoryColor(category),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            category.toUpperCase(),
-                            style: AppTextStyles.labelSmall.copyWith(
-                              color: _getCategoryColor(category),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Unit badge (only for unit-scoped documents)
-                    if (displayUnitLabel != null)
+            child: PopupMenuButton<String>(
+              tooltip: 'Switch Property',
+              onSelected: (propertyId) =>
+                  _switchToProperty(propertyId, properties),
+              itemBuilder: (context) => properties.map((property) {
+                return PopupMenuItem<String>(
+                  value: property.id,
+                  child: Row(
+                    children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
+                        width: 8,
+                        height: 8,
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceLight,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.meeting_room_outlined,
-                              size: 12,
-                              color: AppColors.textMuted,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              displayUnitLabel.toUpperCase(),
-                              style: AppTextStyles.labelSmall.copyWith(
-                                color: AppColors.textMuted,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 9,
-                              ),
-                            ),
-                          ],
+                          color: _getPropertyColor(
+                              properties.indexOf(property)),
+                          shape: BoxShape.circle,
                         ),
                       ),
-
-                    // Upload time
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceLight,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.access_time,
-                            size: 12,
-                            color: AppColors.textMuted,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          property.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            fontWeight: property.id == _selectedPropertyId
+                                ? FontWeight.w600
+                                : FontWeight.normal,
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _formatDate(doc.uploadedAt),
-                            style: AppTextStyles.bodySmall.copyWith(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-
-                    // Chunks count
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceLight,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.grid_view_rounded,
-                            size: 12,
-                            color: AppColors.textMuted,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${doc.chunksIndexed} chunks',
-                            style: AppTextStyles.bodySmall.copyWith(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                      if (property.id == _selectedPropertyId)
+                        Icon(Icons.check,
+                            color: AppColors.success, size: 16),
+                    ],
+                  ),
+                );
+              }).toList(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
                 ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () => _deleteDocument(doc),
-            icon: Icon(
-              Icons.delete_outline,
-              color: AppColors.error.withOpacity(0.8),
-              size: 20,
-            ),
-            tooltip: 'Delete document',
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.error.withOpacity(0.1),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAddMoreButton(String category) {
-    // Get category-specific colors
-    final categoryColor = _getCategoryColor(category);
-    final categoryIcon = _getCategoryIcon(category);
-
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      child: OutlinedButton.icon(
-        onPressed: () => _uploadDocument(category),
-        icon: Icon(
-          categoryIcon.icon,
-          color: categoryColor, // Dynamic color
-        ),
-        label: Text(
-          'Add More ${_getCategoryLabel(category)}',
-          style: TextStyle(
-            color: categoryColor, // Dynamic color
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          side: BorderSide(
-            color: categoryColor.withOpacity(0.5), // Dynamic border
-            width: 2,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          backgroundColor: categoryColor.withOpacity(0.1), // Dynamic background
-        ),
-      ),
-    );
-  }
-
-  /// Ask which unit an upload belongs to. Returns a choice wrapping the
-  /// selected unit (null unit = whole property), or null if the user
-  /// dismissed the dialog. Properties without units skip the dialog and
-  /// upload property-wide.
-  Future<_UploadUnitChoice?> _pickUploadUnit({required String category}) async {
-    List<Unit> units;
-    try {
-      units =
-          await ref.read(unitsForPropertyProvider(_selectedPropertyId!).future);
-    } catch (_) {
-      // Unit lookup failing shouldn't block an upload; treat as no units.
-      units = const <Unit>[];
-    }
-    if (units.isEmpty) return const _UploadUnitChoice(null);
-
-    final isLease = category == 'lease';
-    final orderedOptions =
-        uploadUnitDialogOptions(category: category, units: units);
-
-    if (!mounted) return null;
-    return showDialog<_UploadUnitChoice>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Assign to a unit?', style: AppTextStyles.titleMedium),
-        children: [
-          for (final unit in orderedOptions)
-            if (unit == null)
-              SimpleDialogOption(
-                onPressed: () =>
-                    Navigator.pop(ctx, const _UploadUnitChoice(null)),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.home_work_outlined,
                         size: 18, color: AppColors.primaryCyan),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Whole property',
-                              style: AppTextStyles.bodyMedium),
-                          if (isLease)
-                            Text(
-                              'Tenancy agreements usually belong to a specific unit',
-                              style: AppTextStyles.bodySmall
-                                  .copyWith(color: AppColors.textMuted),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(ctx, _UploadUnitChoice(unit)),
-                child: Row(
-                  children: [
-                    Icon(Icons.meeting_room_outlined,
-                        size: 18, color: AppColors.primaryCyan),
-                    const SizedBox(width: 10),
-                    Expanded(
                       child: Text(
-                        unit.label,
+                        _getPropertyName(properties, _selectedPropertyId),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.bodyMedium,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 6),
+                    Icon(Icons.expand_more, color: AppColors.primaryCyan),
                   ],
                 ),
               ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _uploadDocument(String category) async {
-    if (_selectedPropertyId == null) {
-      _showSnackBar('Please select a property first', isError: true);
-      return;
-    }
-
-    final picked = await showUploadSourceSheet(context);
-    if (picked == null) return;
-
-    if (!isAllowedUploadFilename(picked.name)) {
-      _showSnackBar('Only PDF, JPG or PNG files are supported.', isError: true);
-      return;
-    }
-
-    // Ask which unit this document belongs to (skipped when the property
-    // has no units). Null result = user cancelled the dialog.
-    final unitChoice = await _pickUploadUnit(category: category);
-    if (unitChoice == null) return;
-
-    // Show loading state
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-    });
-
-    try {
-      final uploadAction = ref.read(uploadDocumentActionProvider);
-
-      // Simulate progress (if needed)
-      setState(() => _uploadProgress = 0.3);
-
-      final uploaded = await uploadAction(
-        propertyId: _selectedPropertyId!,
-        category: category,
-        file: File(picked.path),
-        unitId: unitChoice.unit?.id,
-        unitLabel: unitChoice.unit?.label,
-      );
-
-      // Complete progress
-      setState(() => _uploadProgress = 1.0);
-
-      // Wait a moment to show completion, then hide
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-          _uploadProgress = 0.0;
-        });
-        _showSnackBar(
-          uploadFactSummary(category, uploaded.extractedFacts) ??
-              'Document uploaded successfully!',
-        );
-        final lines = uploaded.extractedFacts?['expense_lines'];
-        if (category == 'expenses' && lines is List && lines.isNotEmpty) {
-          await showExpenseLinesReviewSheet(
-            context,
-            docId: uploaded.docId,
-            initialLines: [
-              for (final line in lines)
-                if (line is Map) Map<String, dynamic>.from(line),
-            ],
-          );
-        }
-        if (mounted) {
-          await maybeShowUtilitiesLiabilityConfirm(
-            context, ref,
-            propertyId: _selectedPropertyId!,
-            category: category,
-            extractedFacts: uploaded.extractedFacts,
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-          _uploadProgress = 0.0;
-        });
-        _showSnackBar('Upload failed: ${e.toString()}', isError: true);
-      }
-    }
-  }
-
-  Future<void> _deleteDocument(DocuMindDocument doc) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 28),
-            const SizedBox(width: 12),
-            Text('Delete Document', style: AppTextStyles.titleMedium),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Are you sure you want to delete this document?',
-              style: AppTextStyles.bodyMedium,
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.description_outlined,
-                    color: _getCategoryColor(doc.category),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      doc.filename,
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'This action cannot be undone. The document and all its indexed chunks will be permanently deleted.',
-              style:
-                  AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'Cancel',
-              style:
-                  AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text(
-              'Delete',
-              style: AppTextStyles.labelLarge.copyWith(color: Colors.white),
             ),
           ),
         ],
       ),
     );
-
-    if (confirmed == true && mounted) {
-      try {
-        // Show loading indicator
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => Center(
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: AppColors.primaryCyan),
-                  const SizedBox(height: 16),
-                  Text('Deleting document...', style: AppTextStyles.bodyMedium),
-                ],
-              ),
-            ),
-          ),
-        );
-
-        // Call delete action from provider
-        final deleteAction = ref.read(deleteDocumentActionProvider);
-        await deleteAction(
-          propertyId: _selectedPropertyId!,
-          docId: doc.docId,
-        );
-
-        // Close loading dialog
-        if (mounted) Navigator.pop(context);
-
-        // Show success message
-        if (mounted) {
-          _showSnackBar('Document deleted successfully!');
-        }
-      } catch (e) {
-        // Close loading dialog
-        if (mounted) Navigator.pop(context);
-
-        // Show error message
-        if (mounted) {
-          _showSnackBar(
-            'Delete failed: ${e.toString()}',
-            isError: true,
-          );
-        }
-      }
-    }
-  }
-
-  /// Live units for the selected property (empty while loading/unavailable —
-  /// resolveUnitLabel then falls back to the stored label).
-  List<Unit> _liveUnits() {
-    if (_selectedPropertyId == null) return const <Unit>[];
-    return ref.watch(unitsForPropertyStreamProvider(_selectedPropertyId!)).value ??
-        const <Unit>[];
   }
 
   // ══════════════════════════════════════════════════════
@@ -1466,9 +386,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   // CHAT INTERFACE
   // ══════════════════════════════════════════════════════
   Widget _buildChatInterface() {
-    // The empty-state prompt overlays the whole chat area; once the input is
-    // focused the keyboard shrinks that area until the prompt would sit on
-    // top of the input box, so hide it while typing.
     final showEmptyPrompt =
         _messages.isEmpty && !_isThinking && !_chatInputFocusNode.hasFocus;
 
@@ -1478,119 +395,112 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
           children: [
             Expanded(
               child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.paper,
-                        border:
-                            Border(top: BorderSide(color: AppColors.hairline)),
+                decoration: BoxDecoration(
+                  color: AppColors.paper,
+                  border: Border(top: BorderSide(color: AppColors.hairline)),
+                ),
+                child: DashChat(
+                  currentUser: _currentUser,
+                  onSend: _onSendMessage,
+                  messages: _messages,
+                  typingUsers: _isThinking ? [_aiUser] : const [],
+                  messageOptions: MessageOptions(
+                    showTime: false,
+                    containerColor: AppColors.surfaceLight,
+                    currentUserContainerColor:
+                        AppColors.registry.withValues(alpha: 0.15),
+                    currentUserTextColor: AppColors.textPrimary,
+                    textColor: AppColors.textPrimary,
+                    borderRadius: 16,
+                    messagePadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    markdownStyleSheet: MarkdownStyleSheet(
+                      p: AppTextStyles.bodyMedium
+                          .copyWith(color: AppColors.textPrimary),
+                      strong: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w700,
                       ),
-                      child: DashChat(
-                        currentUser: _currentUser,
-                        onSend: _onSendMessage,
-                        messages: _messages,
-                        // While waiting for the answer the AI shows as
-                        // "typing" (animated dots in a bubble) instead of a
-                        // full-screen spinner.
-                        typingUsers: _isThinking ? [_aiUser] : const [],
-                        messageOptions: MessageOptions(
-                          showTime: false,
-                          containerColor: AppColors.surfaceLight,
-                          currentUserContainerColor:
-                              AppColors.registry.withValues(alpha: 0.15),
-                          currentUserTextColor: AppColors.textPrimary,
-                          textColor: AppColors.textPrimary,
-                          borderRadius: 16,
-                          messagePadding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          markdownStyleSheet: MarkdownStyleSheet(
-                            p: AppTextStyles.bodyMedium
-                                .copyWith(color: AppColors.textPrimary),
-                            strong: AppTextStyles.bodyMedium.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            listBullet: AppTextStyles.bodyMedium
-                                .copyWith(color: AppColors.textPrimary),
-                            h1: AppTextStyles.titleMedium
-                                .copyWith(color: AppColors.textPrimary),
-                            h2: AppTextStyles.titleMedium
-                                .copyWith(color: AppColors.textPrimary),
-                            h3: AppTextStyles.titleMedium
-                                .copyWith(color: AppColors.textPrimary),
-                          ),
-                          bottom: (message, previousMessage, nextMessage) {
-                            final citations =
-                                message.customProperties?['citations']
-                                    as List<Citation>?;
-                            final quickReplies =
-                                message.customProperties?['quickReplies']
-                                    as List<String>?;
-                            // Chips only stay live on the newest message
-                            // while its checkpoint is still unanswered.
-                            final showQuickReplies = quickReplies != null &&
-                                quickReplies.isNotEmpty &&
-                                _awaitingUserAction &&
-                                _messages.isNotEmpty &&
-                                identical(_messages.first, message);
-                            final hasCitations =
-                                citations != null && citations.isNotEmpty;
-                            if (!hasCitations && !showQuickReplies) {
-                              return const SizedBox.shrink();
-                            }
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (hasCitations)
-                                  _buildRelevanceMeter(citations),
-                                if (showQuickReplies)
-                                  _buildQuickReplyChips(quickReplies),
-                              ],
-                            );
-                          },
-                        ),
-                        inputOptions: InputOptions(
-                          focusNode: _chatInputFocusNode,
-                          cursorStyle: CursorStyle(color: AppColors.registry),
-                          inputMaxLines: 4,
-                          inputDecoration: InputDecoration(
-                            hintText: 'Ask about your documents…',
-                            hintStyle: AppTextStyles.bodySmall
-                                .copyWith(color: AppColors.textMuted),
-                            filled: true,
-                            fillColor: AppColors.card,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide(color: AppColors.hairline),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide(color: AppColors.hairline),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide(
-                                  color: AppColors.registry, width: 2),
-                            ),
-                          ),
-                          sendButtonBuilder: (send) => GestureDetector(
-                            onTap: send,
-                            child: Container(
-                              margin: const EdgeInsets.only(left: 8),
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: AppColors.registry,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(Icons.send_rounded,
-                                  color: Colors.white, size: 18),
-                            ),
-                          ),
-                        ),
+                      listBullet: AppTextStyles.bodyMedium
+                          .copyWith(color: AppColors.textPrimary),
+                      h1: AppTextStyles.titleMedium
+                          .copyWith(color: AppColors.textPrimary),
+                      h2: AppTextStyles.titleMedium
+                          .copyWith(color: AppColors.textPrimary),
+                      h3: AppTextStyles.titleMedium
+                          .copyWith(color: AppColors.textPrimary),
+                    ),
+                    bottom: (message, previousMessage, nextMessage) {
+                      final citations =
+                          message.customProperties?['citations']
+                              as List<Citation>?;
+                      final quickReplies =
+                          message.customProperties?['quickReplies']
+                              as List<String>?;
+                      final showQuickReplies = quickReplies != null &&
+                          quickReplies.isNotEmpty &&
+                          _awaitingUserAction &&
+                          _messages.isNotEmpty &&
+                          identical(_messages.first, message);
+                      final hasCitations =
+                          citations != null && citations.isNotEmpty;
+                      if (!hasCitations && !showQuickReplies) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (hasCitations) _buildRelevanceMeter(citations),
+                          if (showQuickReplies)
+                            _buildQuickReplyChips(quickReplies),
+                        ],
+                      );
+                    },
+                  ),
+                  inputOptions: InputOptions(
+                    focusNode: _chatInputFocusNode,
+                    cursorStyle: CursorStyle(color: AppColors.registry),
+                    inputMaxLines: 4,
+                    inputDecoration: InputDecoration(
+                      hintText: 'Ask about your documents…',
+                      hintStyle: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.textMuted),
+                      filled: true,
+                      fillColor: AppColors.card,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(color: AppColors.hairline),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(color: AppColors.hairline),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide:
+                            BorderSide(color: AppColors.registry, width: 2),
                       ),
                     ),
+                    sendButtonBuilder: (send) => GestureDetector(
+                      onTap: send,
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.registry,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.send_rounded,
+                            color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -1695,7 +605,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
 
     final responseText = buildDocuMindAssistantText(
       answer: answer,
-      categoryLabelResolver: _getCategoryLabel,
+      categoryLabelResolver: getCategoryLabel,
     );
     final quickReplies = buildDocuMindQuickReplies(answer);
     final customProperties = <String, dynamic>{
@@ -1766,51 +676,12 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     );
   }
 
-  // Helper methods
-  String _getCategoryLabel(String category) {
-    final labels = {
-      'lease': 'Tenancy Agreements',
-      'insurance': 'Insurance Policies',
-      'loan': 'Loans & Financing',
-      'tax': 'Property Taxes',
-      'upkeep': 'Upkeep & Repairs',
-      'maintenance': 'Maintenance Fees',
-      'rental_invoice': 'Rental Invoices',
-      'expenses': 'Expenses',
-      'other': 'Other Documents',
-    };
-    return labels[category] ?? category.toUpperCase();
-  }
-
-  Icon _getCategoryIcon(String category) {
-    final iconMap = {
-      'lease': Icons.description_outlined,
-      'insurance': Icons.security_outlined,
-      'loan': Icons.account_balance_outlined,
-      'tax': Icons.account_balance_wallet_outlined,
-      'upkeep': Icons.build_outlined,
-      'maintenance': Icons.apartment_outlined,
-      'rental_invoice': Icons.receipt_long_outlined,
-      'expenses': Icons.account_balance_wallet_outlined,
-      'other': Icons.folder_outlined,
-    };
-
-    return Icon(iconMap[category] ?? Icons.folder_outlined);
-  }
-
-  Color _getCategoryColor(String category) {
-    final colorMap = {
-      'lease': AppColors.catLease,
-      'insurance': AppColors.catInsurance,
-      'loan': AppColors.catLoan,
-      'tax': AppColors.catTax,
-      'upkeep': AppColors.catUpkeep,
-      'maintenance': AppColors.catMaintenance,
-      'rental_invoice': AppColors.catInvoice,
-      'expenses': AppColors.catMaintenance,
-      'other': AppColors.catOther,
-    };
-    return colorMap[category] ?? AppColors.catOther;
+  /// Live units for the selected property (empty while loading/unavailable —
+  /// resolveUnitLabel then falls back to the stored label).
+  List<Unit> _liveUnits() {
+    if (_selectedPropertyId == null) return const <Unit>[];
+    return ref.watch(unitsForPropertyStreamProvider(_selectedPropertyId!)).value ??
+        const <Unit>[];
   }
 
   String _getPropertyName(List<Property> properties, String? propertyId) {
@@ -1831,35 +702,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       AppColors.catReceipt,
     ];
     return colors[index % colors.length];
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-
-    if (diff.inDays == 0) return 'Today';
-    if (diff.inDays == 1) return 'Yesterday';
-    if (diff.inDays < 7) return '${diff.inDays} days ago';
-    return '${date.day}/${date.month}/${date.year}';
-  }
-
-  void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
-              color: Colors.white,
-              size: 20,
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: isError ? AppColors.error : AppColors.success,
-      ),
-    );
   }
 
   Widget _buildLoadingState() {
@@ -1919,52 +761,4 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       ),
     );
   }
-
-}
-
-/// Result of the upload unit-picker dialog. Wrapping the unit lets the
-/// caller distinguish "user chose whole property" (unit == null) from
-/// "user dismissed the dialog" (the dialog returns null itself).
-class _UploadUnitChoice {
-  final Unit? unit;
-
-  const _UploadUnitChoice(this.unit);
-}
-
-/// The backend ingests PDFs plus JPG/PNG photos (Gemini transcription), so
-/// the picker accepts exactly those extensions (DOCX is future work).
-const Set<String> allowedUploadExtensions = {'.pdf', '.jpg', '.jpeg', '.png'};
-
-bool isAllowedUploadFilename(String filename) {
-  final lower = filename.toLowerCase();
-  return allowedUploadExtensions.any(lower.endsWith);
-}
-
-/// Folder the DocuMind UI files a stored category under. Documents keep
-/// their granular backend category (no migration); only the presentation
-/// collapses money-out paperwork into one Expenses folder.
-String displayCategoryFor(String category) {
-  switch (category) {
-    case 'lease':
-      return 'lease';
-    case 'rental_invoice':
-    case 'receipt':
-      return 'rental_invoice';
-    default:
-      return 'expenses';
-  }
-}
-
-/// Option order for the upload unit-picker dialog. A null entry is the
-/// "Whole property" option. Leases lead with units (a lease almost always
-/// belongs to one unit) and demote "Whole property" to last; every other
-/// category keeps "Whole property" first.
-List<Unit?> uploadUnitDialogOptions({
-  required String category,
-  required List<Unit> units,
-}) {
-  if (category == 'lease') {
-    return [...units, null];
-  }
-  return [null, ...units];
 }

@@ -12,7 +12,7 @@ import '../../widgets/common/upload_source_sheet.dart';
 import '../../widgets/common/finance_ledger_strip.dart';
 import '../../widgets/common/finance_year_picker.dart';
 import '../../widgets/common/rent_payment_sheets.dart';
-import '../2-Documind/documind_screen.dart' show isAllowedUploadFilename;
+import '../../widgets/common/document_categories.dart' show isAllowedUploadFilename;
 import '../2-Documind/documind_upload_summary.dart';
 import 'unit_finance_detail_screen.dart';
 

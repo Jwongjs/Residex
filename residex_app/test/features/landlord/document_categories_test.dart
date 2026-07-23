@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/unit.dart';
-import 'package:residex_app/features/landlord/presentation/screens/2-Documind/documind_screen.dart';
+import 'package:residex_app/features/landlord/presentation/widgets/common/document_categories.dart';
 
 void main() {
   final units = [
