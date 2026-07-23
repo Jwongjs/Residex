@@ -108,6 +108,37 @@ void main() {
     expect(fakeRepo.lastUpdated?.utilitiesPaidBy, 'landlord');
   });
 
+  testWidgets("dismissing with 'I'll confirm later' writes nothing", (tester) async {
+    final fakeRepo = _FakePropertyRepository(_property());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [propertyRepositoryProvider.overrideWithValue(fakeRepo)],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(builder: (context) {
+              return TextButton(
+                onPressed: () => showUtilitiesLiabilityConfirmSheet(
+                  context,
+                  property: _property(),
+                  liability: 'tenant',
+                  quote: 'Utilities clause text.',
+                ),
+                child: const Text('open'),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text("I'll confirm later"));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated, isNull);
+  });
+
   testWidgets('maybeShowUtilitiesLiabilityConfirm opens the sheet when facts carry liability + quote',
       (tester) async {
     final fakeRepo = _FakePropertyRepository(_property());
