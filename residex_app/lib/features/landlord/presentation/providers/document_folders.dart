@@ -54,3 +54,49 @@ String proposedFolderName(String folderKey) {
 String folderDisplayName(String folderKey, Map<String, String> folderNames) {
   return folderNames[folderKey] ?? proposedFolderName(folderKey);
 }
+
+({int year, int? month})? _parsePeriod(dynamic dateLike, dynamic periodYear) {
+  if (dateLike is String && dateLike.length >= 7) {
+    final year = int.tryParse(dateLike.substring(0, 4));
+    final month = int.tryParse(dateLike.substring(5, 7));
+    if (year != null && year > 1990 && year < 2200) {
+      return (year: year, month: (month != null && month >= 1 && month <= 12) ? month : null);
+    }
+  }
+  if (periodYear is int && periodYear > 1990 && periodYear < 2200) {
+    return (year: periodYear, month: null);
+  }
+  return null;
+}
+
+int _periodOrdinal(({int year, int? month}) p) => p.year * 12 + (p.month ?? 0);
+
+/// The period a document covers, for the folder view's reverse-chronological
+/// ordering and year/month separators (spec §9) — never the upload date. A
+/// bundled 'expenses' document takes its latest line's period (it may cover
+/// several). Falls back to [DocuMindDocument.uploadedAt] when nothing
+/// parses, consistent with the rest of the app's defensive-fallback pattern.
+({int year, int? month}) documentPeriod(DocuMindDocument doc) {
+  final facts = doc.extractedFacts;
+  if (facts != null) {
+    final lines = facts['expense_lines'];
+    if (lines is List) {
+      ({int year, int? month})? latest;
+      for (final line in lines) {
+        if (line is! Map) continue;
+        final p = _parsePeriod(line['date'], line['period_year']);
+        if (p != null && (latest == null || _periodOrdinal(p) > _periodOrdinal(latest))) {
+          latest = p;
+        }
+      }
+      if (latest != null) return latest;
+    }
+    final direct = _parsePeriod(
+      facts['period_month'] ?? facts['lease_start'] ?? facts['service_date'] ??
+          facts['period_start'] ?? facts['policy_start'] ?? facts['invoice_date'],
+      facts['period_year'],
+    );
+    if (direct != null) return direct;
+  }
+  return (year: doc.uploadedAt.year, month: doc.uploadedAt.month);
+}

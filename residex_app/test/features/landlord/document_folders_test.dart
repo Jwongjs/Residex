@@ -10,6 +10,14 @@ DocuMindDocument _doc(String id, List<DocumentTag> tags) {
   );
 }
 
+DocuMindDocument _docWithFacts(String id, Map<String, dynamic>? facts) {
+  return DocuMindDocument(
+    docId: id, landlordId: 'l1', propertyId: 'p1', category: 'expenses',
+    filename: '$id.pdf', chunksIndexed: 1, uploadedAt: DateTime(2026, 6, 15),
+    extractedFacts: facts,
+  );
+}
+
 const _periodic = 'periodic';
 const _oneOff = 'one_off';
 const _adHoc = 'ad_hoc';
@@ -115,6 +123,33 @@ void main() {
         'Strata bills',
       );
       expect(folderDisplayName('maintenance', const {}), 'Maintenance fees');
+    });
+  });
+
+  group('documentPeriod', () {
+    test('bundled expenses document uses the latest line period', () {
+      final doc = _docWithFacts('bundle', {
+        'expense_lines': [
+          {'subtype': 'maintenance', 'period_year': 2025, 'date': '2025-01-15'},
+          {'subtype': 'quit_rent', 'period_year': 2025, 'date': '2025-06-01'},
+        ],
+      });
+      expect(documentPeriod(doc), (year: 2025, month: 6));
+    });
+
+    test('typed tax document with only period_year has no month', () {
+      final doc = _docWithFacts('tax', {'subtype': 'quit_rent', 'period_year': 2025});
+      expect(documentPeriod(doc), (year: 2025, month: null));
+    });
+
+    test('typed lease document reads lease_start', () {
+      final doc = _docWithFacts('lease', {'lease_start': '2025-09-01'});
+      expect(documentPeriod(doc), (year: 2025, month: 9));
+    });
+
+    test('falls back to uploadedAt when no period field parses', () {
+      final doc = _docWithFacts('none', null);
+      expect(documentPeriod(doc), (year: 2026, month: 6));
     });
   });
 }

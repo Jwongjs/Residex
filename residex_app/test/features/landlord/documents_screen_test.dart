@@ -164,4 +164,72 @@ void main() {
     expect(fakeRepo.lastUpdated?.id, 'prop-1');
     expect(fakeRepo.lastUpdated?.foldersEnabled, true);
   });
+
+  testWidgets('folders-enabled Expenses folder shows folder tiles, not a flat list', (tester) async {
+    final feb = DocuMindDocument(
+      docId: 'feb', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'expenses', filename: 'feb.pdf', chunksIndexed: 1,
+      uploadedAt: DateTime(2026, 2, 1),
+      tags: const [DocumentTag(tag: 'maintenance', rhythm: 'periodic')],
+    );
+    final fire = DocuMindDocument(
+      docId: 'fire', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'insurance', filename: 'fire.pdf', chunksIndexed: 1,
+      uploadedAt: DateTime(2026, 3, 1),
+      tags: const [DocumentTag(tag: 'insurance_premium', rhythm: 'one_off')],
+    );
+    final enabledProperty = testProperty.copyWith(foldersEnabled: true);
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([enabledProperty])),
+        documindDocumentsProvider.overrideWith((ref, propertyId) async => [feb, fire]),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    // Scroll down to find the Expenses card (same as the tag-chip test above).
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Expenses'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Maintenance fees'), findsOneWidget);
+    expect(find.text('Insurance premium'), findsOneWidget);
+    expect(find.text('feb.pdf'), findsNothing);
+
+    await tester.tap(find.text('Maintenance fees'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('feb.pdf'), findsOneWidget);
+  });
+
+  testWidgets('folders-disabled Expenses folder keeps the existing flat list', (tester) async {
+    final feb = DocuMindDocument(
+      docId: 'feb', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'expenses', filename: 'feb.pdf', chunksIndexed: 1,
+      uploadedAt: DateTime(2026, 2, 1),
+      tags: const [DocumentTag(tag: 'maintenance', rhythm: 'periodic')],
+    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
+        documindDocumentsProvider.overrideWith((ref, propertyId) async => [feb]),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    // Scroll down to find the Expenses card (same as the tag-chip test above).
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Expenses'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('feb.pdf'), findsOneWidget);
+    expect(find.text('Maintenance fees'), findsOneWidget); // the tag chip, not a folder tile
+  });
 }

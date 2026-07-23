@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 import '../../../../../core/theme/app_theme.dart';
+import '../../providers/document_folders.dart';
 import '../../providers/documind_provider.dart';
+import '../../providers/finance_logic.dart' show monthAbbrev;
 import '../../providers/property_providers.dart';
 import '../../providers/unit_providers.dart';
 import '../../../domain/entities/documind_document.dart';
@@ -34,6 +36,7 @@ class DocumentsScreen extends ConsumerStatefulWidget {
 class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   String? _selectedPropertyId;
   String? _selectedCategory;
+  String? _selectedFolderKey;
   bool _isUploading = false;
   double _uploadProgress = 0.0;
 
@@ -79,6 +82,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     setState(() {
       _selectedPropertyId = propertyId;
       _selectedCategory = null;
+      _selectedFolderKey = null;
     });
   }
 
@@ -254,7 +258,10 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
       child: Align(
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
-          onPressed: () => setState(() => _selectedCategory = null),
+          onPressed: () => setState(() {
+            _selectedCategory = null;
+            _selectedFolderKey = null;
+          }),
           icon: Icon(Icons.chevron_left_rounded, color: AppColors.primaryCyan),
           label: Text(
             'Back to Categories',
@@ -364,6 +371,8 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
           return _buildEmptyCategoryState(_selectedCategory!, property);
         }
 
+        final foldersOn = _selectedCategory == 'expenses' && property.foldersEnabled;
+
         return Stack(
           children: [
             Column(
@@ -373,7 +382,13 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                   documentCount: categoryDocs.length,
                   property: property,
                 ),
-                Expanded(child: _buildDocumentsList(categoryDocs)),
+                Expanded(
+                  child: !foldersOn
+                      ? _buildDocumentsList(categoryDocs)
+                      : _selectedFolderKey == null
+                          ? _buildFolderGrid(categoryDocs, property)
+                          : _buildFolderDocuments(categoryDocs, property),
+                ),
               ],
             ),
             if (_isUploading) _buildUploadOverlay(getCategoryColor(_selectedCategory!)),
@@ -396,6 +411,101 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
 
         return _buildDocumentTile(docs[index], _selectedCategory!);
       },
+    );
+  }
+
+  Widget _buildFolderGrid(List<DocuMindDocument> docs, Property property) {
+    final clusters = clusterIntoFolders(docs, manualMoves: property.folderMoves);
+    final keys = clusters.keys.toList()
+      ..sort((a, b) => folderDisplayName(a, property.folderNames)
+          .compareTo(folderDisplayName(b, property.folderNames)));
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: keys.length,
+      itemBuilder: (context, index) {
+        final key = keys[index];
+        final name = folderDisplayName(key, property.folderNames);
+        final count = clusters[key]!.length;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: ListTile(
+            leading: const Icon(Icons.folder_outlined, color: AppColors.registry),
+            title: Text(name, style: AppTextStyles.titleMedium),
+            subtitle: Text('$count document${count == 1 ? '' : 's'}',
+                style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => setState(() => _selectedFolderKey = key),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFolderDocuments(List<DocuMindDocument> docs, Property property) {
+    final key = _selectedFolderKey!;
+    final clusters = clusterIntoFolders(docs, manualMoves: property.folderMoves);
+    final folderDocs = [...(clusters[key] ?? const <DocuMindDocument>[])]
+      ..sort((a, b) {
+        final pa = documentPeriod(a);
+        final pb = documentPeriod(b);
+        final byYear = pb.year.compareTo(pa.year);
+        if (byYear != 0) return byYear;
+        return (pb.month ?? 0).compareTo(pa.month ?? 0);
+      });
+
+    final items = <Widget>[];
+    ({int year, int? month})? lastPeriod;
+    for (final doc in folderDocs) {
+      final period = documentPeriod(doc);
+      if (lastPeriod == null || lastPeriod.year != period.year || lastPeriod.month != period.month) {
+        items.add(Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 6),
+          child: Text(
+            period.month != null
+                ? '${monthAbbrev[period.month! - 1]} ${period.year}'
+                : '${period.year}',
+            style: AppTextStyles.labelSmall.copyWith(
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ));
+        lastPeriod = period;
+      }
+      items.add(_buildDocumentTile(doc, _selectedCategory!));
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _selectedFolderKey = null),
+              icon: Icon(Icons.chevron_left_rounded, color: AppColors.primaryCyan),
+              label: Text(
+                folderDisplayName(key, property.folderNames),
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.primaryCyan,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: items,
+          ),
+        ),
+      ],
     );
   }
 
