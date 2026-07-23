@@ -323,7 +323,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Tap to view',
+                category == 'rental_invoice' ? 'Optional · tap to view' : 'Tap to view',
                 style: AppTextStyles.bodySmall.copyWith(
                   color: AppColors.textMuted,
                 ),
@@ -438,10 +438,10 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
             _buildCategorySectionHeader(category: category),
             Expanded(
               child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(32),
@@ -475,6 +475,42 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                         ),
                         textAlign: TextAlign.center,
                       ),
+                      if (category == 'rental_invoice') ...[
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.info.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border(
+                                left: BorderSide(color: AppColors.info, width: 3),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.info_outline,
+                                    size: 16, color: AppColors.info),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Optional — the lease already covers your rent. '
+                                    'Keep invoices, receipts, e-invoices and bank '
+                                    'transfer slips here for when reality differs '
+                                    'from the lease, or for audit proof.',
+                                    style: AppTextStyles.bodySmall.copyWith(
+                                      color: AppColors.textPrimary,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 32),
                       ElevatedButton.icon(
                         onPressed: () => _uploadDocument(category),

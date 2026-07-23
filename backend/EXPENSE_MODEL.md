@@ -230,6 +230,11 @@ extracted with a verbatim quote, and `utilities_paid_by` is set only after
 the landlord confirms the pre-filled answer once — never from an
 unconfirmed extraction.
 
+Stage E is complete: Documents is its own bottom-nav tab (DocuMind is chat-only), and the
+rent-invoice folder is renamed "Rent records" and reframed as optional — the lease already
+derives monthly rent income, so this folder is now for invoices, receipts, e-invoices and
+bank transfer slips kept for when reality differs from the lease, or for audit proof.
+
 ---
 
 ## Implementation surface (planned)

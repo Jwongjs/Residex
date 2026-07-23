@@ -15,7 +15,7 @@ String getCategoryLabel(String category) {
     'tax': 'Property Taxes',
     'upkeep': 'Upkeep & Repairs',
     'maintenance': 'Maintenance Fees',
-    'rental_invoice': 'Rental Invoices',
+    'rental_invoice': 'Rent records',
     'expenses': 'Expenses',
     'other': 'Other Documents',
   };
