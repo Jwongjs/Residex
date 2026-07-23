@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/documind_document.dart';
+import 'package:residex_app/features/landlord/data/models/property_model.dart';
 import 'package:residex_app/features/landlord/domain/entities/property.dart';
 import 'package:residex_app/features/landlord/domain/repositories/property_repository.dart';
 import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
@@ -90,6 +91,51 @@ void main() {
       find.textContaining('the lease already covers your rent'),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'a properties list backed by real PropertyModel instances does not crash opening a folder',
+      (tester) async {
+    // Reproduces production data flow: PropertyRemoteDataSource streams
+    // List<PropertyModel> (data/datasources/property_remote_datasource.dart),
+    // covariantly exposed as Stream<List<Property>> by the repository. The
+    // list literal itself stays reified as List<PropertyModel> — unlike
+    // buildTestWidget's [testProperty], a bare Property(...) literal that is
+    // structurally incapable of reproducing this bug.
+    final modelProperty = PropertyModel(
+      id: 'prop-1',
+      landlordId: 'landlord-1',
+      name: 'Maple Residency',
+      address: const PropertyAddress(
+        street: '123 Main St',
+        city: 'Kuala Lumpur',
+        state: 'WP Kuala Lumpur',
+        zipCode: '50000',
+        country: 'Malaysia',
+      ),
+      type: PropertyType.apartment,
+      purchasePrice: 500000,
+      currentValue: 550000,
+      createdAt: DateTime(2026, 1, 1),
+    );
+    final List<Property> properties = <PropertyModel>[modelProperty];
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value(properties)),
+        documindDocumentsProvider.overrideWith(
+          (ref, propertyId) async => const <DocuMindDocument>[],
+        ),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Rent records'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('No Rent records Yet'), findsOneWidget);
   });
 
   testWidgets('tapping Ask on an empty folder calls onOpenDocumind', (tester) async {

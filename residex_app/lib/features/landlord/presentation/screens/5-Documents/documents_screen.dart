@@ -384,10 +384,12 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     if (_selectedPropertyId == null || _selectedCategory == null) {
       return _buildLoadingState();
     }
-    final property = properties.firstWhere(
-      (p) => p.id == _selectedPropertyId,
-      orElse: () => properties.first,
-    );
+    Property property;
+    try {
+      property = properties.firstWhere((p) => p.id == _selectedPropertyId);
+    } catch (e) {
+      property = properties.first;
+    }
 
     final documentsAsync =
         ref.watch(documindDocumentsProvider(_selectedPropertyId!));
