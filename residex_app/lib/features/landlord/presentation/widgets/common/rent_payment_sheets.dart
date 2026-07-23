@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../providers/documind_provider.dart';
+import 'app_choice_chip.dart';
 
 /// Mark a month as no payment received, choosing outstanding (still being
 /// chased) or written_off (given up on) up front (spec's three rent
@@ -40,13 +41,13 @@ Future<void> showMarkUnpaidSheet(
               Wrap(
                 spacing: 8,
                 children: [
-                  ChoiceChip(
-                    label: const Text('Outstanding — still chasing'),
+                  AppChoiceChip(
+                    label: 'Outstanding — still chasing',
                     selected: state == 'outstanding',
                     onSelected: (_) => setSheetState(() => state = 'outstanding'),
                   ),
-                  ChoiceChip(
-                    label: const Text('Written off — given up'),
+                  AppChoiceChip(
+                    label: 'Written off — given up',
                     selected: state == 'written_off',
                     onSelected: (_) => setSheetState(() => state = 'written_off'),
                   ),

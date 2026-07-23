@@ -6,6 +6,7 @@ import '../../../domain/entities/unit.dart';
 import '../../providers/property_providers.dart';
 import '../../providers/unit_providers.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
+import 'app_choice_chip.dart';
 import 'registration_document_steps_sheet.dart';
 
 /// Add/Edit property dialog.
@@ -41,7 +42,21 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
 
   PropertyStructureType? _selectedStructureType;
   bool? _hasMortgage;
-  final _trackFromYearController = TextEditingController();
+  int? _trackFromYear;
+
+  /// House/apartment/condo imply their structure; commercial varies too much
+  /// to guess, so it stays null and [_buildStructureTypeSelector] asks.
+  static PropertyStructureType? _structureForType(PropertyType type) {
+    switch (type) {
+      case PropertyType.house:
+        return PropertyStructureType.landed;
+      case PropertyType.apartment:
+      case PropertyType.condo:
+        return PropertyStructureType.strata;
+      case PropertyType.commercial:
+        return null;
+    }
+  }
 
   bool get _isEditMode => widget.property != null;
 
@@ -62,7 +77,9 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       _selectedType = property.type;
       _selectedStructureType = property.structureType;
       _hasMortgage = property.hasMortgage;
-      _trackFromYearController.text = property.trackFromYear?.toString() ?? '';
+      _trackFromYear = property.trackFromYear;
+    } else {
+      _selectedStructureType = _structureForType(_selectedType);
     }
   }
 
@@ -77,7 +94,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     _currentValueController.dispose();
     _ownershipShareController.dispose();
     _totalUnitsController.dispose();
-    _trackFromYearController.dispose();
     super.dispose();
   }
 
@@ -104,9 +120,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       final ownershipShare =
           double.parse(_ownershipShareController.text) / 100.0;
 
-      final trackFromYearText = _trackFromYearController.text.trim();
-      final trackFromYear = trackFromYearText.isEmpty ? null : int.parse(trackFromYearText);
-
       final controller = ref.read(propertyControllerProvider);
       final existing = widget.property;
 
@@ -122,7 +135,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           ownershipShare: ownershipShare,
           structureType: _selectedStructureType,
           hasMortgage: _hasMortgage,
-          trackFromYear: trackFromYear,
+          trackFromYear: _trackFromYear,
         );
         await controller.updateProperty(updatedProperty);
       } else {
@@ -139,7 +152,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           createdAt: DateTime.now(),
           structureType: _selectedStructureType,
           hasMortgage: _hasMortgage,
-          trackFromYear: trackFromYear,
+          trackFromYear: _trackFromYear,
           nextSetupStep: 2,
         );
         final propertyId = await controller.createProperty(property);
@@ -388,21 +401,17 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Three quick facts — tailors which expenses the app ever asks you for.',
+                        'Quick facts — tailors which expenses the app ever asks you for.',
                         style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
                       ),
                       const SizedBox(height: 12),
-                      _buildStructureTypeSelector(),
-                      const SizedBox(height: 16),
+                      if (_selectedType == PropertyType.commercial) ...[
+                        _buildStructureTypeSelector(),
+                        const SizedBox(height: 16),
+                      ],
                       _buildMortgageSelector(),
                       const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: _trackFromYearController,
-                        label: 'Track expenses from year (optional)',
-                        hint: 'Leave blank if not sure — defaults to ${DateTime.now().year}',
-                        keyboardType: TextInputType.number,
-                        validator: _validateOptionalYear,
-                      ),
+                      _buildYearPicker(),
                     ],
                   ),
                 ),
@@ -512,7 +521,10 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       value: _selectedType,
       onChanged: (value) {
         if (value != null) {
-          setState(() => _selectedType = value);
+          setState(() {
+            _selectedType = value;
+            _selectedStructureType = _structureForType(value);
+          });
         }
       },
       decoration: InputDecoration(
@@ -551,23 +563,24 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Property structure', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+        Text('Is this commercial property landed or strata?',
+            style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           children: [
-            ChoiceChip(
-              label: const Text('Landed'),
+            AppChoiceChip(
+              label: 'Landed',
               selected: _selectedStructureType == PropertyStructureType.landed,
               onSelected: (_) => setState(() => _selectedStructureType = PropertyStructureType.landed),
             ),
-            ChoiceChip(
-              label: const Text('Strata'),
+            AppChoiceChip(
+              label: 'Strata',
               selected: _selectedStructureType == PropertyStructureType.strata,
               onSelected: (_) => setState(() => _selectedStructureType = PropertyStructureType.strata),
             ),
-            ChoiceChip(
-              label: const Text('Not sure'),
+            AppChoiceChip(
+              label: 'Not sure',
               selected: _selectedStructureType == null,
               onSelected: (_) => setState(() => _selectedStructureType = null),
             ),
@@ -587,18 +600,18 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         Wrap(
           spacing: 8,
           children: [
-            ChoiceChip(
-              label: const Text('Yes'),
+            AppChoiceChip(
+              label: 'Yes',
               selected: _hasMortgage == true,
               onSelected: (_) => setState(() => _hasMortgage = true),
             ),
-            ChoiceChip(
-              label: const Text('No'),
+            AppChoiceChip(
+              label: 'No',
               selected: _hasMortgage == false,
               onSelected: (_) => setState(() => _hasMortgage = false),
             ),
-            ChoiceChip(
-              label: const Text('Not sure'),
+            AppChoiceChip(
+              label: 'Not sure',
               selected: _hasMortgage == null,
               onSelected: (_) => setState(() => _hasMortgage = null),
             ),
@@ -608,12 +621,98 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     );
   }
 
-  String? _validateOptionalYear(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    final year = int.tryParse(value.trim());
-    if (year == null) return 'Must be a whole year';
-    if (year < 2000 || year > DateTime.now().year) return 'Between 2000 and ${DateTime.now().year}';
-    return null;
+  /// Styled like [_buildTextField] but opens a bottom sheet of years instead
+  /// of a keyboard, so landlords never have to hand-type a year.
+  Widget _buildYearPicker() {
+    final currentYear = DateTime.now().year;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: _pickTrackFromYear,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Track expenses from year (optional)',
+          labelStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+          floatingLabelStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.registry),
+          floatingLabelBehavior: FloatingLabelBehavior.always,
+          isDense: true,
+          prefixIcon: const Icon(Icons.calendar_today_outlined, color: AppColors.registry, size: 20),
+          suffixIcon: const Icon(Icons.arrow_drop_down, color: AppColors.textMuted),
+          filled: true,
+          fillColor: AppColors.card,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.hairline),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.hairline),
+          ),
+        ),
+        child: Text(
+          _trackFromYear?.toString() ?? 'Not sure — defaults to $currentYear',
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: _trackFromYear == null ? AppColors.textMuted : AppColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickTrackFromYear() async {
+    final currentYear = DateTime.now().year;
+    const notSure = -1; // sentinel: distinguishes an explicit "not sure" tap from a dismissed sheet
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Track expenses from year', style: AppTextStyles.titleLarge),
+              const SizedBox(height: 4),
+              Text(
+                'Leave on "Not sure" to default to $currentYear.',
+                style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    ListTile(
+                      title: Text('Not sure (default)', style: AppTextStyles.bodyLarge),
+                      trailing: _trackFromYear == null
+                          ? const Icon(Icons.check, color: AppColors.registry)
+                          : null,
+                      onTap: () => Navigator.of(sheetContext).pop(notSure),
+                    ),
+                    for (var year = currentYear; year >= 2000; year--)
+                      ListTile(
+                        title: Text('$year', style: AppTextStyles.bodyLarge),
+                        trailing: _trackFromYear == year
+                            ? const Icon(Icons.check, color: AppColors.registry)
+                            : null,
+                        onTap: () => Navigator.of(sheetContext).pop(year),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked != null) {
+      setState(() => _trackFromYear = picked == notSure ? null : picked);
+    }
   }
 
   String? _validateNumber(String? value) {

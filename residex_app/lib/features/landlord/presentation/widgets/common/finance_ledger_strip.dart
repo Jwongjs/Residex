@@ -22,25 +22,25 @@ class FinanceLedgerStrip extends StatelessWidget {
     final totals = summary.totals;
     final netColor = totals.netPl < 0 ? AppColors.sealRed : AppColors.deedGreen;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Net P/L · ${summary.year}', style: AppTextStyles.labelSmall),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       formatRM(totals.netPl),
                       style: AppTextStyles.displayLarge.copyWith(color: netColor),
                     ),
                     if (totals.derivedRent > 0) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
                         'includes ${formatRM(totals.derivedRent)} backfilled from lease terms',
                         style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
@@ -49,32 +49,40 @@ class FinanceLedgerStrip extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 24),
               _ledgerColumn('RECEIVED', totals.receivedRent),
-              const SizedBox(width: 16),
+              const SizedBox(width: 28),
               _ledgerColumn('EXPENSES', totals.directExpenses),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 20),
           const Divider(height: 1, color: AppColors.hairline),
-          const SizedBox(height: 10),
+          const SizedBox(height: 16),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Statutory rental income', style: AppTextStyles.labelLarge),
+                    Text(
+                      'Statutory rental income',
+                      style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted, letterSpacing: 0.4),
+                    ),
+                    const SizedBox(height: 3),
                     Text(totals.statutoryNote,
                         style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted)),
                   ],
                 ),
               ),
-              Text(formatRM(totals.statutoryRentalIncome), style: AppTextStyles.titleLarge),
+              const SizedBox(width: 12),
+              Text(formatRM(totals.statutoryRentalIncome), style: AppTextStyles.titleMedium),
               IconButton(
-                icon: const Icon(Icons.info_outline, size: 20, color: AppColors.textMuted),
+                icon: const Icon(Icons.info_outline, size: 18, color: AppColors.textMuted),
                 tooltip: 'Assumptions and caveats',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 onPressed: onShowCaveats,
               ),
             ],

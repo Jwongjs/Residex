@@ -14,13 +14,12 @@ class NavTab {
   });
 }
 
-/// Reusable custom bottom navigation bar with a modestly emphasized center tab.
+/// Reusable custom bottom navigation bar.
 ///
 /// Features:
 /// - Flat white bar with a top hairline, matching the light Title Deed pages above it
 /// - Slate inactive / registry active tab coloring
-/// - Center tab (Documind) gets a small filled accent circle, but stays level with the bar
-/// - Supports any odd number of navigation tabs, with the middle tab elevated
+/// - The active tab is marked by a small dot under its label
 class CustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
@@ -35,8 +34,6 @@ class CustomBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final centerIndex = tabs.length ~/ 2;
-
     return Container(
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -49,23 +46,10 @@ class CustomBottomNavBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(tabs.length, (index) {
               final tab = tabs[index];
-              final isActive = currentIndex == index;
-              final isCenter = index == centerIndex;
-
-              if (isCenter) {
-                return Expanded(
-                  child: _CenterTab(
-                    tab: tab,
-                    isActive: isActive,
-                    onTap: () => onTap(index),
-                  ),
-                );
-              }
-
               return Expanded(
                 child: _NavItem(
                   tab: tab,
-                  isActive: isActive,
+                  isActive: currentIndex == index,
                   onTap: () => onTap(index),
                 ),
               );
@@ -122,44 +106,3 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-class _CenterTab extends StatelessWidget {
-  final NavTab tab;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _CenterTab({
-    required this.tab,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: const BoxDecoration(
-              color: AppColors.registry,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(tab.icon, size: 22, color: Colors.white),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            tab.label,
-            style: AppTextStyles.labelSmall.copyWith(
-              color: isActive ? AppColors.registry : AppColors.slate,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
