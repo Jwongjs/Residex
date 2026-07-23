@@ -798,6 +798,32 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                     ),
                   ],
                 ),
+                if (doc.tags.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final t in doc.tags)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Text(
+                            tagLabel(t.tag),
+                            style: AppTextStyles.labelSmall.copyWith(
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

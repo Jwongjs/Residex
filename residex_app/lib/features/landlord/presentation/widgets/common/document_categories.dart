@@ -90,3 +90,34 @@ List<Unit?> uploadUnitDialogOptions({
   }
   return [null, ...units];
 }
+
+/// Display labels for derived sub-category tags (spec §9). Mirrors backend
+/// `_EXPENSE_LINE_LABELS`/`insurance_premium` label text in
+/// `finance_engine.py:22-44` exactly — the wire only carries the tag key,
+/// this is presentation-only text.
+String tagLabel(String tag) {
+  const labels = {
+    'loan_interest': 'Loan interest',
+    'assessment_tax': 'Assessment tax',
+    'quit_rent': 'Quit rent',
+    'parcel_rent': 'Parcel rent',
+    'maintenance': 'Maintenance fees',
+    'sinking_fund': 'Sinking fund',
+    'insurance_premium': 'Insurance premium',
+    'upkeep': 'Upkeep',
+    'utilities': 'Utilities',
+    'late_penalty': 'Late payment charge',
+    'renovation': 'Renovation',
+    'loan_principal': 'Loan principal',
+    'management_fee': 'Property management fee',
+    'rent_collection': 'Rent collection fee',
+    'security_fee': 'Security fee',
+    'pest_control': 'Pest control',
+    'agent_commission': 'Agent commission',
+    'legal_fee': 'Legal fees',
+    'stamp_duty': 'Stamp duty',
+    'advertising': 'Advertising',
+    'sst': 'Service tax (SST)',
+  };
+  return labels[tag] ?? tag;
+}

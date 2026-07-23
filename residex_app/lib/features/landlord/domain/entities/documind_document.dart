@@ -1,3 +1,16 @@
+/// One derived sub-category tag (design spec §9). Computed by the backend
+/// at read time from extracted_facts — never hand-entered, never stored.
+class DocumentTag {
+  final String tag;
+
+  /// 'periodic' | 'one_off' | 'ad_hoc' — drives folder clustering
+  /// (see document_folders.dart). Periodic tags define a folder's identity;
+  /// one_off and ad_hoc tags ride along and never split one.
+  final String rhythm;
+
+  const DocumentTag({required this.tag, required this.rhythm});
+}
+
 /// Domain entity for DocuMind document metadata
 class DocuMindDocument {
   final String docId;
@@ -22,6 +35,10 @@ class DocuMindDocument {
   /// Extractor's self-reported confidence (0.0-1.0).
   final double? factsConfidence;
 
+  /// Derived sub-category tags (design spec §9); empty when the document's
+  /// category/extracted facts carry no tag vocabulary.
+  final List<DocumentTag> tags;
+
   DocuMindDocument({
     required this.docId,
     required this.landlordId,
@@ -34,6 +51,7 @@ class DocuMindDocument {
     this.unitLabel,
     this.extractedFacts,
     this.factsConfidence,
+    this.tags = const [],
   });
 }
 

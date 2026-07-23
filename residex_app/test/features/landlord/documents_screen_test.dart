@@ -6,6 +6,7 @@ import 'package:residex_app/features/landlord/domain/entities/property.dart';
 import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/5-Documents/documents_screen.dart';
+import 'package:residex_app/features/landlord/presentation/widgets/common/document_categories.dart';
 
 void main() {
   final testProperty = Property(
@@ -80,5 +81,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tapped, isTrue);
+  });
+
+  testWidgets('a document with tags shows its tag chips', (tester) async {
+    final doc = DocuMindDocument(
+      docId: 'd1', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'tax', filename: 'quitrent.pdf', chunksIndexed: 1,
+      uploadedAt: DateTime(2026, 2, 1),
+      tags: const [DocumentTag(tag: 'quit_rent', rhythm: 'one_off')],
+    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
+        documindDocumentsProvider.overrideWith((ref, propertyId) async => [doc]),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    // Scroll down to find the Expenses card
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    // Find and tap the Expenses category card
+    await tester.tap(find.text('Expenses'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    // The tag label should be displayed on the document tile
+    expect(find.text('Quit rent'), findsOneWidget);
   });
 }

@@ -1,6 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/entities/documind_document.dart';
 
+List<DocumentTag> _parseDocumentTags(dynamic value) {
+  if (value is! List) return const [];
+  return [
+    for (final item in value)
+      if (item is Map)
+        DocumentTag(
+          tag: item['tag'] as String? ?? '',
+          rhythm: item['rhythm'] as String? ?? 'one_off',
+        ),
+  ];
+}
+
 /// Data Transfer Object for DocuMind documents
 class DocuMindDocumentModel extends DocuMindDocument {
   DocuMindDocumentModel({
@@ -15,6 +27,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
     super.unitLabel,
     super.extractedFacts,
     super.factsConfidence,
+    super.tags,
   });
 
   /// Create from Firestore document
@@ -22,7 +35,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
     DocumentSnapshot doc,
   ) {
     final data = doc.data() as Map<String, dynamic>;
-    
+
     return DocuMindDocumentModel(
       docId: doc.id,
       landlordId: data['landlord_id'] as String? ?? '',
@@ -35,6 +48,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
       unitLabel: data['unit_label'] as String?,
       extractedFacts: (data['extracted_facts'] as Map<String, dynamic>?),
       factsConfidence: (data['facts_confidence'] as num?)?.toDouble(),
+      tags: _parseDocumentTags(data['tags']),
     );
   }
 
@@ -52,6 +66,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
       unitLabel: json['unit_label'] as String?,
       extractedFacts: (json['extracted_facts'] as Map<String, dynamic>?),
       factsConfidence: (json['facts_confidence'] as num?)?.toDouble(),
+      tags: _parseDocumentTags(json['tags']),
     );
   }
 
@@ -69,6 +84,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
       'unit_label': unitLabel,
       'extracted_facts': extractedFacts,
       'facts_confidence': factsConfidence,
+      'tags': [for (final t in tags) {'tag': t.tag, 'rhythm': t.rhythm}],
     };
   }
 
@@ -86,6 +102,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
       unitLabel: unitLabel,
       extractedFacts: extractedFacts,
       factsConfidence: factsConfidence,
+      tags: tags,
     );
   }
 

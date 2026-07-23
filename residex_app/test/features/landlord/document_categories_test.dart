@@ -73,4 +73,15 @@ void main() {
       expect(displayCategoryFor(stored), 'expenses', reason: stored);
     }
   });
+
+  test('tagLabel returns the display label for a known tag', () {
+    expect(tagLabel('maintenance'), 'Maintenance fees');
+    expect(tagLabel('sinking_fund'), 'Sinking fund');
+    expect(tagLabel('assessment_tax'), 'Assessment tax');
+    expect(tagLabel('insurance_premium'), 'Insurance premium');
+  });
+
+  test('tagLabel falls back to the raw tag for an unknown value', () {
+    expect(tagLabel('future_subtype'), 'future_subtype');
+  });
 }
