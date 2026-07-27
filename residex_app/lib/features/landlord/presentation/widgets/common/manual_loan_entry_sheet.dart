@@ -4,6 +4,7 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/finance_summary.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart' show formatRM, monthAbbrev;
+import '../../providers/finance_providers.dart';
 
 /// Add/edit form + list for a property whose loan figures are keyed in by
 /// hand rather than uploaded (`loanInputMethod == 'manual'`). Opened as a
@@ -131,9 +132,22 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
     );
     final isMonthly = widget.cadence == 'monthly';
 
+    final summaryAsync = ref.watch(financeSummaryProvider(widget.year));
+    final units = summaryAsync.maybeWhen(
+      data: (summary) {
+        for (final p in summary.properties) {
+          if (p.propertyId == widget.propertyId) {
+            return p.units.where((u) => u.unitId != null).toList();
+          }
+        }
+        return widget.units;
+      },
+      orElse: () => widget.units,
+    );
+
     UnitFinance? selectedUnit;
     if (_selectedUnitId != null) {
-      for (final u in widget.units) {
+      for (final u in units) {
         if (u.unitId == _selectedUnitId) {
           selectedUnit = u;
           break;
@@ -159,7 +173,7 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                 Text('Add loan figures — ${widget.year}',
                     style: AppTextStyles.titleLarge),
                 const SizedBox(height: 16),
-                if (widget.units.isNotEmpty) ...[
+                if (units.isNotEmpty) ...[
                   Text('SCOPE',
                       style: AppTextStyles.labelSmall.copyWith(
                         fontWeight: FontWeight.w700,
@@ -175,7 +189,7 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                         value: null,
                         child: Text('Whole property'),
                       ),
-                      for (final u in widget.units)
+                      for (final u in units)
                         DropdownMenuItem<String?>(
                           value: u.unitId,
                           child: Text(u.label),
