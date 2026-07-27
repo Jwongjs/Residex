@@ -166,10 +166,10 @@ class _UnitFinanceDetailScreenState
   Widget _buildContributionAccordion(
       BuildContext context, UnitFinance unit, int year) {
     final gross = _grossIncome(unit);
-    // Only deductible lines feed the total — mirrors the backend net-contribution
-    // fold so gross − expenseTotal == contribution (non-deductible lines still
-    // render below, marked). See finance_logic.deductibleExpenseTotal.
-    final expenseTotal = deductibleExpenseTotal(unit.expenseLines);
+    // Net P/L basis (user decision): all landlord-paid outflows reduce the
+    // headline. gross − expenseTotal == unit.contribution.
+    final expenseTotal = landlordPaidExpenseTotal(unit.expenseLines);
+    final statutoryTotal = deductibleExpenseTotal(unit.expenseLines);
     final hasExpenses = unit.expenseLines.isNotEmpty;
 
     return Container(
@@ -241,6 +241,32 @@ class _UnitFinanceDetailScreenState
                         ],
                       ),
                       ..._buildGroupedExpenseLines(context, unit.expenseLines),
+                      const SizedBox(height: 12),
+                      const Divider(height: 1, color: AppColors.hairline),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('Contributing statutory income',
+                                style: AppTextStyles.labelLarge),
+                          ),
+                          Text(
+                            formatRM(unit.statutoryContribution),
+                            style: GoogleFonts.ibmPlexMono(
+                              fontSize: 14, fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'LHDN-deductible expenses only (−${formatRM(statutoryTotal)})',
+                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted),
+                      ),
+                      ..._buildGroupedExpenseLines(
+                        context,
+                        unit.expenseLines.where((l) => l.deductible).toList(),
+                      ),
                     ] else
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),

@@ -106,7 +106,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Gross income'), findsOneWidget);
-    expect(find.text('Plumbing repair'), findsOneWidget);
+    // Appears twice: once in the Net P/L direct-expenses list, once more in
+    // the statutory block below it (this line is both landlord-paid and
+    // LHDN-deductible, so it contributes to both totals).
+    expect(find.text('Plumbing repair'), findsNWidgets(2));
   });
 
   testWidgets('a tenant-paid utility line is marked excluded and kept out of the direct-expenses total',
@@ -129,7 +132,7 @@ void main() {
         ExpenseLine(
           docId: 'd2', category: 'utilities', subtype: 'utilities',
           description: 'Water meter', amount: 80.0, date: '2025-03-01',
-          deductible: false,
+          deductible: false, paidByLandlord: false,
         ),
       ],
     );
@@ -143,6 +146,33 @@ void main() {
     // The excluded line still shows, tagged with its reason.
     expect(find.text('Water meter'), findsOneWidget);
     expect(find.text('Tenant pays — excluded'), findsOneWidget);
+  });
+
+  testWidgets('accordion shows Net P/L direct expenses and a statutory contribution block',
+      (tester) async {
+    final year = DateTime.now().year;
+    final unit = UnitFinance(
+      unitId: 'u1', label: 'Unit A', rentedMonths: 12,
+      contribution: 12000.0 - 3200.0,          // Net P/L: maintenance 3000 + penalty 200
+      statutoryContribution: 12000.0 - 3000.0, // statutory: maintenance only
+      months: [MonthIncome(month: 1, source: 'actual', amount: 12000.0)],
+      expenseLines: [
+        ExpenseLine(docId: 'd1', category: 'maintenance', subtype: 'maintenance',
+            description: 'Service charge', amount: 3000.0, date: '2025-01-01'),
+        ExpenseLine(docId: 'd2', category: 'loan', subtype: 'late_penalty',
+            description: 'Late charge', amount: 200.0, date: '2025-01-01',
+            deductible: false, paidByLandlord: true),
+      ],
+    );
+    await _pumpScreen(tester, year, unit);
+    await tester.tap(find.text('Net contribution'));
+    await tester.pumpAndSettle();
+
+    // Net P/L direct expenses = 3200 (both landlord-paid lines).
+    expect(find.text('−RM 3,200.00'), findsOneWidget);
+    // Statutory contribution block present with its figure.
+    expect(find.textContaining('Contributing statutory income'), findsOneWidget);
+    expect(find.text('RM 9,000.00'), findsOneWidget);
   });
 
   testWidgets('an empty expenseLines list shows the no-direct-expenses row',
