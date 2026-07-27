@@ -134,6 +134,15 @@ class Property {
   /// confirms what the extracted clause says; never written automatically.
   final String utilitiesPaidBy;
 
+  /// 'monthly' | 'annual' — how often the landlord books loan figures. null
+  /// until the mortgage question is answered "Yes". Informational for the
+  /// upload method; shapes the manual-entry form.
+  final String? loanInputCadence;
+
+  /// 'upload' | 'manual' — whether loan figures arrive by uploaded statement
+  /// (default) or manual entry. null until mortgage = Yes.
+  final String? loanInputMethod;
+
   /// 0 = nothing to resume (legacy property, or setup fully finished).
   /// 2 or 3 = the registration wizard step to reopen via "Continue setup".
   final int nextSetupStep;
@@ -168,6 +177,8 @@ class Property {
     this.hasMortgage,
     this.trackFromYear,
     this.utilitiesPaidBy = 'tenant',
+    this.loanInputCadence,
+    this.loanInputMethod,
     this.nextSetupStep = 0,
     this.foldersEnabled = false,
     this.folderNames = const {},
@@ -206,6 +217,8 @@ class Property {
     bool? hasMortgage,
     int? trackFromYear,
     String? utilitiesPaidBy,
+    String? loanInputCadence,
+    String? loanInputMethod,
     int? nextSetupStep,
     bool? foldersEnabled,
     Map<String, String>? folderNames,
@@ -227,6 +240,8 @@ class Property {
       hasMortgage: hasMortgage ?? this.hasMortgage,
       trackFromYear: trackFromYear ?? this.trackFromYear,
       utilitiesPaidBy: utilitiesPaidBy ?? this.utilitiesPaidBy,
+      loanInputCadence: loanInputCadence ?? this.loanInputCadence,
+      loanInputMethod: loanInputMethod ?? this.loanInputMethod,
       nextSetupStep: nextSetupStep ?? this.nextSetupStep,
       foldersEnabled: foldersEnabled ?? this.foldersEnabled,
       folderNames: folderNames ?? this.folderNames,

@@ -7,6 +7,8 @@ Map<String, dynamic> _propertyJson({
   bool? hasMortgage,
   int? trackFromYear,
   String? utilitiesPaidBy,
+  String? loanInputCadence,
+  String? loanInputMethod,
 }) {
   return {
     'landlordId': 'l1',
@@ -26,6 +28,8 @@ Map<String, dynamic> _propertyJson({
     if (hasMortgage != null) 'has_mortgage': hasMortgage,
     if (trackFromYear != null) 'track_from_year': trackFromYear,
     if (utilitiesPaidBy != null) 'utilities_paid_by': utilitiesPaidBy,
+    if (loanInputCadence != null) 'loan_input_cadence': loanInputCadence,
+    if (loanInputMethod != null) 'loan_input_method': loanInputMethod,
   };
 }
 
@@ -37,6 +41,8 @@ void main() {
         hasMortgage: true,
         trackFromYear: 2023,
         utilitiesPaidBy: 'landlord',
+        loanInputCadence: 'monthly',
+        loanInputMethod: 'manual',
       ),
       'p1',
     );
@@ -44,12 +50,16 @@ void main() {
     expect(model.hasMortgage, isTrue);
     expect(model.trackFromYear, 2023);
     expect(model.utilitiesPaidBy, 'landlord');
+    expect(model.loanInputCadence, 'monthly');
+    expect(model.loanInputMethod, 'manual');
 
     final json = model.toJson();
     expect(json['property_type'], 'strata');
     expect(json['has_mortgage'], isTrue);
     expect(json['track_from_year'], 2023);
     expect(json['utilities_paid_by'], 'landlord');
+    expect(json['loan_input_cadence'], 'monthly');
+    expect(json['loan_input_method'], 'manual');
   });
 
   test('absent profile fields fall back to "not sure" and tenant default', () {
@@ -58,11 +68,15 @@ void main() {
     expect(model.hasMortgage, isNull);
     expect(model.trackFromYear, isNull);
     expect(model.utilitiesPaidBy, 'tenant');
+    expect(model.loanInputCadence, isNull);
+    expect(model.loanInputMethod, isNull);
 
     final json = model.toJson();
     expect(json['property_type'], isNull);
     expect(json['has_mortgage'], isNull);
     expect(json['track_from_year'], isNull);
     expect(json['utilities_paid_by'], 'tenant');
+    expect(json['loan_input_cadence'], isNull);
+    expect(json['loan_input_method'], isNull);
   });
 }
