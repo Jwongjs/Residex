@@ -25,6 +25,7 @@ class FinanceTotals {
   final double outstandingRent;
   final double directExpenses;
   final double netPl;
+  final double landlordExpenses;
   final double statutoryRentalIncome;
   final String statutoryNote;
 
@@ -34,6 +35,7 @@ class FinanceTotals {
     this.outstandingRent = 0.0,
     required this.directExpenses,
     required this.netPl,
+    this.landlordExpenses = 0.0,
     required this.statutoryRentalIncome,
     required this.statutoryNote,
   });

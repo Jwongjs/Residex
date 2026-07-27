@@ -25,6 +25,7 @@ FinanceSummary _summaryWithProperty(int year, {required bool complete}) {
         derivedRent: 0.0,
         directExpenses: 200.0,
         rentalIncomeOrLoss: 3000.0,
+        netPl: 2800.0,
         statutoryContribution: 3100.0,
       ),
     ],
@@ -64,11 +65,13 @@ void main() {
     expect(find.textContaining('Statutory Rental Income'), findsOneWidget);
   });
 
-  testWidgets('a property with a statutory contribution shows the STATUTORY mini-stat',
+  testWidgets('a property shows the NET P/L mini-stat sourced from block.netPl',
       (tester) async {
     final year = DateTime.now().year;
     await _pumpScreen(tester, year, _summaryWithProperty(year, complete: true));
 
-    expect(find.text('STATUTORY'), findsOneWidget);
+    expect(find.text('NET P/L'), findsOneWidget);
+    expect(find.text('STATUTORY'), findsNothing);
+    expect(find.text('RM 2,800.00'), findsOneWidget);
   });
 }

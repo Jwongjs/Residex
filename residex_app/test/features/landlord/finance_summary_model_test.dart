@@ -9,6 +9,7 @@ void main() {
       'derived_rent': 11000.0,
       'direct_expenses': 59516.87,
       'net_pl': 24483.13,
+      'landlord_expenses': 70516.87,
       'statutory_rental_income': 24483.13,
       'statutory_note': 'Estimate — for your tax agent',
     },
@@ -81,6 +82,7 @@ void main() {
     final summary = FinanceSummaryModel.fromJson(json);
     expect(summary.year, 2025);
     expect(summary.totals.statutoryRentalIncome, 24483.13);
+    expect(summary.totals.landlordExpenses, 70516.87);
     expect(summary.totals.statutoryNote, contains('Estimate'));
     expect(summary.expenseBreakdown['loan'], 32000.0);
     final block = summary.properties.single;

@@ -46,7 +46,7 @@ class FinanceSummaryPanel extends StatelessWidget {
             );
             final expensesCard = _SecondaryCard(
               label: 'TOTAL EXPENSES',
-              value: totals.directExpenses,
+              value: totals.landlordExpenses,
               headerStyle: _cardHeaderStyle,
             );
 

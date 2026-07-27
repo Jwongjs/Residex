@@ -353,10 +353,7 @@ class FinanceScreen extends ConsumerWidget {
             children: [
               Expanded(child: _miniStat('RECEIVED', block.receivedRent)),
               Expanded(child: _miniStat('EXPENSES', block.directExpenses)),
-              if (block.statutoryContribution != null)
-                Expanded(
-                    child: _miniStat(
-                        'STATUTORY', block.statutoryContribution!)),
+              Expanded(child: _miniStat('NET P/L', block.netPl)),
             ],
           ),
           const SizedBox(height: 12),
