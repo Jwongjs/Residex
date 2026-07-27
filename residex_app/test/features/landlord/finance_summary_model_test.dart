@@ -267,4 +267,32 @@ void main() {
     expect(summary.properties.single.expectedCategories,
         ['assessment', 'land_office_tax', 'maintenance']);
   });
+
+  test('parses two-tier fields', () {
+    final summary = FinanceSummaryModel.fromJson({
+      'year': 2025,
+      'totals': {'received_rent': 12000, 'derived_rent': 0, 'direct_expenses': 8000,
+        'net_pl': -4200, 'statutory_rental_income': 4000, 'statutory_note': 'x'},
+      'properties': [
+        {'property_id': 'p1', 'name': 'Ayer 8', 'received_rent': 12000, 'derived_rent': 0,
+         'direct_expenses': 8000, 'rental_income_or_loss': 4000,
+         'net_pl': -4200, 'statutory_contribution': 4000,
+         'units': [
+           {'unit_id': 'u1', 'label': 'A', 'rented_months': 12, 'contribution': -4200,
+            'statutory_contribution': 4000, 'months': [], 'expense_lines': [
+              {'doc_id': 'd', 'category': 'loan', 'subtype': 'loan_principal',
+               'amount': 8000, 'deductible': false, 'paid_by_landlord': true},
+            ]},
+         ],
+         'expense_lines': [], 'property_expense_lines': []},
+      ],
+    });
+    final prop = summary.properties.single;
+    expect(prop.netPl, -4200);
+    expect(prop.statutoryContribution, 4000);
+    final unit = prop.units.single;
+    expect(unit.statutoryContribution, 4000);
+    expect(unit.expenseLines.single.paidByLandlord, true);
+    expect(unit.expenseLines.single.deductible, false);
+  });
 }

@@ -49,6 +49,8 @@ class PropertyFinance {
   final double outstandingRent;
   final double directExpenses;
   final double rentalIncomeOrLoss;
+  final double netPl;
+  final double? statutoryContribution;
   final List<UnitFinance> units;
   final List<ExpenseLine> expenseLines;
   final List<ExpenseLine> propertyExpenseLines;
@@ -66,6 +68,8 @@ class PropertyFinance {
     this.outstandingRent = 0.0,
     required this.directExpenses,
     required this.rentalIncomeOrLoss,
+    this.netPl = 0.0,
+    this.statutoryContribution,
     this.units = const [],
     this.expenseLines = const [],
     this.propertyExpenseLines = const [],
@@ -127,6 +131,7 @@ class UnitFinance {
   final String label;
   final int rentedMonths;
   final double contribution;
+  final double statutoryContribution;
   final List<MonthIncome> months;
   final List<int> missingInvoiceMonths;
   final List<ExpenseLine> expenseLines;
@@ -136,6 +141,7 @@ class UnitFinance {
     required this.label,
     required this.rentedMonths,
     required this.contribution,
+    this.statutoryContribution = 0.0,
     this.months = const [],
     this.missingInvoiceMonths = const [],
     this.expenseLines = const [],
@@ -169,6 +175,7 @@ class ExpenseLine {
   final String? date;
   final String? unitId; // null = property-level expense
   final bool deductible;
+  final bool paidByLandlord;
 
   ExpenseLine({
     required this.docId,
@@ -179,5 +186,6 @@ class ExpenseLine {
     this.date,
     this.unitId,
     this.deductible = true,
+    this.paidByLandlord = true,
   });
 }

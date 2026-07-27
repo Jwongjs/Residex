@@ -46,6 +46,9 @@ class FinanceSummaryModel {
       outstandingRent: _d(json['outstanding_rent']),
       directExpenses: _d(json['direct_expenses']),
       rentalIncomeOrLoss: _d(json['rental_income_or_loss']),
+      netPl: _d(json['net_pl']),
+      statutoryContribution:
+          json['statutory_contribution'] == null ? null : _d(json['statutory_contribution']),
       units: (json['units'] as List<dynamic>? ?? const [])
           .map((u) => _unit(u as Map<String, dynamic>))
           .toList(),
@@ -100,6 +103,7 @@ class FinanceSummaryModel {
       label: json['label'] as String? ?? 'Unit',
       rentedMonths: (json['rented_months'] as num?)?.toInt() ?? 0,
       contribution: _d(json['contribution']),
+      statutoryContribution: _d(json['statutory_contribution']),
       months: (json['months'] as List<dynamic>? ?? const [])
           .map((m) => m as Map<String, dynamic>)
           .map((m) => MonthIncome(
@@ -130,6 +134,7 @@ class FinanceSummaryModel {
               date: l['date'] as String?,
               unitId: l['unit_id'] as String?,
               deductible: l['deductible'] as bool? ?? true,
+              paidByLandlord: l['paid_by_landlord'] as bool? ?? true,
             ))
         .toList();
   }
