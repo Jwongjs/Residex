@@ -335,6 +335,15 @@ double deductibleExpenseTotal(List<ExpenseLine> lines) {
       .fold<double>(0, (sum, l) => sum + l.amount);
 }
 
+/// The Overall Net P/L direct-expenses figure: the sum of lines the landlord
+/// actually pays (deductible or not). Mirrors the backend Net P/L fold; the
+/// per-unit `contribution` equals gross minus this.
+double landlordPaidExpenseTotal(List<ExpenseLine> lines) {
+  return lines
+      .where((l) => l.paidByLandlord)
+      .fold<double>(0, (sum, l) => sum + l.amount);
+}
+
 // Why a non-deductible line is excluded, keyed off the same rules the backend
 // applies (`_line_deductible`): utilities the tenant bears, statutory
 // non-deductibles, capital outlay, and first-letting costs. Shown beside the

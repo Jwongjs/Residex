@@ -66,10 +66,10 @@ void main() {
     expect(years, [2026, 2023]);
   });
 
-  ExpenseLine makeLine(String subtype, {String category = 'expenses', String? date, double amount = 100.0, String? description, bool deductible = true}) {
+  ExpenseLine makeLine(String subtype, {String category = 'expenses', String? date, double amount = 100.0, String? description, bool deductible = true, bool paidByLandlord = true}) {
     return ExpenseLine(
       docId: 'd', category: category, subtype: subtype,
-      description: description, amount: amount, date: date, deductible: deductible,
+      description: description, amount: amount, date: date, deductible: deductible, paidByLandlord: paidByLandlord,
     );
   }
 
@@ -144,6 +144,17 @@ void main() {
         deductibleExpenseTotal([makeLine('maintenance', amount: 100.0), makeLine('quit_rent', amount: 50.0)]),
         150.0,
       );
+    });
+  });
+
+  group('landlordPaidExpenseTotal', () {
+    test('sums lines the landlord pays, incl. non-deductible ones', () {
+      final total = landlordPaidExpenseTotal([
+        makeLine('maintenance', amount: 300.0),                       // both
+        makeLine('late_penalty', amount: 200.0, deductible: false),   // paid, not deductible
+        makeLine('utilities', amount: 80.0, deductible: false, paidByLandlord: false), // neither
+      ]);
+      expect(total, 500.0);
     });
   });
 
