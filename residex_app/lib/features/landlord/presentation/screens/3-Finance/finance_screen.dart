@@ -316,7 +316,8 @@ class FinanceScreen extends ConsumerWidget {
       FinanceSummary summary, PropertyFinance block) {
     final missing = summary.missingCategories[block.propertyId] ?? const [];
     final property = ref.watch(propertyByIdProvider(block.propertyId)).value;
-    final showManualLoan = property?.loanInputMethod == 'manual';
+    final showManualLoan =
+        property?.hasMortgage == true && property?.loanInputMethod == 'manual';
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),

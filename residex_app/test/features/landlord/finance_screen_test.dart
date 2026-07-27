@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
+import 'package:residex_app/features/landlord/domain/entities/property.dart';
 import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
+import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/3-Finance/finance_screen.dart';
 
 FinanceSummary _summaryWithProperty(int year, {required bool complete}) {
@@ -47,6 +49,49 @@ Future<void> _pumpScreen(WidgetTester tester, int year, FinanceSummary summary) 
   await tester.pumpAndSettle();
 }
 
+Future<void> _pumpScreenWithProperty(
+  WidgetTester tester,
+  int year,
+  FinanceSummary summary,
+  Property property,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        financeYearsProvider.overrideWith((ref) async => [year]),
+        financeSummaryProvider.overrideWith((ref, y) async => summary),
+        propertyByIdProvider.overrideWith((ref, id) async => property),
+      ],
+      child: const MaterialApp(
+        home: FinanceScreen(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Property _fakeProperty({required bool hasMortgage, required String? loanInputMethod}) {
+  return Property(
+    id: 'p1',
+    landlordId: 'landlord1',
+    name: 'Ayer 8',
+    address: const PropertyAddress(
+      street: '8 Ayer St',
+      city: 'Kuala Lumpur',
+      state: 'WP',
+      zipCode: '50000',
+      country: 'Malaysia',
+    ),
+    type: PropertyType.apartment,
+    purchasePrice: 500000,
+    currentValue: 550000,
+    hasMortgage: hasMortgage,
+    loanInputMethod: loanInputMethod,
+    loanInputCadence: loanInputMethod == 'manual' ? 'annual' : null,
+    createdAt: DateTime(2025, 1, 1),
+  );
+}
+
 void main() {
   testWidgets('an incomplete property shows the "Current" statutory label',
       (tester) async {
@@ -73,5 +118,33 @@ void main() {
     expect(find.text('NET P/L'), findsOneWidget);
     expect(find.text('STATUTORY'), findsNothing);
     expect(find.text('RM 2,800.00'), findsOneWidget);
+  });
+
+  testWidgets(
+      '"Add loan figures" is hidden when loanInputMethod is manual but hasMortgage is not true',
+      (tester) async {
+    final year = DateTime.now().year;
+    await _pumpScreenWithProperty(
+      tester,
+      year,
+      _summaryWithProperty(year, complete: true),
+      _fakeProperty(hasMortgage: false, loanInputMethod: 'manual'),
+    );
+
+    expect(find.text('Add loan figures'), findsNothing);
+  });
+
+  testWidgets(
+      '"Add loan figures" shows when hasMortgage is true and loanInputMethod is manual',
+      (tester) async {
+    final year = DateTime.now().year;
+    await _pumpScreenWithProperty(
+      tester,
+      year,
+      _summaryWithProperty(year, complete: true),
+      _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+    );
+
+    expect(find.text('Add loan figures'), findsOneWidget);
   });
 }
