@@ -62,6 +62,15 @@ class FactExtractorTests(unittest.TestCase):
         self.assertEqual(facts["subtype"], "interest_statement")
         self.assertEqual(facts["interest_paid"], 12408.31)
 
+    def test_loan_statement_extracts_principal_paid(self):
+        llm = _FakeLLM(
+            "subtype=interest statement;interest_paid=12408.31;"
+            "principal_paid=8000.00;period_year=2026;confidence=0.85"
+        )
+        facts = FactExtractor(llm).extract("loan", "loan statement text")
+        self.assertEqual(facts["interest_paid"], 12408.31)
+        self.assertEqual(facts["principal_paid"], 8000.00)
+
     def test_malaysian_date_normalised_through_extract(self):
         # DD/MM/YYYY off a bill is recovered to ISO, not dropped.
         llm = _FakeLLM('{"lease_end": "01/09/2026", "monthly_rent": 1500, "confidence": 0.7}')

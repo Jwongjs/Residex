@@ -37,6 +37,7 @@ _FIELD_TYPES: Dict[str, Dict[str, str]] = {
     "loan": {
         "subtype": "subtype",
         "interest_paid": "amount",
+        "principal_paid": "amount",
         "period_year": "year",
         "principal": "amount",
         "interest_rate": "amount",
@@ -91,6 +92,8 @@ _FIELD_HINTS: Dict[str, str] = {
     "loan": (
         "- subtype: agreement | interest_statement\n"
         "- interest_paid: total loan interest paid in the statement period\n"
+        "- principal_paid: total loan PRINCIPAL repaid in the statement period "
+        "(the capital portion of instalments, not the outstanding balance)\n"
         "- period_year: the year the statement covers\n"
         "- principal: original loan principal amount\n"
         "- interest_rate: annual interest rate (number only)\n"
