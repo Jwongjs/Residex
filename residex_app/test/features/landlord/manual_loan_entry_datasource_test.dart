@@ -96,6 +96,50 @@ void main() {
     expect(captured.url.queryParameters['month'], '3');
   });
 
+  test('recordManualLoanEntry includes unit_id when provided', () async {
+    late http.Request captured;
+    final client = MockClient((req) async {
+      captured = req;
+      return http.Response('{}', 200);
+    });
+    final ds = DocuMindRemoteDataSource(httpClient: client);
+
+    await ds.recordManualLoanEntry(
+      landlordId: 'l1',
+      propertyId: 'p1',
+      year: 2025,
+      cadence: 'annual',
+      interestPaid: 5000,
+      principalPaid: 3000,
+      unitId: 'u1',
+    );
+
+    final body = json.decode(captured.body) as Map<String, dynamic>;
+    expect(body['unit_id'], 'u1');
+  });
+
+  test('setUnitLoanExemption PUTs to unit-loan-exemption', () async {
+    late http.Request captured;
+    final client = MockClient((req) async {
+      captured = req;
+      return http.Response('{}', 200);
+    });
+    final ds = DocuMindRemoteDataSource(httpClient: client);
+
+    await ds.setUnitLoanExemption(
+      landlordId: 'l1',
+      propertyId: 'p1',
+      unitId: 'u1',
+    );
+
+    expect(captured.method, 'PUT');
+    expect(captured.url.path, contains('/documind/finance/unit-loan-exemption'));
+    final body = json.decode(captured.body) as Map<String, dynamic>;
+    expect(body['landlord_id'], 'l1');
+    expect(body['property_id'], 'p1');
+    expect(body['unit_id'], 'u1');
+  });
+
   test('listManualLoanEntries GETs and returns entries', () async {
     final client = MockClient((req) async {
       return http.Response(

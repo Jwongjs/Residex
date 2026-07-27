@@ -469,6 +469,7 @@ class DocuMindRemoteDataSource {
     required double interestPaid,
     required double principalPaid,
     int? month,
+    String? unitId,
   }) async {
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindManualLoanEntry}');
     final response = await httpClient.put(
@@ -482,6 +483,7 @@ class DocuMindRemoteDataSource {
         'interest_paid': interestPaid,
         'principal_paid': principalPaid,
         if (month != null) 'month': month,
+        if (unitId != null) 'unit_id': unitId,
       }),
     );
     if (response.statusCode != 200) {
@@ -495,18 +497,53 @@ class DocuMindRemoteDataSource {
     required String propertyId,
     required int year,
     int? month,
+    String? unitId,
   }) async {
     final queryParameters = {
       'landlord_id': landlordId,
       'property_id': propertyId,
       'year': '$year',
       if (month != null) 'month': '$month',
+      if (unitId != null) 'unit_id': unitId,
     };
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindManualLoanEntry}')
         .replace(queryParameters: queryParameters);
     final response = await httpClient.delete(uri);
     if (response.statusCode != 200) {
       throw Exception('Failed to delete manual loan entry: ${response.body}');
+    }
+  }
+
+  /// Mark a unit as having no loan (excludes it from loan-figure completeness).
+  Future<void> setUnitLoanExemption({
+    required String landlordId,
+    required String propertyId,
+    required String unitId,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindUnitLoanExemption}');
+    final response = await httpClient.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'landlord_id': landlordId, 'property_id': propertyId, 'unit_id': unitId}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to mark unit no-loan: ${response.body}');
+    }
+  }
+
+  /// Remove a unit's no-loan mark. Idempotent.
+  Future<void> clearUnitLoanExemption({
+    required String landlordId,
+    required String propertyId,
+    required String unitId,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindUnitLoanExemption}')
+        .replace(queryParameters: {
+      'landlord_id': landlordId, 'property_id': propertyId, 'unit_id': unitId,
+    });
+    final response = await httpClient.delete(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to clear unit no-loan mark: ${response.body}');
     }
   }
 

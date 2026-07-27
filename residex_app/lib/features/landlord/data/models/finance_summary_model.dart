@@ -95,6 +95,7 @@ class FinanceSummaryModel {
       expectedCategories: (json['expected_categories'] as List<dynamic>? ?? const [])
           .map((c) => c.toString())
           .toList(),
+      manualLoanIncomplete: json['manual_loan_incomplete'] as bool? ?? false,
     );
   }
 
@@ -120,6 +121,7 @@ class FinanceSummaryModel {
           .map((m) => (m as num).toInt())
           .toList(),
       expenseLines: _lines(json['expense_lines']),
+      loanStatus: json['loan_status'] as String?,
     );
   }
 

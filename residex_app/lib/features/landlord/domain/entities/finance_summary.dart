@@ -59,6 +59,7 @@ class PropertyFinance {
   final List<RecoveredRentLine> recoveredRent;
   final List<YearCoverage> coverage;
   final List<String> expectedCategories;
+  final bool manualLoanIncomplete;
 
   PropertyFinance({
     required this.propertyId,
@@ -78,6 +79,7 @@ class PropertyFinance {
     this.recoveredRent = const [],
     this.coverage = const [],
     this.expectedCategories = const [],
+    this.manualLoanIncomplete = false,
   });
 }
 
@@ -137,6 +139,7 @@ class UnitFinance {
   final List<MonthIncome> months;
   final List<int> missingInvoiceMonths;
   final List<ExpenseLine> expenseLines;
+  final String? loanStatus;
 
   UnitFinance({
     this.unitId,
@@ -147,6 +150,7 @@ class UnitFinance {
     this.months = const [],
     this.missingInvoiceMonths = const [],
     this.expenseLines = const [],
+    this.loanStatus,
   });
 }
 

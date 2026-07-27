@@ -297,4 +297,48 @@ void main() {
     expect(unit.expenseLines.single.paidByLandlord, true);
     expect(unit.expenseLines.single.deductible, false);
   });
+
+  test('fromJson parses loan_status and manual_loan_incomplete', () {
+    final summary = FinanceSummaryModel.fromJson({
+      'year': 2025,
+      'totals': {'received_rent': 0, 'derived_rent': 0, 'direct_expenses': 0,
+        'net_pl': 0, 'statutory_rental_income': 0, 'statutory_note': 'x'},
+      'properties': [
+        {
+          'property_id': 'p1', 'name': 'Ayer 8',
+          'received_rent': 0, 'derived_rent': 0, 'direct_expenses': 0,
+          'rental_income_or_loss': 0,
+          'manual_loan_incomplete': true,
+          'units': [
+            {'unit_id': 'u1', 'label': 'A', 'rented_months': 12, 'contribution': 0,
+             'loan_status': 'no_loan', 'months': []},
+          ],
+        },
+      ],
+    });
+    final block = summary.properties.single;
+    expect(block.manualLoanIncomplete, isTrue);
+    expect(block.units.single.loanStatus, 'no_loan');
+  });
+
+  test('fromJson defaults loan_status/manual_loan_incomplete when absent', () {
+    final summary = FinanceSummaryModel.fromJson({
+      'year': 2025,
+      'totals': {'received_rent': 0, 'derived_rent': 0, 'direct_expenses': 0,
+        'net_pl': 0, 'statutory_rental_income': 0, 'statutory_note': 'x'},
+      'properties': [
+        {
+          'property_id': 'p1', 'name': 'Ayer 8',
+          'received_rent': 0, 'derived_rent': 0, 'direct_expenses': 0,
+          'rental_income_or_loss': 0,
+          'units': [
+            {'unit_id': 'u1', 'label': 'A', 'rented_months': 12, 'contribution': 0, 'months': []},
+          ],
+        },
+      ],
+    });
+    final block = summary.properties.single;
+    expect(block.manualLoanIncomplete, isFalse);
+    expect(block.units.single.loanStatus, isNull);
+  });
 }

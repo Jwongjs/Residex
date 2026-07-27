@@ -396,6 +396,7 @@ final recordManualLoanEntryActionProvider = Provider<Future<void> Function({
   required double interestPaid,
   required double principalPaid,
   int? month,
+  String? unitId,
 })>((ref) {
   return ({
     required String propertyId,
@@ -404,12 +405,13 @@ final recordManualLoanEntryActionProvider = Provider<Future<void> Function({
     required double interestPaid,
     required double principalPaid,
     int? month,
+    String? unitId,
   }) async {
     final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.recordManualLoanEntry(
       landlordId: landlordId, propertyId: propertyId, year: year, cadence: cadence,
-      interestPaid: interestPaid, principalPaid: principalPaid, month: month,
+      interestPaid: interestPaid, principalPaid: principalPaid, month: month, unitId: unitId,
     );
     ref.invalidate(financeSummaryProvider);
   };
@@ -420,16 +422,48 @@ final deleteManualLoanEntryActionProvider = Provider<Future<void> Function({
   required String propertyId,
   required int year,
   int? month,
+  String? unitId,
 })>((ref) {
   return ({
     required String propertyId,
     required int year,
     int? month,
+    String? unitId,
   }) async {
     final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.deleteManualLoanEntry(
-      landlordId: landlordId, propertyId: propertyId, year: year, month: month,
+      landlordId: landlordId, propertyId: propertyId, year: year, month: month, unitId: unitId,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// Mark a unit as having no loan (excludes it from loan-figure completeness).
+final setUnitLoanExemptionActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required String unitId,
+})>((ref) {
+  return ({required String propertyId, required String unitId}) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.setUnitLoanExemption(
+      landlordId: landlordId, propertyId: propertyId, unitId: unitId,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// Remove a unit's no-loan mark.
+final clearUnitLoanExemptionActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required String unitId,
+})>((ref) {
+  return ({required String propertyId, required String unitId}) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.clearUnitLoanExemption(
+      landlordId: landlordId, propertyId: propertyId, unitId: unitId,
     );
     ref.invalidate(financeSummaryProvider);
   };
