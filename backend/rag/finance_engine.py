@@ -299,10 +299,30 @@ def _expense_lines(
             continue
         entry = None  # (amount, description, date_str)
         if category == "loan":
-            amount = _amount(facts, "interest_paid")
-            if facts.get("subtype") == "interest_statement" and amount is not None \
+            if facts.get("subtype") == "interest_statement" \
                     and facts.get("period_year") == year:
-                entry = (amount, "Loan interest", str(year))
+                interest = _amount(facts, "interest_paid")
+                if interest is not None:
+                    entry = (interest, "Loan interest", str(year))
+                principal = _amount(facts, "principal_paid")
+                if principal is not None:
+                    # Principal is the landlord's cash out but never a statutory
+                    # deduction (LHDN: only interest deducts). It rides Net P/L.
+                    lines.append({
+                        "doc_id": doc["doc_id"],
+                        "category": "loan",
+                        "subtype": "loan_principal",
+                        "description": "Loan principal",
+                        "amount": _round2(principal),
+                        "date": str(year),
+                        "unit_id": doc.get("unit_id"),
+                        "deductible": _line_deductible(
+                            "loan_principal", utilities_paid_by, letting_deductible
+                        ),
+                        "paid_by_landlord": _line_paid_by_landlord(
+                            "loan_principal", utilities_paid_by
+                        ),
+                    })
         elif category == "tax":
             amount = _amount(facts, "amount")
             if amount is not None and facts.get("period_year") == year:

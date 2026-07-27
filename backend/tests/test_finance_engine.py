@@ -1492,3 +1492,28 @@ class PaidByLandlordFlagTests(unittest.TestCase):
         line = self._lines(docs)[0]
         self.assertTrue(line["paid_by_landlord"])
         self.assertTrue(line["deductible"])
+
+    def test_loan_statement_emits_principal_line(self):
+        docs = [_doc("p1", "loan", {
+            "subtype": "interest_statement",
+            "interest_paid": 5000.0,
+            "principal_paid": 8000.0,
+            "period_year": 2025,
+        })]
+        lines = self._lines(docs)
+        by_subtype = {l["subtype"]: l for l in lines}
+        self.assertIn("loan_principal", by_subtype)
+        principal = by_subtype["loan_principal"]
+        self.assertEqual(principal["amount"], 8000.0)
+        self.assertTrue(principal["paid_by_landlord"])
+        self.assertFalse(principal["deductible"])
+        # interest line still present and fully deductible
+        interest = by_subtype["interest_statement"]
+        self.assertTrue(interest["deductible"])
+
+    def test_loan_statement_without_principal_paid_emits_no_principal_line(self):
+        docs = [_doc("p1", "loan", {
+            "subtype": "interest_statement", "interest_paid": 5000.0, "period_year": 2025,
+        })]
+        subtypes = {l["subtype"] for l in self._lines(docs)}
+        self.assertNotIn("loan_principal", subtypes)
