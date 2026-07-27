@@ -870,6 +870,39 @@ Rules:
             ref.delete()
         return {"property_id": property_id, "year": year, "month": month}
 
+    def _unit_loan_exemption_doc_id(self, property_id: str, unit_id: str) -> str:
+        return f"{property_id}__{unit_id}"
+
+    async def set_unit_loan_exemption(
+        self, *, landlord_id: str, property_id: str, unit_id: str,
+    ) -> Dict[str, Any]:
+        """Record that a unit has no loan, so it stops being expected in the
+        loan-figure completeness check. Ownership-validated; idempotent."""
+        property_ref = self.db.collection('properties').document(property_id)
+        property_snapshot = property_ref.get()
+        if not property_snapshot.exists or (property_snapshot.to_dict() or {}).get('landlordId') != landlord_id:
+            raise ValueError(f"Property {property_id} not found for landlord {landlord_id}")
+        doc_id = self._unit_loan_exemption_doc_id(property_id, unit_id)
+        ref = self.db.collection('documind_unit_loan_exemptions').document(doc_id)
+        ref.set({
+            'landlord_id': landlord_id,
+            'property_id': property_id,
+            'unit_id': unit_id,
+            'marked_at': firestore.SERVER_TIMESTAMP,
+        })
+        return {"property_id": property_id, "unit_id": unit_id}
+
+    async def clear_unit_loan_exemption(
+        self, *, landlord_id: str, property_id: str, unit_id: str,
+    ) -> Dict[str, Any]:
+        """Remove a unit's no-loan mark. Idempotent."""
+        doc_id = self._unit_loan_exemption_doc_id(property_id, unit_id)
+        ref = self.db.collection('documind_unit_loan_exemptions').document(doc_id)
+        snapshot = ref.get()
+        if snapshot.exists and (snapshot.to_dict() or {}).get("landlord_id") == landlord_id:
+            ref.delete()
+        return {"property_id": property_id, "unit_id": unit_id}
+
     def list_manual_loan_entries(
         self, landlord_id: str, property_id: str, year: int,
     ) -> List[Dict[str, Any]]:
@@ -1623,6 +1656,17 @@ Rules:
                 "cadence": data.get("cadence"),
             })
 
+        unit_loan_exemptions = []
+        exemption_query = self.db.collection('documind_unit_loan_exemptions').where(
+            filter=FieldFilter('landlord_id', '==', landlord_id)
+        )
+        for snap in exemption_query.stream():
+            data = snap.to_dict() or {}
+            unit_loan_exemptions.append({
+                "property_id": data.get("property_id"),
+                "unit_id": data.get("unit_id"),
+            })
+
         summary = compute_finance_summary(
             year=year,
             today=date.today(),
@@ -1633,6 +1677,7 @@ Rules:
             document_exceptions=document_exceptions,
             rent_recoveries=rent_recoveries,
             manual_loan_entries=manual_loan_entries,
+            unit_loan_exemptions=unit_loan_exemptions,
         )
         return FinanceSummaryResponse(**summary)
 

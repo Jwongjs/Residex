@@ -885,6 +885,7 @@ def compute_finance_summary(
     document_exceptions: Optional[List[Dict[str, Any]]] = None,
     rent_recoveries: Optional[List[Dict[str, Any]]] = None,
     manual_loan_entries: Optional[List[Dict[str, Any]]] = None,
+    unit_loan_exemptions: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     months = _months_in_scope(year, today)
     documents = list(documents) + _manual_loan_documents(manual_loan_entries, year)

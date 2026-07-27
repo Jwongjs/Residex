@@ -375,3 +375,29 @@ class FinanceSummaryApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["entries"]), 1)
         self.assertEqual(response.json()["entries"][0]["interest_paid"], 5000.0)
+
+    def test_set_unit_loan_exemption_returns_200(self):
+        with patch(
+            "api.rex_routes.documind_service.set_unit_loan_exemption",
+            new=AsyncMock(return_value={"property_id": "p1", "unit_id": "u1"}),
+        ) as mocked:
+            response = self.client.put(
+                "/api/rex/documind/finance/unit-loan-exemption",
+                json={"landlord_id": "l1", "property_id": "p1", "unit_id": "u1"},
+            )
+            kwargs = mocked.await_args.kwargs
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(kwargs["unit_id"], "u1")
+
+    def test_clear_unit_loan_exemption_returns_200(self):
+        with patch(
+            "api.rex_routes.documind_service.clear_unit_loan_exemption",
+            new=AsyncMock(return_value={"property_id": "p1", "unit_id": "u1"}),
+        ) as mocked:
+            response = self.client.delete(
+                "/api/rex/documind/finance/unit-loan-exemption",
+                params={"landlord_id": "l1", "property_id": "p1", "unit_id": "u1"},
+            )
+            kwargs = mocked.await_args.kwargs
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(kwargs["property_id"], "p1")

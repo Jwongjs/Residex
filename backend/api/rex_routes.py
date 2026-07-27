@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse, UnitLoanExemptionRequest
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -285,6 +285,30 @@ async def list_manual_loan_entries(
     list/edit UI."""
     entries = documind_service.list_manual_loan_entries(landlord_id, property_id, year)
     return {"entries": entries}
+
+
+@router.put("/documind/finance/unit-loan-exemption")
+async def set_unit_loan_exemption(payload: UnitLoanExemptionRequest):
+    """Mark a unit as having no loan (excludes it from the loan-figure
+    completeness check). Idempotent."""
+    try:
+        return await documind_service.set_unit_loan_exemption(
+            landlord_id=payload.landlord_id, property_id=payload.property_id, unit_id=payload.unit_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/documind/finance/unit-loan-exemption")
+async def clear_unit_loan_exemption(
+    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+    property_id: str = Query(..., description="Property ID"),
+    unit_id: str = Query(..., description="Unit ID"),
+):
+    """Remove a unit's no-loan mark. Idempotent."""
+    return await documind_service.clear_unit_loan_exemption(
+        landlord_id=landlord_id, property_id=property_id, unit_id=unit_id,
+    )
 
 
 @router.delete("/documind/documents/{doc_id}")

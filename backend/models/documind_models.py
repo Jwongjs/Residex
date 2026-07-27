@@ -396,3 +396,11 @@ class ManualLoanEntryResponse(BaseModel):
 
 class ManualLoanEntryListResponse(BaseModel):
     entries: List[ManualLoanEntryResponse]
+
+
+# ========== UNIT LOAN EXEMPTION MODELS ==========
+
+class UnitLoanExemptionRequest(BaseModel):
+    landlord_id: str
+    property_id: str
+    unit_id: str = Field(..., min_length=1)

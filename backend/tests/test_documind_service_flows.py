@@ -156,6 +156,8 @@ class _FakeCollectionQuery:
             rows = self._db.rent_recoveries
         elif self._name == "documind_manual_loan_entries":
             rows = self._db.manual_loan_entries
+        elif self._name == "documind_unit_loan_exemptions":
+            rows = self._db.unit_loan_exemptions
         else:
             rows = []
 
@@ -331,6 +333,29 @@ class _FakeManualLoanEntryRef:
         ]
 
 
+class _FakeUnitLoanExemptionRef:
+    def __init__(self, db, doc_id):
+        self._db = db
+        self._doc_id = doc_id
+
+    def set(self, data):
+        self._db.unit_loan_exemptions = [
+            row for row in self._db.unit_loan_exemptions if row.get("doc_id") != self._doc_id
+        ]
+        self._db.unit_loan_exemptions.append({**data, "doc_id": self._doc_id})
+
+    def get(self):
+        for row in self._db.unit_loan_exemptions:
+            if row.get("doc_id") == self._doc_id:
+                return _FakePropertyDoc(exists=True, data=row)
+        return _FakePropertyDoc(exists=False, data={})
+
+    def delete(self):
+        self._db.unit_loan_exemptions = [
+            row for row in self._db.unit_loan_exemptions if row.get("doc_id") != self._doc_id
+        ]
+
+
 class _FakeBatch:
     def __init__(self):
         self._ops = []
@@ -379,13 +404,15 @@ class _FakeCollection:
             return _FakeRentRecoveryRef(self._db, _doc_id)
         if self._name == "documind_manual_loan_entries":
             return _FakeManualLoanEntryRef(self._db, _doc_id)
-        raise NotImplementedError("document() only used for properties, documind_docs, documind_chunks, documind_payment_exceptions, documind_document_exceptions, documind_rent_recoveries, documind_manual_loan_entries in these tests")
+        if self._name == "documind_unit_loan_exemptions":
+            return _FakeUnitLoanExemptionRef(self._db, _doc_id)
+        raise NotImplementedError("document() only used for properties, documind_docs, documind_chunks, documind_payment_exceptions, documind_document_exceptions, documind_rent_recoveries, documind_manual_loan_entries, documind_unit_loan_exemptions in these tests")
 
 
 class _FakeDB:
     def __init__(self, docs=None, chunks=None, property_name="Test Property", units=None,
                  payment_exceptions=None, property_owners=None, document_exceptions=None,
-                 rent_recoveries=None, manual_loan_entries=None):
+                 rent_recoveries=None, manual_loan_entries=None, unit_loan_exemptions=None):
         self.docs = docs or []
         self.units = units or []
         self.chunks = chunks or []
@@ -393,6 +420,7 @@ class _FakeDB:
         self.document_exceptions = document_exceptions or []
         self.rent_recoveries = rent_recoveries or []
         self.manual_loan_entries = manual_loan_entries or []
+        self.unit_loan_exemptions = unit_loan_exemptions or []
         self.payment_exceptions = payment_exceptions or []
         self.property_name = property_name
         self.property_owners = property_owners or {}
@@ -2366,6 +2394,29 @@ class ManualLoanEntryServiceTests(unittest.IsolatedAsyncioTestCase):
         rows = service._list_landlord_properties("l1")
         self.assertEqual(rows[0]["loan_input_cadence"], "monthly")
         self.assertEqual(rows[0]["loan_input_method"], "manual")
+
+
+class UnitLoanExemptionServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_set_stores_the_mark(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        result = await service.set_unit_loan_exemption(landlord_id="l1", property_id="p1", unit_id="u1")
+        self.assertEqual(result, {"property_id": "p1", "unit_id": "u1"})
+        self.assertEqual(fake_db.unit_loan_exemptions[0]["doc_id"], "p1__u1")
+
+    async def test_set_rejects_wrong_owner(self):
+        fake_db = _FakeDB(property_owners={"p1": "someone-else"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        with self.assertRaises(ValueError):
+            await service.set_unit_loan_exemption(landlord_id="l1", property_id="p1", unit_id="u1")
+        self.assertEqual(fake_db.unit_loan_exemptions, [])
+
+    async def test_clear_is_idempotent(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        result = await service.clear_unit_loan_exemption(landlord_id="l1", property_id="p1", unit_id="u1")
+        self.assertEqual(result, {"property_id": "p1", "unit_id": "u1"})
+        self.assertEqual(fake_db.unit_loan_exemptions, [])
 
 
 if __name__ == "__main__":
