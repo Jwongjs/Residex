@@ -249,6 +249,7 @@ async def record_manual_loan_entry(payload: ManualLoanEntryRequest):
         return await documind_service.record_manual_loan_entry(
             landlord_id=payload.landlord_id,
             property_id=payload.property_id,
+            unit_id=payload.unit_id,
             year=payload.year,
             cadence=payload.cadence,
             interest_paid=payload.interest_paid,
@@ -263,13 +264,14 @@ async def record_manual_loan_entry(payload: ManualLoanEntryRequest):
 async def delete_manual_loan_entry(
     landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID"),
+    unit_id: str | None = Query(None, description="Unit ID; omit for a whole-property entry"),
     year: int = Query(..., ge=2000, le=2100),
     month: int | None = Query(None, ge=1, le=12, description="Month for a monthly entry; omit for annual"),
 ):
     """Remove a manual loan entry. Idempotent — deleting an absent entry is a
     no-op, not an error."""
     return await documind_service.delete_manual_loan_entry(
-        landlord_id=landlord_id, property_id=property_id, year=year, month=month,
+        landlord_id=landlord_id, property_id=property_id, unit_id=unit_id, year=year, month=month,
     )
 
 

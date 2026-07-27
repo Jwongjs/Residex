@@ -328,6 +328,37 @@ class FinanceSummaryApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(kwargs["property_id"], "p1")
 
+    def test_record_manual_loan_entry_forwards_unit_id(self):
+        with patch(
+            "api.rex_routes.documind_service.record_manual_loan_entry",
+            new=AsyncMock(return_value={
+                "property_id": "p1", "unit_id": "u1", "year": 2025, "month": None,
+                "interest_paid": 5000.0, "principal_paid": 0.0, "cadence": "annual",
+            }),
+        ) as mocked:
+            response = self.client.put(
+                "/api/rex/documind/finance/manual-loan-entry",
+                json={"landlord_id": "l1", "property_id": "p1", "unit_id": "u1", "year": 2025,
+                      "cadence": "annual", "interest_paid": 5000.0, "principal_paid": 0.0},
+            )
+            kwargs = mocked.await_args.kwargs
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(kwargs["unit_id"], "u1")
+        self.assertEqual(response.json()["unit_id"], "u1")
+
+    def test_delete_manual_loan_entry_forwards_unit_id(self):
+        with patch(
+            "api.rex_routes.documind_service.delete_manual_loan_entry",
+            new=AsyncMock(return_value={"property_id": "p1", "unit_id": "u1", "year": 2025, "month": None}),
+        ) as mocked:
+            response = self.client.delete(
+                "/api/rex/documind/finance/manual-loan-entry",
+                params={"landlord_id": "l1", "property_id": "p1", "unit_id": "u1", "year": 2025},
+            )
+            kwargs = mocked.await_args.kwargs
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(kwargs["unit_id"], "u1")
+
     def test_list_manual_loan_entries_returns_200(self):
         with patch(
             "api.rex_routes.documind_service.list_manual_loan_entries",

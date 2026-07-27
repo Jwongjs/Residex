@@ -368,6 +368,7 @@ class RentRecoveryResponse(BaseModel):
 class ManualLoanEntryRequest(BaseModel):
     landlord_id: str
     property_id: str
+    unit_id: Optional[str] = None
     year: int = Field(..., ge=2000, le=2100)
     cadence: str = Field(..., description="'monthly' or 'annual'")
     interest_paid: float = Field(..., ge=0)
@@ -385,6 +386,7 @@ class ManualLoanEntryRequest(BaseModel):
 
 class ManualLoanEntryResponse(BaseModel):
     property_id: str
+    unit_id: Optional[str] = None
     year: int
     month: Optional[int] = None
     interest_paid: float
