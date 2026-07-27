@@ -1454,3 +1454,41 @@ class ExpenseLineDedupTests(unittest.TestCase):
         tax_lines = [l for l in result["properties"][0]["expense_lines"]
                      if l["subtype"] == "assessment_tax"]
         self.assertEqual(len(tax_lines), 2)
+
+
+class PaidByLandlordFlagTests(unittest.TestCase):
+    def _lines(self, docs, utilities_paid_by=None):
+        from rag.finance_engine import _expense_lines
+        return _expense_lines(docs, 2025, utilities_paid_by)
+
+    def test_penalty_is_landlord_paid_but_not_deductible(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "late_penalty", "amount": 50.0, "period_year": 2025},
+        ]})]
+        line = self._lines(docs)[0]
+        self.assertTrue(line["paid_by_landlord"])
+        self.assertFalse(line["deductible"])
+
+    def test_tenant_utility_is_neither(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "utilities", "amount": 80.0, "period_year": 2025},
+        ]})]
+        line = self._lines(docs, utilities_paid_by="tenant")[0]
+        self.assertFalse(line["paid_by_landlord"])
+        self.assertFalse(line["deductible"])
+
+    def test_landlord_utility_is_both(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "utilities", "amount": 80.0, "period_year": 2025},
+        ]})]
+        line = self._lines(docs, utilities_paid_by="landlord")[0]
+        self.assertTrue(line["paid_by_landlord"])
+        self.assertTrue(line["deductible"])
+
+    def test_maintenance_is_both(self):
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "maintenance", "amount": 300.0, "date": "2025-03-01"},
+        ]})]
+        line = self._lines(docs)[0]
+        self.assertTrue(line["paid_by_landlord"])
+        self.assertTrue(line["deductible"])

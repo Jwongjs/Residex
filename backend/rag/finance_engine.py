@@ -235,6 +235,21 @@ def _line_deductible(
     return True
 
 
+def _line_paid_by_landlord(
+    subtype: Optional[str],
+    utilities_paid_by: Optional[str],
+) -> bool:
+    """Whether the landlord actually bears this cost — feeds Overall Net P/L.
+
+    Only utilities the tenant pays are excluded (not the landlord's outflow at
+    all). Penalties, loan principal, capital works and first-letting costs are
+    all real money the landlord paid, so they count toward Net P/L even though
+    LHDN disallows them as statutory deductions."""
+    if subtype in LANDLORD_BORNE_SUBTYPES:
+        return utilities_paid_by == "landlord"
+    return True
+
+
 def _expense_lines(
     prop_docs: List[Dict[str, Any]],
     year: int,
@@ -279,6 +294,7 @@ def _expense_lines(
                     "deductible": _line_deductible(
                         subtype, utilities_paid_by, letting_deductible
                     ),
+                    "paid_by_landlord": _line_paid_by_landlord(subtype, utilities_paid_by),
                 })
             continue
         entry = None  # (amount, description, date_str)
@@ -330,6 +346,9 @@ def _expense_lines(
                 "unit_id": doc.get("unit_id"),
                 "deductible": _line_deductible(
                     facts.get("subtype"), utilities_paid_by, letting_deductible
+                ),
+                "paid_by_landlord": _line_paid_by_landlord(
+                    facts.get("subtype"), utilities_paid_by
                 ),
             })
     return lines
