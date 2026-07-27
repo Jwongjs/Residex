@@ -89,18 +89,25 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Statutory rental income'), findsOneWidget);
+    expect(find.text('Statutory Rental Income'), findsOneWidget);
     expect(find.text('RM 24,483.13'), findsWidgets); // statutory + P/L rows
     expect(find.text('Ayer 8'), findsOneWidget);
-    expect(find.textContaining('Estimate'), findsWidgets);
+    expect(find.textContaining('TOTAL NET P/L'), findsOneWidget);
+    expect(find.text('TOTAL RECEIVED'), findsOneWidget);
+    expect(find.text('TOTAL EXPENSES'), findsOneWidget);
+    expect(find.textContaining('backfilled'), findsNothing);
+    expect(find.textContaining('Records missing for'), findsOneWidget);
     expect(find.text('Unit A'), findsOneWidget);
     expect(find.textContaining('50%'), findsOneWidget); // ownership badge
-    expect(find.textContaining('Insurance policy'), findsWidgets); // missing category + banner
-    expect(find.textContaining('missing your Insurance policy'), findsOneWidget); // banner
+    expect(find.textContaining('1 document needed for'), findsOneWidget); // nudge banner
     expect(find.textContaining('1 missing'), findsOneWidget); // coverage chip for 2025
   });
 
-  testWidgets('incomplete year shows "so far" and an unavailable gap offers Undo', (tester) async {
+  testWidgets('incomplete year shows the incomplete-records note and an unavailable gap offers Undo', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final year = DateTime.now().year;
     Map<String, dynamic>? markedUnavailable;
     Map<String, dynamic>? clearedUnavailable;
@@ -129,13 +136,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('so far'), findsOneWidget);
+    expect(find.textContaining('records are incomplete'), findsOneWidget);
     expect(find.textContaining('acknowledged unavailable'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
-    expect(find.text('Mark unavailable'), findsWidgets);
+    expect(find.text('Mark unavailable'), findsOneWidget); // nudge banner button
 
-    await tester.ensureVisible(find.text('Mark unavailable').first);
-    await tester.tap(find.text('Mark unavailable').first);
+    await tester.ensureVisible(find.text('Mark unavailable'));
+    await tester.tap(find.text('Mark unavailable'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Loan interest statement'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ElevatedButton, 'Mark unavailable'));
     await tester.pumpAndSettle();
@@ -157,6 +166,10 @@ void main() {
 
   testWidgets('rent payment issues are reachable from the property block, not just the unit screen',
       (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     var manageOpened = false;
     final year = DateTime.now().year;
     final summary = FinanceSummary(

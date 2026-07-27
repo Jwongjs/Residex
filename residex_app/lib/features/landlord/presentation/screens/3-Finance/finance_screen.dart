@@ -179,24 +179,10 @@ class FinanceScreen extends ConsumerWidget {
       ];
     }
 
-    final provisional = summary.properties.any((p) => !p.complete);
-    final statutoryLabel = provisional
-        ? 'Current Statutory Rental Income'
-        : 'Statutory Rental Income';
-
     return [
       FinanceSummaryPanel(
         summary: summary,
         onShowCaveats: () => _showCaveats(context, summary.caveats),
-      ),
-      const SizedBox(height: 16),
-      Row(
-        children: [
-          Expanded(child: _miniStat('OVERALL NET P/L', summary.totals.netPl)),
-          Expanded(
-              child: _miniStat(
-                  statutoryLabel, summary.totals.statutoryRentalIncome)),
-        ],
       ),
       const SizedBox(height: 20),
       ...summary.properties.map(
