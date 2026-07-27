@@ -4,7 +4,14 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
-from models.documind_models import FinanceSummaryResponse, FinanceTotals, PropertyFinance, YearCoverage
+from models.documind_models import (
+    ExpenseLine,
+    FinanceSummaryResponse,
+    FinanceTotals,
+    PropertyFinance,
+    UnitFinance,
+    YearCoverage,
+)
 
 
 def _fake_summary():
@@ -129,6 +136,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
                 property_id="p1", name="House",
                 received_rent=0.0, derived_rent=0.0, direct_expenses=0.0,
                 rental_income_or_loss=0.0,
+                net_pl=0.0,
                 units=[],
                 expense_lines=[],
                 property_expense_lines=[],
@@ -151,6 +159,55 @@ class FinanceSummaryApiTests(unittest.TestCase):
             [{"year": 2024, "missing": ["tax", "insurance"], "partial_installments": [],
               "partial_categories": [], "unavailable": []}],
         )
+
+    def test_finance_summary_exposes_two_tier_fields(self):
+        summary = FinanceSummaryResponse(
+            year=2025,
+            totals=FinanceTotals(
+                received_rent=0.0, derived_rent=0.0, direct_expenses=0.0,
+                net_pl=0.0, statutory_rental_income=0.0,
+                statutory_note="Estimate — for your tax agent",
+            ),
+            expense_breakdown={},
+            properties=[PropertyFinance(
+                property_id="p1", name="House",
+                received_rent=0.0, derived_rent=0.0, direct_expenses=0.0,
+                rental_income_or_loss=100.0,
+                net_pl=100.0,
+                statutory_contribution=80.0,
+                units=[UnitFinance(
+                    unit_id="u1", label="Unit 1", rented_months=12,
+                    contribution=100.0, statutory_contribution=80.0,
+                    months=[],
+                )],
+                expense_lines=[ExpenseLine(
+                    doc_id="d1", category="utilities", amount=20.0,
+                    paid_by_landlord=False,
+                )],
+                property_expense_lines=[],
+            )],
+            caveats=[],
+            missing_categories={},
+        )
+        with patch(
+            "api.rex_routes.documind_service.get_finance_summary",
+            new=AsyncMock(return_value=summary),
+        ):
+            response = self.client.get(
+                "/api/rex/documind/finance/summary",
+                params={"landlord_id": "landlord-1", "year": 2025},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        prop = response.json()["properties"][0]
+        self.assertIn("net_pl", prop)
+        self.assertIn("statutory_contribution", prop)
+        self.assertIn("paid_by_landlord", prop["expense_lines"][0])
+        self.assertIn("statutory_contribution", prop["units"][0])
+        self.assertEqual(prop["net_pl"], 100.0)
+        self.assertEqual(prop["statutory_contribution"], 80.0)
+        self.assertEqual(prop["expense_lines"][0]["paid_by_landlord"], False)
+        self.assertEqual(prop["units"][0]["statutory_contribution"], 80.0)
 
     def test_set_document_unavailable_returns_200_and_forwards_params(self):
         with patch(

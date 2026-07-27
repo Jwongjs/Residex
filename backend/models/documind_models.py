@@ -188,6 +188,7 @@ class ExpenseLine(BaseModel):
     date: Optional[str] = None
     unit_id: Optional[str] = None  # None = property-level expense
     deductible: bool = True
+    paid_by_landlord: bool = True
 
 
 class UnitFinance(BaseModel):
@@ -195,7 +196,8 @@ class UnitFinance(BaseModel):
     unit_id: Optional[str] = None  # None = synthetic whole-property line
     label: str
     rented_months: int
-    contribution: float  # income minus unit-scoped expenses
+    contribution: float  # income minus unit-scoped LANDLORD-PAID expenses (Net P/L)
+    statutory_contribution: float  # income minus unit-scoped STATUTORY-deductible
     months: List[MonthIncome]
     missing_invoice_months: List[int] = Field(default_factory=list)
     expense_lines: List[ExpenseLine] = Field(default_factory=list)
@@ -244,6 +246,8 @@ class PropertyFinance(BaseModel):
     outstanding_rent: float = 0.0
     direct_expenses: float
     rental_income_or_loss: float
+    net_pl: float
+    statutory_contribution: Optional[float] = None
     units: List[UnitFinance]
     expense_lines: List[ExpenseLine]  # all lines, itemized
     property_expense_lines: List[ExpenseLine]  # the property-level subset
