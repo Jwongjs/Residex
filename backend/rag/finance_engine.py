@@ -930,7 +930,11 @@ def _loan_completeness(
                 status_by_unit[uid] = "incomplete"
                 incomplete = True
     else:
-        incomplete = not resolved(None)
+        if resolved(None):
+            status_by_unit[None] = "complete"
+        else:
+            status_by_unit[None] = "incomplete"
+            incomplete = True
     return incomplete, status_by_unit
 
 

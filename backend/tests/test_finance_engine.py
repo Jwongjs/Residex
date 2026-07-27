@@ -1832,6 +1832,28 @@ class LoanCompletenessTests(unittest.TestCase):
         )
         self.assertTrue(summary["properties"][0]["manual_loan_incomplete"])
 
+    def test_whole_property_scope_complete_when_manual_entry_present(self):
+        summary = _summary(
+            documents=[], properties=[self._prop_manual()],
+            manual_loan_entries=[
+                {"property_id": "p1", "unit_id": None, "year": 2025, "month": None,
+                 "interest_paid": 1000.0, "principal_paid": 0.0, "cadence": "annual"},
+            ],
+        )
+        block = summary["properties"][0]
+        self.assertFalse(block["manual_loan_incomplete"])
+        whole = next(u for u in block["units"] if u["unit_id"] is None)
+        self.assertEqual(whole["loan_status"], "complete")
+
+    def test_whole_property_scope_incomplete_when_no_figures(self):
+        summary = _summary(
+            documents=[], properties=[self._prop_manual()],
+        )
+        block = summary["properties"][0]
+        self.assertTrue(block["manual_loan_incomplete"])
+        whole = next(u for u in block["units"] if u["unit_id"] is None)
+        self.assertEqual(whole["loan_status"], "incomplete")
+
     def test_not_evaluated_for_upload_method(self):
         prop = self._prop_manual()
         prop["loan_input_method"] = "upload"
