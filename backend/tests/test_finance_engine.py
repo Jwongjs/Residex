@@ -51,7 +51,7 @@ def _recovery(pid, original_month, amount, received_year, unit_id=None):
 
 def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 16),
              payment_exceptions=None, document_exceptions=None, rent_recoveries=None,
-             manual_loan_entries=None):
+             manual_loan_entries=None, unit_loan_exemptions=None):
     return compute_finance_summary(
         year=year,
         today=today,
@@ -62,6 +62,7 @@ def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 1
         document_exceptions=document_exceptions,
         rent_recoveries=rent_recoveries,
         manual_loan_entries=manual_loan_entries,
+        unit_loan_exemptions=unit_loan_exemptions,
     )
 
 
@@ -1781,3 +1782,63 @@ class ManualLoanEntryEngineTests(unittest.TestCase):
         interest = [l for l in summary["properties"][0]["expense_lines"]
                     if l["subtype"] == "interest_statement"]
         self.assertEqual(sum(l["amount"] for l in interest), 2000.0)
+
+
+class LoanCompletenessTests(unittest.TestCase):
+    def _prop_manual(self, cadence="annual"):
+        return {"property_id": "p1", "name": "Block", "ownership_share": 1.0,
+                "has_mortgage": True, "loan_input_method": "manual",
+                "loan_input_cadence": cadence}
+
+    def test_incomplete_when_a_unit_has_no_figures(self):
+        summary = _summary(
+            documents=[], properties=[self._prop_manual()],
+            units={"p1": [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]},
+            manual_loan_entries=[
+                {"property_id": "p1", "unit_id": "u1", "year": 2025, "month": None,
+                 "interest_paid": 1000.0, "principal_paid": 0.0, "cadence": "annual"},
+            ],
+        )
+        block = summary["properties"][0]
+        self.assertTrue(block["manual_loan_incomplete"])
+        status = {u["unit_id"]: u["loan_status"] for u in block["units"]}
+        self.assertEqual(status["u1"], "complete")
+        self.assertEqual(status["u2"], "incomplete")
+
+    def test_complete_when_every_unit_resolved(self):
+        summary = _summary(
+            documents=[], properties=[self._prop_manual()],
+            units={"p1": [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]},
+            manual_loan_entries=[
+                {"property_id": "p1", "unit_id": "u1", "year": 2025, "month": None,
+                 "interest_paid": 1000.0, "principal_paid": 0.0, "cadence": "annual"},
+            ],
+            unit_loan_exemptions=[{"property_id": "p1", "unit_id": "u2"}],
+        )
+        block = summary["properties"][0]
+        self.assertFalse(block["manual_loan_incomplete"])
+        status = {u["unit_id"]: u["loan_status"] for u in block["units"]}
+        self.assertEqual(status["u2"], "no_loan")
+
+    def test_monthly_cadence_needs_all_in_scope_months(self):
+        # Past year 2024 (today defaults to 2026-07-16): all 12 months required.
+        entries = [{"property_id": "p1", "unit_id": "u1", "year": 2024, "month": m,
+                    "interest_paid": 100.0, "principal_paid": 0.0, "cadence": "monthly"}
+                   for m in range(1, 12)]  # only 11 of 12
+        summary = _summary(
+            documents=[], properties=[self._prop_manual("monthly")], year=2024,
+            units={"p1": [{"unit_id": "u1", "label": "A-1"}]},
+            manual_loan_entries=entries,
+        )
+        self.assertTrue(summary["properties"][0]["manual_loan_incomplete"])
+
+    def test_not_evaluated_for_upload_method(self):
+        prop = self._prop_manual()
+        prop["loan_input_method"] = "upload"
+        summary = _summary(
+            documents=[], properties=[prop],
+            units={"p1": [{"unit_id": "u1", "label": "A-1"}]},
+        )
+        block = summary["properties"][0]
+        self.assertFalse(block["manual_loan_incomplete"])
+        self.assertIsNone(block["units"][0]["loan_status"])

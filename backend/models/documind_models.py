@@ -201,6 +201,7 @@ class UnitFinance(BaseModel):
     months: List[MonthIncome]
     missing_invoice_months: List[int] = Field(default_factory=list)
     expense_lines: List[ExpenseLine] = Field(default_factory=list)
+    loan_status: Optional[str] = None  # complete | incomplete | no_loan
 
 
 class InstallmentGap(BaseModel):
@@ -254,6 +255,7 @@ class PropertyFinance(BaseModel):
     recovered_rent: List[RecoveredRentLine] = Field(default_factory=list)
     coverage: List[YearCoverage] = Field(default_factory=list)
     expected_categories: List[str] = Field(default_factory=list)
+    manual_loan_incomplete: bool = False
 
 
 class FinanceTotals(BaseModel):

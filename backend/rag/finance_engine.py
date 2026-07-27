@@ -874,6 +874,66 @@ def _manual_loan_documents(
     return docs
 
 
+def _loan_completeness(
+    prop: Dict[str, Any],
+    units: List[Dict[str, Any]],
+    prop_docs: List[Dict[str, Any]],
+    manual_entries: List[Dict[str, Any]],
+    exemptions: List[Dict[str, Any]],
+    year: int,
+    months: List[int],
+) -> tuple:
+    """Per-unit loan resolution for the manual-entry button gate. A unit is
+    resolved when it is marked no-loan, has an uploaded loan statement for the
+    year, or has manual figures covering the cadence (annual: any entry;
+    monthly: every in-scope month). Only meaningful for a mortgaged property on
+    the manual method — otherwise returns (False, {})."""
+    if prop.get("has_mortgage") is not True or prop.get("loan_input_method") != "manual":
+        return False, {}
+    cadence = prop.get("loan_input_cadence") or "annual"
+    exempt_units = {e.get("unit_id") for e in exemptions}
+    months_by_unit: Dict[Optional[str], set] = {}
+    any_by_unit: set = set()
+    for e in manual_entries:
+        if e.get("year") != year:
+            continue
+        uid = e.get("unit_id")
+        any_by_unit.add(uid)
+        m = e.get("month")
+        if m is not None:
+            months_by_unit.setdefault(uid, set()).add(int(m))
+    upload_units: set = set()
+    for d in prop_docs:
+        facts = d.get("extracted_facts")
+        if d.get("category") == "loan" and isinstance(facts, dict) \
+                and facts.get("period_year") == year \
+                and not str(d.get("doc_id") or "").startswith("manual__"):
+            upload_units.add(d.get("unit_id"))
+
+    def resolved(uid):
+        if uid in exempt_units or uid in upload_units:
+            return True
+        if cadence == "monthly":
+            return set(months) <= months_by_unit.get(uid, set())
+        return uid in any_by_unit
+
+    status_by_unit: Dict[Optional[str], str] = {}
+    incomplete = False
+    if units:
+        for u in units:
+            uid = u["unit_id"]
+            if uid in exempt_units:
+                status_by_unit[uid] = "no_loan"
+            elif resolved(uid):
+                status_by_unit[uid] = "complete"
+            else:
+                status_by_unit[uid] = "incomplete"
+                incomplete = True
+    else:
+        incomplete = not resolved(None)
+    return incomplete, status_by_unit
+
+
 def compute_finance_summary(
     *,
     year: int,
@@ -947,6 +1007,18 @@ def compute_finance_summary(
         expense_lines = _dedup_expense_lines(
             _expense_lines(prop_docs, year, prop.get("utilities_paid_by"))
         )
+        prop_manual_entries = [
+            e for e in (manual_loan_entries or [])
+            if isinstance(e, dict) and e.get("property_id") == pid
+        ]
+        prop_exemptions = [
+            x for x in (unit_loan_exemptions or [])
+            if isinstance(x, dict) and x.get("property_id") == pid
+        ]
+        manual_loan_incomplete, loan_status_by_unit = _loan_completeness(
+            prop, units_by_property.get(pid, []), prop_docs,
+            prop_manual_entries, prop_exemptions, year, months,
+        )
         lines_by_unit: Dict[Optional[str], List[Dict[str, Any]]] = {}
         for line in expense_lines:
             lines_by_unit.setdefault(line.get("unit_id"), []).append(line)
@@ -996,6 +1068,7 @@ def compute_finance_summary(
                 "months": month_rows,
                 "missing_invoice_months": vacant,
                 "expense_lines": unit_lines,
+                "loan_status": loan_status_by_unit.get(scope["unit_id"]),
             })
             if derived:
                 derived_notes.append(
@@ -1131,6 +1204,7 @@ def compute_finance_summary(
             "complete": complete,
             "coverage": coverage_rows,
             "expected_categories": _expected_record_categories(prop),
+            "manual_loan_incomplete": manual_loan_incomplete,
         })
 
     statutory = _round2(statutory_sum)
