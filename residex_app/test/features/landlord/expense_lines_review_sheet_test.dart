@@ -46,4 +46,21 @@ void main() {
           reason: 'missing dropdown label for "$subtype"');
     }
   });
+
+  testWidgets('deleting a line removes it from the list and enables save', (tester) async {
+    await _pumpSheet(tester, [
+      {'subtype': 'maintenance', 'amount': 300.0, 'period_year': 2025},
+      {'subtype': 'late_penalty', 'amount': 50.0, 'period_year': 2025},
+    ]);
+    expect(find.byIcon(Icons.delete_outline), findsNWidgets(2));
+
+    await tester.tap(find.byIcon(Icons.delete_outline).last);
+    await tester.pumpAndSettle();
+    // Confirm dialog
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.delete_outline), findsNWidgets(1)); // one line left
+    expect(find.text('Save changes'), findsOneWidget);           // dirty
+  });
 }

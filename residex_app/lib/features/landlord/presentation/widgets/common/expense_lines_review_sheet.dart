@@ -104,6 +104,34 @@ class _ExpenseLinesReviewSheetState
     }
   }
 
+  Future<void> _deleteLine(int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Remove this expense?'),
+        content: const Text(
+            'It will no longer count toward your figures. This is for '
+            'duplicates or charges that were waived.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      setState(() {
+        _lines.removeAt(index);
+        _dirty = true;
+      });
+    }
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
@@ -174,6 +202,12 @@ class _ExpenseLinesReviewSheetState
                           style: AppTextStyles.bodyLarge),
                       const SizedBox(width: 8),
                       const Icon(Icons.edit_outlined, size: 18),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        tooltip: 'Remove expense',
+                        onPressed: _saving ? null : () => _deleteLine(index),
+                      ),
                     ],
                   ),
                   onTap: _saving ? null : () => _editLine(index),
