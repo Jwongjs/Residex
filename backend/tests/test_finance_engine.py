@@ -1747,3 +1747,37 @@ class ManualLoanEntryEngineTests(unittest.TestCase):
             ],
         )
         self.assertEqual(summary["properties"][0]["expense_lines"], [])
+
+    def test_entry_lands_in_its_units_contribution(self):
+        summary = _summary(
+            documents=[],
+            properties=[_prop("p1", "Block")],
+            units={"p1": [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]},
+            manual_loan_entries=[
+                {"property_id": "p1", "unit_id": "u1", "year": 2025, "month": None,
+                 "interest_paid": 5000.0, "principal_paid": 0.0, "cadence": "annual"},
+            ],
+        )
+        units = {u["unit_id"]: u for u in summary["properties"][0]["units"]}
+        # u1's statutory contribution is reduced by the 5000 deductible interest; u2 untouched.
+        u1_loan = [l for l in units["u1"]["expense_lines"] if l["subtype"] == "interest_statement"]
+        self.assertEqual(sum(l["amount"] for l in u1_loan), 5000.0)
+        self.assertTrue(all(l["unit_id"] == "u1" for l in u1_loan))
+        u2_loan = [l for l in units["u2"]["expense_lines"] if l["subtype"] == "interest_statement"]
+        self.assertEqual(u2_loan, [])
+
+    def test_two_units_same_period_amount_stay_distinct(self):
+        summary = _summary(
+            documents=[],
+            properties=[_prop("p1", "Block")],
+            units={"p1": [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]},
+            manual_loan_entries=[
+                {"property_id": "p1", "unit_id": "u1", "year": 2025, "month": None,
+                 "interest_paid": 1000.0, "principal_paid": 0.0, "cadence": "annual"},
+                {"property_id": "p1", "unit_id": "u2", "year": 2025, "month": None,
+                 "interest_paid": 1000.0, "principal_paid": 0.0, "cadence": "annual"},
+            ],
+        )
+        interest = [l for l in summary["properties"][0]["expense_lines"]
+                    if l["subtype"] == "interest_statement"]
+        self.assertEqual(sum(l["amount"] for l in interest), 2000.0)

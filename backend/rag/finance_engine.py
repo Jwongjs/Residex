@@ -844,15 +844,17 @@ def _manual_loan_documents(
     loan documents, so they ride the exact same loan branch of _expense_lines
     (interest -> deductible+landlord-paid, principal -> landlord-paid only) and
     the same doc-id-discriminated loan dedup as uploaded statements. A synthetic
-    doc_id 'manual__{property}__{period}' keeps each period distinct from every
-    other manual period and from any uploaded statement. Zero/absent interest or
-    principal is omitted so no empty line is emitted."""
+    doc_id 'manual__{property}__{unit_id}__{period}' keeps each period distinct
+    from every other manual period and from any uploaded statement. Zero/absent
+    interest or principal is omitted so no empty line is emitted."""
     docs: List[Dict[str, Any]] = []
     for entry in (manual_loan_entries or []):
         if not isinstance(entry, dict) or entry.get("year") != year:
             continue
         month = entry.get("month")
         period = f"{year}-{int(month):02d}" if month else str(year)
+        unit_id = entry.get("unit_id")
+        unit_seg = f"{unit_id}__" if unit_id else ""
         facts: Dict[str, Any] = {"subtype": "interest_statement", "period_year": year}
         interest = _amount(entry, "interest_paid")
         principal = _amount(entry, "principal_paid")
@@ -861,9 +863,9 @@ def _manual_loan_documents(
         if principal is not None and principal > 0:
             facts["principal_paid"] = principal
         docs.append({
-            "doc_id": f"manual__{entry.get('property_id')}__{period}",
+            "doc_id": f"manual__{entry.get('property_id')}__{unit_seg}{period}",
             "property_id": entry.get("property_id"),
-            "unit_id": None,
+            "unit_id": unit_id,
             "unit_label": None,
             "category": "loan",
             "extracted_facts": facts,
