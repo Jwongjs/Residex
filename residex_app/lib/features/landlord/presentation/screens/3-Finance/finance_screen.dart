@@ -7,8 +7,10 @@ import '../../../domain/entities/finance_summary.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
+import '../../providers/property_providers.dart';
 import '../../widgets/common/document_nudge_banner.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
+import '../../widgets/common/manual_loan_entry_sheet.dart';
 import '../../widgets/common/missing_documents_sheet.dart';
 import '../../widgets/common/utilities_liability_confirm_sheet.dart';
 import '../../widgets/common/upload_source_sheet.dart';
@@ -313,6 +315,8 @@ class FinanceScreen extends ConsumerWidget {
   Widget _buildPropertyBlock(BuildContext context, WidgetRef ref,
       FinanceSummary summary, PropertyFinance block) {
     final missing = summary.missingCategories[block.propertyId] ?? const [];
+    final property = ref.watch(propertyByIdProvider(block.propertyId)).value;
+    final showManualLoan = property?.loanInputMethod == 'manual';
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -379,6 +383,29 @@ class FinanceScreen extends ConsumerWidget {
             Text(
               '${summary.year} records are incomplete — this total will change as documents arrive.',
               style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+            ),
+          ],
+          if (showManualLoan) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: AppColors.paper,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  builder: (_) => ManualLoanEntrySheet(
+                    propertyId: block.propertyId,
+                    year: summary.year,
+                    cadence: property?.loanInputCadence ?? 'annual',
+                  ),
+                ),
+                icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
+                label: Text('Add loan figures', style: AppTextStyles.labelLarge),
+              ),
             ),
           ],
           if (block.units.isNotEmpty) ...[
