@@ -43,6 +43,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   PropertyStructureType? _selectedStructureType;
   bool? _hasMortgage;
   int? _trackFromYear;
+  String? _loanInputCadence;
+  String? _loanInputMethod;
 
   /// House/apartment/condo imply their structure; commercial varies too much
   /// to guess, so it stays null and [_buildStructureTypeSelector] asks.
@@ -78,6 +80,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       _selectedStructureType = property.structureType;
       _hasMortgage = property.hasMortgage;
       _trackFromYear = property.trackFromYear;
+      _loanInputCadence = property.loanInputCadence;
+      _loanInputMethod = property.loanInputMethod;
     } else {
       _selectedStructureType = _structureForType(_selectedType);
     }
@@ -136,6 +140,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           structureType: _selectedStructureType,
           hasMortgage: _hasMortgage,
           trackFromYear: _trackFromYear,
+          loanInputCadence: _hasMortgage == true ? (_loanInputCadence ?? 'annual') : null,
+          loanInputMethod: _hasMortgage == true ? (_loanInputMethod ?? 'upload') : null,
         );
         await controller.updateProperty(updatedProperty);
       } else {
@@ -153,6 +159,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           structureType: _selectedStructureType,
           hasMortgage: _hasMortgage,
           trackFromYear: _trackFromYear,
+          loanInputCadence: _hasMortgage == true ? (_loanInputCadence ?? 'annual') : null,
+          loanInputMethod: _hasMortgage == true ? (_loanInputMethod ?? 'upload') : null,
           nextSetupStep: 2,
         );
         final propertyId = await controller.createProperty(property);
@@ -410,6 +418,10 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                         const SizedBox(height: 16),
                       ],
                       _buildMortgageSelector(),
+                      if (_hasMortgage == true) ...[
+                        const SizedBox(height: 16),
+                        _buildLoanInputSelectors(),
+                      ],
                       const SizedBox(height: 16),
                       _buildYearPicker(),
                     ],
@@ -614,6 +626,53 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
               label: 'Not sure',
               selected: _hasMortgage == null,
               onSelected: (_) => setState(() => _hasMortgage = null),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoanInputSelectors() {
+    final method = _loanInputMethod ?? 'upload';
+    final cadence = _loanInputCadence ?? 'annual';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('How do you record loan figures?',
+            style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            AppChoiceChip(
+              label: 'Upload statements',
+              selected: method == 'upload',
+              onSelected: (_) => setState(() => _loanInputMethod = 'upload'),
+            ),
+            AppChoiceChip(
+              label: 'Enter manually',
+              selected: method == 'manual',
+              onSelected: (_) => setState(() => _loanInputMethod = 'manual'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text('How often?',
+            style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            AppChoiceChip(
+              label: 'Annually',
+              selected: cadence == 'annual',
+              onSelected: (_) => setState(() => _loanInputCadence = 'annual'),
+            ),
+            AppChoiceChip(
+              label: 'Monthly',
+              selected: cadence == 'monthly',
+              onSelected: (_) => setState(() => _loanInputCadence = 'monthly'),
             ),
           ],
         ),
