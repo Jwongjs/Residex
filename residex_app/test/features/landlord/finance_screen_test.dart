@@ -7,7 +7,8 @@ import 'package:residex_app/features/landlord/presentation/providers/finance_pro
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/3-Finance/finance_screen.dart';
 
-FinanceSummary _summaryWithProperty(int year, {required bool complete}) {
+FinanceSummary _summaryWithProperty(int year,
+    {required bool complete, bool manualLoanIncomplete = false}) {
   return FinanceSummary(
     year: year,
     totals: FinanceTotals(
@@ -29,6 +30,7 @@ FinanceSummary _summaryWithProperty(int year, {required bool complete}) {
         rentalIncomeOrLoss: 3000.0,
         netPl: 2800.0,
         statutoryContribution: 3100.0,
+        manualLoanIncomplete: manualLoanIncomplete,
       ),
     ],
   );
@@ -135,13 +137,27 @@ void main() {
   });
 
   testWidgets(
-      '"Add loan figures" shows when hasMortgage is true and loanInputMethod is manual',
+      '"Add loan figures" is hidden when manualLoanIncomplete is false even with mortgage=Yes + method=manual',
       (tester) async {
     final year = DateTime.now().year;
     await _pumpScreenWithProperty(
       tester,
       year,
-      _summaryWithProperty(year, complete: true),
+      _summaryWithProperty(year, complete: true, manualLoanIncomplete: false),
+      _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+    );
+
+    expect(find.text('Add loan figures'), findsNothing);
+  });
+
+  testWidgets(
+      '"Add loan figures" shows when hasMortgage is true, loanInputMethod is manual, and manualLoanIncomplete is true',
+      (tester) async {
+    final year = DateTime.now().year;
+    await _pumpScreenWithProperty(
+      tester,
+      year,
+      _summaryWithProperty(year, complete: true, manualLoanIncomplete: true),
       _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
     );
 

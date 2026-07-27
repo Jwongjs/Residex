@@ -316,8 +316,8 @@ class FinanceScreen extends ConsumerWidget {
       FinanceSummary summary, PropertyFinance block) {
     final missing = summary.missingCategories[block.propertyId] ?? const [];
     final property = ref.watch(propertyByIdProvider(block.propertyId)).value;
-    final showManualLoan =
-        property?.hasMortgage == true && property?.loanInputMethod == 'manual';
+    final showManualLoan = block.manualLoanIncomplete &&
+        property?.loanInputMethod == 'manual';
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -402,6 +402,9 @@ class FinanceScreen extends ConsumerWidget {
                     propertyId: block.propertyId,
                     year: summary.year,
                     cadence: property?.loanInputCadence ?? 'annual',
+                    units: block.units
+                        .where((u) => u.unitId != null)
+                        .toList(),
                   ),
                 ),
                 icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
