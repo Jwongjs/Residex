@@ -154,6 +154,8 @@ class _FakeCollectionQuery:
             rows = self._db.document_exceptions
         elif self._name == "documind_rent_recoveries":
             rows = self._db.rent_recoveries
+        elif self._name == "documind_manual_loan_entries":
+            rows = self._db.manual_loan_entries
         else:
             rows = []
 
@@ -306,6 +308,29 @@ class _FakeRentRecoveryRef:
         ]
 
 
+class _FakeManualLoanEntryRef:
+    def __init__(self, db, doc_id):
+        self._db = db
+        self._doc_id = doc_id
+
+    def set(self, data):
+        self._db.manual_loan_entries = [
+            row for row in self._db.manual_loan_entries if row.get("doc_id") != self._doc_id
+        ]
+        self._db.manual_loan_entries.append({**data, "doc_id": self._doc_id})
+
+    def get(self):
+        for row in self._db.manual_loan_entries:
+            if row.get("doc_id") == self._doc_id:
+                return _FakePropertyDoc(exists=True, data=row)
+        return _FakePropertyDoc(exists=False, data={})
+
+    def delete(self):
+        self._db.manual_loan_entries = [
+            row for row in self._db.manual_loan_entries if row.get("doc_id") != self._doc_id
+        ]
+
+
 class _FakeBatch:
     def __init__(self):
         self._ops = []
@@ -352,19 +377,22 @@ class _FakeCollection:
             return _FakeDocumentExceptionRef(self._db, _doc_id)
         if self._name == "documind_rent_recoveries":
             return _FakeRentRecoveryRef(self._db, _doc_id)
-        raise NotImplementedError("document() only used for properties, documind_docs, documind_chunks, documind_payment_exceptions, documind_document_exceptions, documind_rent_recoveries in these tests")
+        if self._name == "documind_manual_loan_entries":
+            return _FakeManualLoanEntryRef(self._db, _doc_id)
+        raise NotImplementedError("document() only used for properties, documind_docs, documind_chunks, documind_payment_exceptions, documind_document_exceptions, documind_rent_recoveries, documind_manual_loan_entries in these tests")
 
 
 class _FakeDB:
     def __init__(self, docs=None, chunks=None, property_name="Test Property", units=None,
                  payment_exceptions=None, property_owners=None, document_exceptions=None,
-                 rent_recoveries=None):
+                 rent_recoveries=None, manual_loan_entries=None):
         self.docs = docs or []
         self.units = units or []
         self.chunks = chunks or []
         self.properties_rows = []
         self.document_exceptions = document_exceptions or []
         self.rent_recoveries = rent_recoveries or []
+        self.manual_loan_entries = manual_loan_entries or []
         self.payment_exceptions = payment_exceptions or []
         self.property_name = property_name
         self.property_owners = property_owners or {}
@@ -2169,6 +2197,128 @@ class RentRecoveryServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["original_month"], "2025-08")
         self.assertEqual(fake_db.rent_recoveries, [])
+
+
+class ManualLoanEntryServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_record_stores_an_annual_entry(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        result = await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=3000.0,
+        )
+
+        self.assertEqual(result["interest_paid"], 5000.0)
+        self.assertEqual(result["principal_paid"], 3000.0)
+        self.assertEqual(len(fake_db.manual_loan_entries), 1)
+        self.assertEqual(fake_db.manual_loan_entries[0]["doc_id"], "p1__2025")
+
+    async def test_monthly_entry_requires_a_month(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        with self.assertRaises(ValueError):
+            await service.record_manual_loan_entry(
+                landlord_id="l1", property_id="p1", year=2025, cadence="monthly",
+                interest_paid=500.0, principal_paid=0.0, month=None,
+            )
+
+    async def test_monthly_entry_keys_by_month(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025, cadence="monthly",
+            interest_paid=500.0, principal_paid=0.0, month=3,
+        )
+
+        self.assertEqual(fake_db.manual_loan_entries[0]["doc_id"], "p1__2025__03")
+
+    async def test_record_rejects_wrong_owner(self):
+        fake_db = _FakeDB(property_owners={"p1": "someone-else"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        with self.assertRaises(ValueError):
+            await service.record_manual_loan_entry(
+                landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+                interest_paid=5000.0, principal_paid=0.0,
+            )
+        self.assertEqual(fake_db.manual_loan_entries, [])
+
+    async def test_record_rejects_negative_amount(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        with self.assertRaises(ValueError):
+            await service.record_manual_loan_entry(
+                landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+                interest_paid=-1.0, principal_paid=0.0,
+            )
+
+    async def test_record_is_idempotent_per_period(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=0.0,
+        )
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+            interest_paid=6000.0, principal_paid=0.0,
+        )
+
+        self.assertEqual(len(fake_db.manual_loan_entries), 1)
+        self.assertEqual(fake_db.manual_loan_entries[0]["interest_paid"], 6000.0)
+
+    async def test_list_returns_entries_for_the_year(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=0.0,
+        )
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2024, cadence="annual",
+            interest_paid=1000.0, principal_paid=0.0,
+        )
+
+        entries = service.list_manual_loan_entries("l1", "p1", 2025)
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["interest_paid"], 5000.0)
+
+    async def test_delete_is_idempotent(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        result = await service.delete_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025,
+        )
+
+        self.assertEqual(result["property_id"], "p1")
+        self.assertEqual(fake_db.manual_loan_entries, [])
+
+    async def test_get_finance_summary_folds_a_manual_entry(self):
+        fake_db = _FakeDB(
+            manual_loan_entries=[{
+                "doc_id": "p1__2025", "landlord_id": "l1", "property_id": "p1",
+                "year": 2025, "month": None, "interest_paid": 5000.0,
+                "principal_paid": 3000.0, "cadence": "annual",
+            }],
+        )
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "House",
+             "property_type": "landed", "has_mortgage": True},
+        ]
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        subtypes = {l.subtype for l in summary.properties[0].expense_lines}
+        self.assertIn("interest_statement", subtypes)
+        self.assertIn("loan_principal", subtypes)
 
 
 if __name__ == "__main__":

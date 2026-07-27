@@ -807,6 +807,86 @@ Rules:
             ref.delete()
         return {"property_id": property_id, "unit_id": unit_id, "original_month": original_month}
 
+    def _manual_loan_entry_doc_id(self, property_id: str, year: int, month: Optional[int]) -> str:
+        if month is not None:
+            return f"{property_id}__{year}__{int(month):02d}"
+        return f"{property_id}__{year}"
+
+    async def record_manual_loan_entry(
+        self, *, landlord_id: str, property_id: str, year: int, cadence: str,
+        interest_paid: float, principal_paid: float, month: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Book manually-entered loan interest/principal for a period, for
+        landlords whose bank statement cadence makes uploading inconvenient.
+        Ownership-validated against the property. Monthly cadence requires a
+        1-12 month; annual ignores month. Amounts must be >= 0. Idempotent —
+        re-entering the same period overwrites."""
+        if cadence not in ("monthly", "annual"):
+            raise ValueError("cadence must be 'monthly' or 'annual'")
+        if cadence == "monthly":
+            if month is None or not (1 <= int(month) <= 12):
+                raise ValueError("monthly cadence requires a month in 1-12")
+        else:
+            month = None
+        if interest_paid < 0 or principal_paid < 0:
+            raise ValueError("interest_paid and principal_paid must be >= 0")
+        property_ref = self.db.collection('properties').document(property_id)
+        property_snapshot = property_ref.get()
+        if not property_snapshot.exists or (property_snapshot.to_dict() or {}).get('landlordId') != landlord_id:
+            raise ValueError(f"Property {property_id} not found for landlord {landlord_id}")
+        doc_id = self._manual_loan_entry_doc_id(property_id, year, month)
+        ref = self.db.collection('documind_manual_loan_entries').document(doc_id)
+        ref.set({
+            'landlord_id': landlord_id,
+            'property_id': property_id,
+            'year': year,
+            'month': month,
+            'interest_paid': float(interest_paid),
+            'principal_paid': float(principal_paid),
+            'cadence': cadence,
+            'updated_at': firestore.SERVER_TIMESTAMP,
+        })
+        return {
+            "property_id": property_id, "year": year, "month": month,
+            "interest_paid": float(interest_paid), "principal_paid": float(principal_paid),
+            "cadence": cadence,
+        }
+
+    async def delete_manual_loan_entry(
+        self, *, landlord_id: str, property_id: str, year: int, month: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Remove a manual loan entry. Idempotent — deleting an absent entry is
+        a no-op, not an error."""
+        doc_id = self._manual_loan_entry_doc_id(property_id, year, month)
+        ref = self.db.collection('documind_manual_loan_entries').document(doc_id)
+        snapshot = ref.get()
+        if snapshot.exists and (snapshot.to_dict() or {}).get("landlord_id") == landlord_id:
+            ref.delete()
+        return {"property_id": property_id, "year": year, "month": month}
+
+    def list_manual_loan_entries(
+        self, landlord_id: str, property_id: str, year: int,
+    ) -> List[Dict[str, Any]]:
+        """All manual loan entries for one property and year, for the finance-tab
+        list/edit UI. Ownership-scoped by landlord_id."""
+        query = self.db.collection('documind_manual_loan_entries').where(
+            filter=FieldFilter('landlord_id', '==', landlord_id)
+        )
+        entries: List[Dict[str, Any]] = []
+        for snap in query.stream():
+            data = snap.to_dict() or {}
+            if data.get("property_id") != property_id or data.get("year") != year:
+                continue
+            entries.append({
+                "property_id": data.get("property_id"),
+                "year": data.get("year"),
+                "month": data.get("month"),
+                "interest_paid": data.get("interest_paid"),
+                "principal_paid": data.get("principal_paid"),
+                "cadence": data.get("cadence"),
+            })
+        return entries
+
     async def ask_documind(self, payload: AskRequest) -> AskResponse:
         """
         Answer question using Firestore Vector Search.
@@ -1521,6 +1601,21 @@ Rules:
                 "received_year": data.get("received_year"),
             })
 
+        manual_loan_entries = []
+        manual_query = self.db.collection('documind_manual_loan_entries').where(
+            filter=FieldFilter('landlord_id', '==', landlord_id)
+        )
+        for snap in manual_query.stream():
+            data = snap.to_dict() or {}
+            manual_loan_entries.append({
+                "property_id": data.get("property_id"),
+                "year": data.get("year"),
+                "month": data.get("month"),
+                "interest_paid": data.get("interest_paid"),
+                "principal_paid": data.get("principal_paid"),
+                "cadence": data.get("cadence"),
+            })
+
         summary = compute_finance_summary(
             year=year,
             today=date.today(),
@@ -1530,6 +1625,7 @@ Rules:
             payment_exceptions=payment_exceptions,
             document_exceptions=document_exceptions,
             rent_recoveries=rent_recoveries,
+            manual_loan_entries=manual_loan_entries,
         )
         return FinanceSummaryResponse(**summary)
 
