@@ -455,6 +455,8 @@ Rules:
                     "has_mortgage": data.get('has_mortgage'),
                     "utilities_paid_by": data.get('utilities_paid_by'),
                     "track_from_year": data.get('track_from_year'),
+                    "loan_input_cadence": data.get('loan_input_cadence'),
+                    "loan_input_method": data.get('loan_input_method'),
                 })
             return results
         except Exception as e:
@@ -807,14 +809,16 @@ Rules:
             ref.delete()
         return {"property_id": property_id, "unit_id": unit_id, "original_month": original_month}
 
-    def _manual_loan_entry_doc_id(self, property_id: str, year: int, month: Optional[int]) -> str:
+    def _manual_loan_entry_doc_id(self, property_id: str, unit_id: Optional[str], year: int, month: Optional[int]) -> str:
+        unit_seg = f"{unit_id}__" if unit_id else ""
         if month is not None:
-            return f"{property_id}__{year}__{int(month):02d}"
-        return f"{property_id}__{year}"
+            return f"{property_id}__{unit_seg}{year}__{int(month):02d}"
+        return f"{property_id}__{unit_seg}{year}"
 
     async def record_manual_loan_entry(
         self, *, landlord_id: str, property_id: str, year: int, cadence: str,
-        interest_paid: float, principal_paid: float, month: Optional[int] = None,
+        interest_paid: float, principal_paid: float, unit_id: Optional[str] = None,
+        month: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Book manually-entered loan interest/principal for a period, for
         landlords whose bank statement cadence makes uploading inconvenient.
@@ -834,11 +838,12 @@ Rules:
         property_snapshot = property_ref.get()
         if not property_snapshot.exists or (property_snapshot.to_dict() or {}).get('landlordId') != landlord_id:
             raise ValueError(f"Property {property_id} not found for landlord {landlord_id}")
-        doc_id = self._manual_loan_entry_doc_id(property_id, year, month)
+        doc_id = self._manual_loan_entry_doc_id(property_id, unit_id, year, month)
         ref = self.db.collection('documind_manual_loan_entries').document(doc_id)
         ref.set({
             'landlord_id': landlord_id,
             'property_id': property_id,
+            'unit_id': unit_id,
             'year': year,
             'month': month,
             'interest_paid': float(interest_paid),
@@ -847,17 +852,18 @@ Rules:
             'updated_at': firestore.SERVER_TIMESTAMP,
         })
         return {
-            "property_id": property_id, "year": year, "month": month,
+            "property_id": property_id, "unit_id": unit_id, "year": year, "month": month,
             "interest_paid": float(interest_paid), "principal_paid": float(principal_paid),
             "cadence": cadence,
         }
 
     async def delete_manual_loan_entry(
-        self, *, landlord_id: str, property_id: str, year: int, month: Optional[int] = None,
+        self, *, landlord_id: str, property_id: str, year: int, unit_id: Optional[str] = None,
+        month: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Remove a manual loan entry. Idempotent — deleting an absent entry is
         a no-op, not an error."""
-        doc_id = self._manual_loan_entry_doc_id(property_id, year, month)
+        doc_id = self._manual_loan_entry_doc_id(property_id, unit_id, year, month)
         ref = self.db.collection('documind_manual_loan_entries').document(doc_id)
         snapshot = ref.get()
         if snapshot.exists and (snapshot.to_dict() or {}).get("landlord_id") == landlord_id:
@@ -879,6 +885,7 @@ Rules:
                 continue
             entries.append({
                 "property_id": data.get("property_id"),
+                "unit_id": data.get("unit_id"),
                 "year": data.get("year"),
                 "month": data.get("month"),
                 "interest_paid": data.get("interest_paid"),

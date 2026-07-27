@@ -2320,6 +2320,53 @@ class ManualLoanEntryServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("interest_statement", subtypes)
         self.assertIn("loan_principal", subtypes)
 
+    async def test_unit_scoped_entry_keys_by_unit(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", unit_id="u1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=0.0,
+        )
+
+        self.assertEqual(fake_db.manual_loan_entries[0]["doc_id"], "p1__u1__2025")
+        self.assertEqual(fake_db.manual_loan_entries[0]["unit_id"], "u1")
+
+    async def test_whole_property_entry_keeps_legacy_key(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=0.0,
+        )
+
+        self.assertEqual(fake_db.manual_loan_entries[0]["doc_id"], "p1__2025")
+        self.assertIsNone(fake_db.manual_loan_entries[0]["unit_id"])
+
+    async def test_list_returns_unit_id(self):
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", unit_id="u1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=0.0,
+        )
+
+        entries = service.list_manual_loan_entries("l1", "p1", 2025)
+
+        self.assertEqual(entries[0]["unit_id"], "u1")
+
+    async def test_list_landlord_properties_exposes_loan_prefs(self):
+        fake_db = _FakeDB()
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "H",
+             "loan_input_cadence": "monthly", "loan_input_method": "manual"},
+        ]
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        rows = service._list_landlord_properties("l1")
+        self.assertEqual(rows[0]["loan_input_cadence"], "monthly")
+        self.assertEqual(rows[0]["loan_input_method"], "manual")
+
 
 if __name__ == "__main__":
     unittest.main()
