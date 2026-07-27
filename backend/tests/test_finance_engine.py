@@ -1591,3 +1591,30 @@ class TwoTierTotalsTests(unittest.TestCase):
         self.assertTrue(prop["complete"])
         self.assertEqual(prop["net_pl"], 12000.0 - 16200.0)
         self.assertEqual(prop["statutory_contribution"], 12000.0 - 8000.0)
+
+    def test_unit_contribution_and_statutory_contribution_diverge_on_mismatched_flags(self):
+        # Unit u1 fully rented for the year: 12 x 1000 = 12000 gross.
+        # Two expense lines on that unit diverge in their flags:
+        #   maintenance 3000 -> paid_by_landlord=True AND deductible=True
+        #   late_penalty 200 -> paid_by_landlord=True but deductible=False
+        # so the unit's Net P/L basis (contribution) and statutory basis
+        # (statutory_contribution) must land on different figures — a
+        # flag-swap at the unit level would make them equal or transpose them.
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": f"2025-{m:02d}"}, unit_id="u1")
+            for m in range(1, 13)
+        ] + [
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 3000.0, "period_year": 2025},
+                {"subtype": "late_penalty", "amount": 200.0, "period_year": 2025},
+            ]}, unit_id="u1"),
+        ]
+        units = {"p1": [{"unit_id": "u1", "label": "Unit A"}]}
+        result = _summary(docs, [_prop("p1", "House")], units=units, year=2025, today=date(2026, 1, 1))
+        unit = result["properties"][0]["units"][0]
+        self.assertEqual(unit["label"], "Unit A")
+        # contribution (Net P/L basis): gross - landlord-paid = 12000 - (3000 + 200)
+        self.assertEqual(unit["contribution"], 8800.0)
+        # statutory_contribution: gross - deductible = 12000 - 3000
+        self.assertEqual(unit["statutory_contribution"], 9000.0)
+        self.assertNotEqual(unit["contribution"], unit["statutory_contribution"])
