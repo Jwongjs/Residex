@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal
 
@@ -361,3 +361,36 @@ class RentRecoveryResponse(BaseModel):
     original_month: str
     amount: float
     received_year: int
+
+
+# ========== MANUAL LOAN ENTRY MODELS ==========
+
+class ManualLoanEntryRequest(BaseModel):
+    landlord_id: str
+    property_id: str
+    year: int = Field(..., ge=2000, le=2100)
+    cadence: str = Field(..., description="'monthly' or 'annual'")
+    interest_paid: float = Field(..., ge=0)
+    principal_paid: float = Field(..., ge=0)
+    month: Optional[int] = Field(None, ge=1, le=12, description="Required for monthly cadence")
+
+    @model_validator(mode="after")
+    def _check_cadence(self):
+        if self.cadence not in ("monthly", "annual"):
+            raise ValueError("cadence must be 'monthly' or 'annual'")
+        if self.cadence == "monthly" and self.month is None:
+            raise ValueError("monthly cadence requires a month (1-12)")
+        return self
+
+
+class ManualLoanEntryResponse(BaseModel):
+    property_id: str
+    year: int
+    month: Optional[int] = None
+    interest_paid: float
+    principal_paid: float
+    cadence: str
+
+
+class ManualLoanEntryListResponse(BaseModel):
+    entries: List[ManualLoanEntryResponse]

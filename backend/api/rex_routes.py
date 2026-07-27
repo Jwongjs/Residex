@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -237,6 +237,52 @@ async def clear_rent_recovery(
     return await documind_service.clear_rent_recovery(
         landlord_id=landlord_id, property_id=property_id, unit_id=unit_id, original_month=original_month,
     )
+
+
+@router.put("/documind/finance/manual-loan-entry", response_model=ManualLoanEntryResponse)
+async def record_manual_loan_entry(payload: ManualLoanEntryRequest):
+    """Book manually-entered loan interest/principal for a period, for
+    landlords whose bank statement cadence makes uploading inconvenient. The
+    figures flow through the same two-tier loan pipeline as an uploaded
+    statement. Idempotent per (property, year, month)."""
+    try:
+        return await documind_service.record_manual_loan_entry(
+            landlord_id=payload.landlord_id,
+            property_id=payload.property_id,
+            year=payload.year,
+            cadence=payload.cadence,
+            interest_paid=payload.interest_paid,
+            principal_paid=payload.principal_paid,
+            month=payload.month,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/documind/finance/manual-loan-entry")
+async def delete_manual_loan_entry(
+    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+    property_id: str = Query(..., description="Property ID"),
+    year: int = Query(..., ge=2000, le=2100),
+    month: int | None = Query(None, ge=1, le=12, description="Month for a monthly entry; omit for annual"),
+):
+    """Remove a manual loan entry. Idempotent — deleting an absent entry is a
+    no-op, not an error."""
+    return await documind_service.delete_manual_loan_entry(
+        landlord_id=landlord_id, property_id=property_id, year=year, month=month,
+    )
+
+
+@router.get("/documind/finance/manual-loan-entry", response_model=ManualLoanEntryListResponse)
+async def list_manual_loan_entries(
+    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+    property_id: str = Query(..., description="Property ID"),
+    year: int = Query(..., ge=2000, le=2100),
+):
+    """All manual loan entries for one property and year, for the finance-tab
+    list/edit UI."""
+    entries = documind_service.list_manual_loan_entries(landlord_id, property_id, year)
+    return {"entries": entries}
 
 
 @router.delete("/documind/documents/{doc_id}")
