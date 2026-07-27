@@ -1555,3 +1555,39 @@ class PaidByLandlordFlagTests(unittest.TestCase):
         })]
         subtypes = {l["subtype"] for l in self._lines(docs)}
         self.assertNotIn("loan_principal", subtypes)
+
+
+class TwoTierTotalsTests(unittest.TestCase):
+    def test_net_pl_includes_principal_and_penalty_statutory_excludes(self):
+        # One fully-rented whole-property scope, RM 1000/mo actual = 12000 received.
+        # Deductible: maintenance 3000. Non-deductible-but-paid: penalty 200,
+        # loan principal 8000. Deductible interest 5000.
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": f"2025-{m:02d}"})
+            for m in range(1, 13)
+        ] + [
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 3000.0, "period_year": 2025},
+                {"subtype": "late_penalty", "amount": 200.0, "period_year": 2025},
+            ]}),
+            _doc("p1", "loan", {"subtype": "interest_statement",
+                                 "interest_paid": 5000.0, "principal_paid": 8000.0,
+                                 "period_year": 2025}),
+        ]
+        # No profile is set, so every FINANCE_CATEGORIES slot is expected;
+        # mark the ones this fixture never intended to exercise unavailable
+        # so completeness doesn't withhold statutory_contribution (the
+        # maintenance line here has no `date`, only period_year, so it would
+        # otherwise read as a partial-months gap too).
+        exceptions = [_doc_exception("p1", 2025, c) for c in ("tax", "upkeep", "insurance", "maintenance")]
+        result = _summary(docs, [_prop("p1", "House")], year=2025, today=date(2026, 1, 1),
+                           document_exceptions=exceptions)
+        totals = result["totals"]
+        # Statutory-deductible = maintenance 3000 + interest 5000 = 8000.
+        # Landlord-paid = 3000 + 200 + 5000 + 8000 = 16200.
+        self.assertEqual(totals["direct_expenses"], 8000.0)     # statutory set
+        self.assertEqual(totals["net_pl"], 12000.0 - 16200.0)   # -4200 (all cash out)
+        prop = result["properties"][0]
+        self.assertTrue(prop["complete"])
+        self.assertEqual(prop["net_pl"], 12000.0 - 16200.0)
+        self.assertEqual(prop["statutory_contribution"], 12000.0 - 8000.0)

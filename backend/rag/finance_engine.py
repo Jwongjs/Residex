@@ -849,6 +849,7 @@ def compute_finance_summary(
     total_derived = 0.0
     total_outstanding = 0.0
     total_expenses = 0.0
+    total_landlord_expenses = 0.0
     statutory_sum = 0.0
     derived_notes: List[str] = []
     vacant_notes: List[str] = []
@@ -915,10 +916,13 @@ def compute_finance_summary(
                 lines_by_unit.get(scope["unit_id"], [])
                 if scope["unit_id"] is not None else []
             )
-            unit_expense_total = sum(
+            unit_deductible_total = sum(
                 l["amount"] for l in unit_lines if l["deductible"]
             )
-            prorated_expenses += unit_expense_total * fraction
+            unit_landlord_total = sum(
+                l["amount"] for l in unit_lines if l["paid_by_landlord"]
+            )
+            prorated_expenses += unit_deductible_total * fraction
             prop_actual += actual_sum
             prop_derived += derived_sum
             # Suppress the synthetic whole-property scope from the rendered rows
@@ -933,7 +937,10 @@ def compute_finance_summary(
                 "unit_id": scope["unit_id"],
                 "label": scope["label"],
                 "rented_months": rented,
-                "contribution": _round2(actual_sum + derived_sum - unit_expense_total),
+                "contribution": _round2(actual_sum + derived_sum - unit_landlord_total),
+                "statutory_contribution": _round2(
+                    actual_sum + derived_sum - unit_deductible_total
+                ),
                 "months": month_rows,
                 "missing_invoice_months": vacant,
                 "expense_lines": unit_lines,
@@ -966,6 +973,10 @@ def compute_finance_summary(
         prorated_expenses += sum(
             l["amount"] for l in property_level_lines if l["deductible"]
         ) * avg_fraction
+
+        # Net P/L uses the landlord's full cash out (not prorated by occupancy,
+        # matching how direct/statutory `direct` is summed below).
+        landlord_paid = sum(l["amount"] for l in expense_lines if l["paid_by_landlord"])
 
         coverage_rows = _property_coverage(
             prop_docs, today.year, _expected_categories(prop),
@@ -1048,6 +1059,7 @@ def compute_finance_summary(
         total_derived += prop_derived
         total_outstanding += prop_outstanding
         total_expenses += direct
+        total_landlord_expenses += landlord_paid
 
         property_blocks.append({
             "property_id": pid,
@@ -1058,6 +1070,8 @@ def compute_finance_summary(
             "outstanding_rent": _round2(prop_outstanding),
             "direct_expenses": _round2(direct),
             "rental_income_or_loss": _round2(received - direct),
+            "net_pl": _round2(received - landlord_paid),
+            "statutory_contribution": (_round2(received - direct) if complete else None),
             "units": unit_blocks,
             "expense_lines": expense_lines,
             "property_expense_lines": property_level_lines,
@@ -1090,7 +1104,7 @@ def compute_finance_summary(
             "derived_rent": _round2(total_derived),
             "outstanding_rent": _round2(total_outstanding),
             "direct_expenses": _round2(total_expenses),
-            "net_pl": _round2(total_received - total_expenses),
+            "net_pl": _round2(total_received - total_landlord_expenses),
             "statutory_rental_income": statutory,
             "statutory_note": statutory_note,
         },
