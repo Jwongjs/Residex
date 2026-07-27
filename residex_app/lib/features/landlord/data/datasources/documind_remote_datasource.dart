@@ -458,6 +458,80 @@ class DocuMindRemoteDataSource {
       throw Exception('Failed to clear rent recovery: ${response.body}');
     }
   }
+
+  /// Book manually-entered loan interest/principal for a period. Idempotent
+  /// per (property, year, month). [month] is required only for monthly cadence.
+  Future<void> recordManualLoanEntry({
+    required String landlordId,
+    required String propertyId,
+    required int year,
+    required String cadence,
+    required double interestPaid,
+    required double principalPaid,
+    int? month,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindManualLoanEntry}');
+    final response = await httpClient.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'landlord_id': landlordId,
+        'property_id': propertyId,
+        'year': year,
+        'cadence': cadence,
+        'interest_paid': interestPaid,
+        'principal_paid': principalPaid,
+        if (month != null) 'month': month,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to record manual loan entry: ${response.body}');
+    }
+  }
+
+  /// Remove a manual loan entry. Idempotent.
+  Future<void> deleteManualLoanEntry({
+    required String landlordId,
+    required String propertyId,
+    required int year,
+    int? month,
+  }) async {
+    final queryParameters = {
+      'landlord_id': landlordId,
+      'property_id': propertyId,
+      'year': '$year',
+      if (month != null) 'month': '$month',
+    };
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindManualLoanEntry}')
+        .replace(queryParameters: queryParameters);
+    final response = await httpClient.delete(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete manual loan entry: ${response.body}');
+    }
+  }
+
+  /// All manual loan entries for one property and year.
+  Future<List<Map<String, dynamic>>> listManualLoanEntries({
+    required String landlordId,
+    required String propertyId,
+    required int year,
+  }) async {
+    final queryParameters = {
+      'landlord_id': landlordId,
+      'property_id': propertyId,
+      'year': '$year',
+    };
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindManualLoanEntry}')
+        .replace(queryParameters: queryParameters);
+    final response = await httpClient.get(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to list manual loan entries: ${response.body}');
+    }
+    final decoded = json.decode(response.body) as Map<String, dynamic>;
+    return ((decoded['entries'] as List<dynamic>?) ?? [])
+        .map((e) => (e as Map<String, dynamic>))
+        .toList();
+  }
 }
 
 /// Thrown when a cited document no longer exists (e.g. deleted, or predates

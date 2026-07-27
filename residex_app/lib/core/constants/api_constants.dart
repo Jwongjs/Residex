@@ -19,4 +19,5 @@ class ApiConstants {
   static const String documindPaymentException = '/api/rex/documind/finance/payment-exception';
   static const String documindDocumentException = '/api/rex/documind/finance/document-exception';
   static const String documindRentRecovery = '/api/rex/documind/finance/rent-recovery';
+  static const String documindManualLoanEntry = '/api/rex/documind/finance/manual-loan-entry';
 }

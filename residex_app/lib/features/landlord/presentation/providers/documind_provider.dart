@@ -387,3 +387,60 @@ final clearRentRecoveryActionProvider = Provider<Future<void> Function({
     ref.invalidate(financeSummaryProvider);
   };
 });
+
+/// Book manually-entered loan figures for a period.
+final recordManualLoanEntryActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required int year,
+  required String cadence,
+  required double interestPaid,
+  required double principalPaid,
+  int? month,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required int year,
+    required String cadence,
+    required double interestPaid,
+    required double principalPaid,
+    int? month,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.recordManualLoanEntry(
+      landlordId: landlordId, propertyId: propertyId, year: year, cadence: cadence,
+      interestPaid: interestPaid, principalPaid: principalPaid, month: month,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// Remove a manual loan entry.
+final deleteManualLoanEntryActionProvider = Provider<Future<void> Function({
+  required String propertyId,
+  required int year,
+  int? month,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required int year,
+    int? month,
+  }) async {
+    final landlordId = ref.read(currentLandlordIdProvider);
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.deleteManualLoanEntry(
+      landlordId: landlordId, propertyId: propertyId, year: year, month: month,
+    );
+    ref.invalidate(financeSummaryProvider);
+  };
+});
+
+/// All manual loan entries for one property and year.
+final manualLoanEntriesProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, ({String propertyId, int year})>((ref, arg) async {
+  final landlordId = ref.read(currentLandlordIdProvider);
+  final dataSource = ref.read(documindRemoteDataSourceProvider);
+  return dataSource.listManualLoanEntries(
+    landlordId: landlordId, propertyId: arg.propertyId, year: arg.year,
+  );
+});
