@@ -837,6 +837,41 @@ def _month_label(value: Optional[str]) -> str:
     return f"{MONTH_NAMES[ym[1] - 1]} {ym[0]}"
 
 
+def _manual_loan_documents(
+    manual_loan_entries: Optional[List[Dict[str, Any]]], year: int
+) -> List[Dict[str, Any]]:
+    """Turn manually-entered loan figures for the target year into synthetic
+    loan documents, so they ride the exact same loan branch of _expense_lines
+    (interest -> deductible+landlord-paid, principal -> landlord-paid only) and
+    the same doc-id-discriminated loan dedup as uploaded statements. A synthetic
+    doc_id 'manual__{property}__{period}' keeps each period distinct from every
+    other manual period and from any uploaded statement. Zero/absent interest or
+    principal is omitted so no empty line is emitted."""
+    docs: List[Dict[str, Any]] = []
+    for entry in (manual_loan_entries or []):
+        if not isinstance(entry, dict) or entry.get("year") != year:
+            continue
+        month = entry.get("month")
+        period = f"{year}-{int(month):02d}" if month else str(year)
+        facts: Dict[str, Any] = {"subtype": "interest_statement", "period_year": year}
+        interest = _amount(entry, "interest_paid")
+        principal = _amount(entry, "principal_paid")
+        if interest is not None and interest > 0:
+            facts["interest_paid"] = interest
+        if principal is not None and principal > 0:
+            facts["principal_paid"] = principal
+        docs.append({
+            "doc_id": f"manual__{entry.get('property_id')}__{period}",
+            "property_id": entry.get("property_id"),
+            "unit_id": None,
+            "unit_label": None,
+            "category": "loan",
+            "extracted_facts": facts,
+            "uploaded_at": None,
+        })
+    return docs
+
+
 def compute_finance_summary(
     *,
     year: int,
@@ -847,8 +882,10 @@ def compute_finance_summary(
     payment_exceptions: Optional[List[Dict[str, Any]]] = None,
     document_exceptions: Optional[List[Dict[str, Any]]] = None,
     rent_recoveries: Optional[List[Dict[str, Any]]] = None,
+    manual_loan_entries: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     months = _months_in_scope(year, today)
+    documents = list(documents) + _manual_loan_documents(manual_loan_entries, year)
 
     property_blocks: List[Dict[str, Any]] = []
     caveats: List[str] = [

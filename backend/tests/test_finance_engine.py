@@ -50,7 +50,8 @@ def _recovery(pid, original_month, amount, received_year, unit_id=None):
 
 
 def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 16),
-             payment_exceptions=None, document_exceptions=None, rent_recoveries=None):
+             payment_exceptions=None, document_exceptions=None, rent_recoveries=None,
+             manual_loan_entries=None):
     return compute_finance_summary(
         year=year,
         today=today,
@@ -60,6 +61,7 @@ def _summary(documents, properties, units=None, year=2025, today=date(2026, 7, 1
         payment_exceptions=payment_exceptions,
         document_exceptions=document_exceptions,
         rent_recoveries=rent_recoveries,
+        manual_loan_entries=manual_loan_entries,
     )
 
 
@@ -1671,3 +1673,77 @@ class TwoTierTotalsTests(unittest.TestCase):
         # statutory_contribution: gross - deductible = 12000 - 3000
         self.assertEqual(unit["statutory_contribution"], 9000.0)
         self.assertNotEqual(unit["contribution"], unit["statutory_contribution"])
+
+
+class ManualLoanEntryEngineTests(unittest.TestCase):
+    def test_annual_entry_becomes_interest_and_principal_lines(self):
+        summary = _summary(
+            documents=[],
+            properties=[_prop("p1", "House")],
+            manual_loan_entries=[
+                {"property_id": "p1", "year": 2025, "month": None,
+                 "interest_paid": 5000.0, "principal_paid": 3000.0, "cadence": "annual"},
+            ],
+        )
+        lines = summary["properties"][0]["expense_lines"]
+        by_subtype = {l["subtype"]: l for l in lines}
+        self.assertEqual(by_subtype["interest_statement"]["amount"], 5000.0)
+        self.assertTrue(by_subtype["interest_statement"]["deductible"])
+        self.assertTrue(by_subtype["interest_statement"]["paid_by_landlord"])
+        self.assertEqual(by_subtype["loan_principal"]["amount"], 3000.0)
+        self.assertFalse(by_subtype["loan_principal"]["deductible"])
+        self.assertTrue(by_subtype["loan_principal"]["paid_by_landlord"])
+
+    def test_zero_principal_emits_no_principal_line(self):
+        summary = _summary(
+            documents=[],
+            properties=[_prop("p1", "House")],
+            manual_loan_entries=[
+                {"property_id": "p1", "year": 2025, "month": None,
+                 "interest_paid": 5000.0, "principal_paid": 0.0, "cadence": "annual"},
+            ],
+        )
+        subtypes = {l["subtype"] for l in summary["properties"][0]["expense_lines"]}
+        self.assertIn("interest_statement", subtypes)
+        self.assertNotIn("loan_principal", subtypes)
+
+    def test_manual_and_uploaded_interest_both_count(self):
+        summary = _summary(
+            documents=[_doc("p1", "loan", {"subtype": "interest_statement",
+                                           "interest_paid": 4000.0, "period_year": 2025})],
+            properties=[_prop("p1", "House")],
+            manual_loan_entries=[
+                {"property_id": "p1", "year": 2025, "month": None,
+                 "interest_paid": 5000.0, "principal_paid": 0.0, "cadence": "annual"},
+            ],
+        )
+        interest = [l for l in summary["properties"][0]["expense_lines"]
+                    if l["subtype"] == "interest_statement"]
+        self.assertEqual(sum(l["amount"] for l in interest), 9000.0)
+
+    def test_monthly_entries_each_produce_a_line(self):
+        summary = _summary(
+            documents=[],
+            properties=[_prop("p1", "House")],
+            manual_loan_entries=[
+                {"property_id": "p1", "year": 2025, "month": 1, "interest_paid": 500.0,
+                 "principal_paid": 0.0, "cadence": "monthly"},
+                {"property_id": "p1", "year": 2025, "month": 2, "interest_paid": 500.0,
+                 "principal_paid": 0.0, "cadence": "monthly"},
+            ],
+        )
+        interest = [l for l in summary["properties"][0]["expense_lines"]
+                    if l["subtype"] == "interest_statement"]
+        self.assertEqual(sum(l["amount"] for l in interest), 1000.0)
+
+    def test_entry_for_a_different_year_is_ignored(self):
+        summary = _summary(
+            documents=[],
+            properties=[_prop("p1", "House")],
+            year=2025,
+            manual_loan_entries=[
+                {"property_id": "p1", "year": 2024, "month": None,
+                 "interest_paid": 5000.0, "principal_paid": 0.0, "cadence": "annual"},
+            ],
+        )
+        self.assertEqual(summary["properties"][0]["expense_lines"], [])
