@@ -60,6 +60,12 @@ _TAX_LABELS = {
     "parcel_rent": "Parcel rent",
 }
 
+# Annual charges are billed once a year but often reprinted on every monthly
+# strata statement. Collapse them per (unit, subtype, amount, year) so the one
+# premium is not counted once per statement. Assessment tax is deliberately
+# excluded — its instalments are legitimately several lines a year.
+_ANNUAL_COLLAPSE_SUBTYPES = {"insurance_premium", "quit_rent", "parcel_rent"}
+
 
 def _round2(value: float) -> float:
     return round(float(value), 2)
@@ -383,18 +389,22 @@ def _dedup_expense_lines(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     installments ('... (1 of 2)' vs '(2 of 2)') differ in description and
     semi-annual payments differ in date, so neither is ever merged. Applied
     before every downstream sum, so lines, direct_expenses and contribution
-    stay consistent (the app never recomputes)."""
+    stay consistent (the app never recomputes). Annual-cadence subtypes (see
+    _ANNUAL_COLLAPSE_SUBTYPES) collapse instead to one per (unit, subtype,
+    amount, year) — they're often reprinted on every monthly statement with a
+    different date each time, so the exact-line key alone would not catch
+    them; all other subtypes keep the exact-line key."""
     seen = set()
     deduped: List[Dict[str, Any]] = []
     for line in lines:
-        key = (
-            line.get("unit_id"),
-            line.get("category"),
-            line.get("subtype"),
-            line.get("description"),
-            line.get("date"),
-            line.get("amount"),
-        )
+        subtype = line.get("subtype")
+        if subtype in _ANNUAL_COLLAPSE_SUBTYPES:
+            ym = _ym(line.get("date"))
+            year = ym[0] if ym is not None else line.get("date")
+            key = ("__annual__", line.get("unit_id"), subtype, line.get("amount"), year)
+        else:
+            key = (line.get("unit_id"), line.get("category"), subtype,
+                   line.get("description"), line.get("date"), line.get("amount"))
         if key in seen:
             continue
         seen.add(key)

@@ -1456,6 +1456,44 @@ class ExpenseLineDedupTests(unittest.TestCase):
         self.assertEqual(len(tax_lines), 2)
 
 
+class AnnualCollapseDedupTests(unittest.TestCase):
+    def test_fire_insurance_on_two_monthly_statements_counts_once(self):
+        from rag.finance_engine import _dedup_expense_lines
+        lines = [
+            {"unit_id": "u1", "category": "insurance", "subtype": "insurance_premium",
+             "description": "Fire insurance", "date": "2025-01-31", "amount": 420.0,
+             "deductible": True, "paid_by_landlord": True},
+            {"unit_id": "u1", "category": "insurance", "subtype": "insurance_premium",
+             "description": "Fire insurance", "date": "2025-02-28", "amount": 420.0,
+             "deductible": True, "paid_by_landlord": True},
+        ]
+        self.assertEqual(len(_dedup_expense_lines(lines)), 1)
+
+    def test_two_different_premiums_same_year_are_kept(self):
+        from rag.finance_engine import _dedup_expense_lines
+        lines = [
+            {"unit_id": "u1", "category": "insurance", "subtype": "insurance_premium",
+             "description": "Fire", "date": "2025-01-31", "amount": 420.0,
+             "deductible": True, "paid_by_landlord": True},
+            {"unit_id": "u1", "category": "insurance", "subtype": "insurance_premium",
+             "description": "Contents", "date": "2025-01-31", "amount": 190.0,
+             "deductible": True, "paid_by_landlord": True},
+        ]
+        self.assertEqual(len(_dedup_expense_lines(lines)), 2)
+
+    def test_assessment_installments_still_kept_separate(self):
+        from rag.finance_engine import _dedup_expense_lines
+        lines = [
+            {"unit_id": None, "category": "tax", "subtype": "assessment_tax",
+             "description": "Assessment tax (1/2)", "date": "2025", "amount": 400.0,
+             "deductible": True, "paid_by_landlord": True},
+            {"unit_id": None, "category": "tax", "subtype": "assessment_tax",
+             "description": "Assessment tax (2/2)", "date": "2025", "amount": 400.0,
+             "deductible": True, "paid_by_landlord": True},
+        ]
+        self.assertEqual(len(_dedup_expense_lines(lines)), 2)
+
+
 class PaidByLandlordFlagTests(unittest.TestCase):
     def _lines(self, docs, utilities_paid_by=None):
         from rag.finance_engine import _expense_lines
