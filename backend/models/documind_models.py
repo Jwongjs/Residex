@@ -14,6 +14,10 @@ class DocUploadResponse(BaseModel):
     chunks_indexed: int
     extracted_facts: Optional[dict] = None
     facts_confidence: Optional[float] = None
+    # 'ok' when ingest captured facts; 'needs_review' when extraction came back
+    # empty, so a silent miss is visible instead of looking like a doc that
+    # simply has no facts.
+    facts_status: str = "ok"
 
 
 class AskRequest(BaseModel):
@@ -139,6 +143,9 @@ class DocumentInfo(BaseModel):
     unit_label: str | None = None  # Denormalized label for display
     extracted_facts: Optional[dict] = None
     facts_confidence: Optional[float] = None
+    # 'ok' | 'needs_review' — derived at read time from whether facts exist,
+    # so legacy documents (stored before this field) surface correctly too.
+    facts_status: str = "ok"
     tags: list[DocumentTag] = []
 
 
@@ -282,6 +289,16 @@ class FactsUpdateRequest(BaseModel):
 class FactsUpdateResponse(BaseModel):
     doc_id: str
     extracted_facts: Dict[str, Any]
+
+
+class DocumentRenameRequest(BaseModel):
+    landlord_id: str
+    filename: str = Field(..., description="New display filename")
+
+
+class DocumentRenameResponse(BaseModel):
+    doc_id: str
+    filename: str
 
 
 # ========== PAYMENT EXCEPTION MODELS ==========

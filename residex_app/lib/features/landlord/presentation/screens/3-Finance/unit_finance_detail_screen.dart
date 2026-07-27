@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/finance_summary.dart';
 import '../../providers/finance_logic.dart';
@@ -72,20 +73,36 @@ class _UnitFinanceDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(financeSummaryProvider(_year));
+    final summaryAsync = ref.watch(financeSummaryProvider(_year));
     final yearsAsync = ref.watch(financeYearsProvider);
+
+    // Derived directly from the current AsyncValue rather than from
+    // ref.listen's change notifications: financeSummaryProvider is a
+    // non-autoDispose family, so revisiting an already-cached year delivers
+    // AsyncData with no state *transition* to listen for, and a
+    // listen-only update would leave _displayedUnit/_displayedYear frozen
+    // on whatever year was last freshly fetched.
+    summaryAsync.whenData((summary) {
+      _displayedUnit = _resolveUnit(summary);
+      _displayedYear = _year;
+    });
 
     ref.listen<AsyncValue<FinanceSummary>>(
       financeSummaryProvider(_year),
       (previous, next) {
-        next.whenData((summary) {
-          setState(() {
-            _displayedUnit = _resolveUnit(summary);
-            _displayedYear = _year;
-          });
-        });
+        if (next.hasError && !next.isLoading && _year != _displayedYear) {
+          final failedYear = _year;
+          setState(() => _year = _displayedYear);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Couldn't load $failedYear — check your connection and try again.")),
+            );
+          }
+        }
       },
     );
+
+    final isSwitchingYear = _year != _displayedYear && summaryAsync.isLoading;
 
     return Scaffold(
       backgroundColor: AppColors.paper,
@@ -97,11 +114,20 @@ class _UnitFinanceDetailScreenState
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
-              child: FinanceYearButton(
-                selected: _displayedYear,
-                years: yearsAsync.value ?? [_year],
-                onChanged: (y) => setState(() => _year = y),
-              ),
+              child: isSwitchingYear
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.registry,
+                      ),
+                    )
+                  : FinanceYearButton(
+                      selected: _displayedYear,
+                      years: yearsAsync.value ?? [_year],
+                      onChanged: (y) => setState(() => _year = y),
+                    ),
             ),
           ),
         ],
@@ -111,23 +137,7 @@ class _UnitFinanceDetailScreenState
         children: [
           Text(widget.propertyName, style: AppTextStyles.bodyMedium),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.hairline),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                    child: Text('Net contribution',
-                        style: AppTextStyles.labelLarge)),
-                Text(formatRM(_displayedUnit.contribution),
-                    style: AppTextStyles.displayMedium),
-              ],
-            ),
-          ),
+          _buildContributionAccordion(context, _displayedUnit, _displayedYear),
           const SizedBox(height: 20),
           Text('Monthly income', style: AppTextStyles.titleMedium),
           const SizedBox(height: 8),
@@ -138,14 +148,246 @@ class _UnitFinanceDetailScreenState
             const SizedBox(height: 20),
             _buildMissingInvoices(context, ref, _displayedUnit),
           ],
-          if (_displayedUnit.expenseLines.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            Text('Expenses', style: AppTextStyles.titleMedium),
-            const SizedBox(height: 8),
-            ..._displayedUnit.expenseLines
-                .map((line) => _buildExpenseLine(context, line)),
-          ],
         ],
+      ),
+    );
+  }
+
+  double _grossIncome(UnitFinance unit) {
+    var total = 0.0;
+    for (final month in unit.months) {
+      if (month.source == 'actual' || month.source == 'derived') {
+        total += month.amount;
+      }
+    }
+    return total;
+  }
+
+  Widget _buildContributionAccordion(
+      BuildContext context, UnitFinance unit, int year) {
+    final gross = _grossIncome(unit);
+    // Only deductible lines feed the total — mirrors the backend net-contribution
+    // fold so gross − expenseTotal == contribution (non-deductible lines still
+    // render below, marked). See finance_logic.deductibleExpenseTotal.
+    final expenseTotal = deductibleExpenseTotal(unit.expenseLines);
+    final hasExpenses = unit.expenseLines.isNotEmpty;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.hairline),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            iconColor: AppColors.textMuted,
+            collapsedIconColor: AppColors.textMuted,
+            maintainState: true,
+            initiallyExpanded: false,
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text('Net contribution', style: AppTextStyles.labelLarge),
+                ),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(formatRM(unit.contribution), style: AppTextStyles.displayMedium),
+                  ),
+                ),
+              ],
+            ),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Divider(height: 1, color: AppColors.hairline),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('Gross income', style: AppTextStyles.labelLarge),
+                        ),
+                        Text(
+                          formatRM(gross),
+                          style: GoogleFonts.ibmPlexMono(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (hasExpenses) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('Direct expenses', style: AppTextStyles.labelLarge),
+                          ),
+                          Text(
+                            '−${formatRM(expenseTotal)}',
+                            style: AppTextStyles.titleMedium.copyWith(color: AppColors.textMuted),
+                          ),
+                        ],
+                      ),
+                      ..._buildGroupedExpenseLines(context, unit.expenseLines),
+                    ] else
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(
+                          'No direct expenses recorded for $year',
+                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+                        ),
+                      ),
+                    const SizedBox(height: 10),
+                    const Divider(height: 1, color: AppColors.hairline),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Net contribution',
+                            style: AppTextStyles.labelLarge.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              formatRM(unit.contribution),
+                              style: AppTextStyles.displayMedium.copyWith(
+                                color: unit.contribution < 0 ? AppColors.sealRed : AppColors.deedGreen,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Direct expenses split by cadence: monthly strata charges under a
+  /// per-month separator (Jan → Dec), then semi-annual, annual and one-off
+  /// charges each under their own section label. Duplicates are already
+  /// collapsed by the backend fold, so this is pure display shaping.
+  List<Widget> _buildGroupedExpenseLines(
+      BuildContext context, List<ExpenseLine> lines) {
+    final grouped = groupDirectExpenses(lines);
+    final widgets = <Widget>[];
+
+    for (final group in grouped.monthly) {
+      widgets.add(_expenseSectionHeader(
+        group.month != null ? monthAbbrev[group.month! - 1] : 'Undated',
+      ));
+      widgets.addAll(group.lines.map((line) => _buildExpenseLineRow(context, line)));
+    }
+    _addExpenseSection(context, widgets, 'Semi-annual', grouped.semiAnnual);
+    _addExpenseSection(context, widgets, 'Annual', grouped.annual);
+    _addExpenseSection(context, widgets, 'One-off', grouped.other);
+
+    return widgets;
+  }
+
+  void _addExpenseSection(BuildContext context, List<Widget> widgets,
+      String label, List<ExpenseLine> lines) {
+    if (lines.isEmpty) return;
+    widgets.add(_expenseSectionHeader(label));
+    widgets.addAll(lines.map((line) => _buildExpenseLineRow(context, line)));
+  }
+
+  Widget _expenseSectionHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 2),
+      child: Row(
+        children: [
+          Text(
+            text.toUpperCase(),
+            style: AppTextStyles.labelSmall.copyWith(
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(child: Divider(height: 1, color: AppColors.hairline)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpenseLineRow(BuildContext context, ExpenseLine line) {
+    final label = line.description ?? (financeCategoryLabels[line.category] ?? line.category);
+    final exclusionNote = expenseExclusionNote(line);
+    final excluded = exclusionNote != null;
+    final primaryColor = excluded ? AppColors.textMuted : AppColors.textPrimary;
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DocumentViewerScreen(
+            propertyId: widget.propertyId,
+            docId: line.docId,
+            filename: label,
+            page: null,
+          ),
+        ));
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(left: 12, top: 6, bottom: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: excluded ? AppColors.textMuted : null,
+                    ),
+                  ),
+                  if (line.date != null) ...[
+                    const SizedBox(height: 2),
+                    Text(formatExpenseDate(line.date!),
+                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted)),
+                  ],
+                  if (exclusionNote != null) ...[
+                    const SizedBox(height: 2),
+                    Text(exclusionNote,
+                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted)),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              formatRM(line.amount),
+              style: GoogleFonts.ibmPlexMono(
+                fontSize: 12,
+                color: primaryColor,
+                decoration: excluded ? TextDecoration.lineThrough : null,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -164,58 +406,75 @@ class _UnitFinanceDetailScreenState
   }
 
   Widget _buildMonthStrip(UnitFinance unit) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: unit.months.map((month) {
-        final color = _sourceColor(month);
-        return InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: month.source == 'vacant'
-              ? null
-              : () => _handleMonthTap(context, ref, month),
-          child: Container(
-            width: 74,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.card,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const cellMinWidth = 104.0;
+        const gap = 8.0;
+        final columns = ((constraints.maxWidth + gap) / (cellMinWidth + gap))
+            .floor()
+            .clamp(3, 6);
+        final cellWidth = (constraints.maxWidth - (columns - 1) * gap) / columns;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: unit.months.map((month) {
+            final color = _sourceColor(month);
+            return InkWell(
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.hairline),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+              onTap: month.source == 'vacant'
+                  ? null
+                  : () => _handleMonthTap(context, ref, month),
+              child: Container(
+                width: cellWidth,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.hairline),
+                ),
+                child: Column(
                   children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration:
-                          BoxDecoration(color: color, shape: BoxShape.circle),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration:
+                              BoxDecoration(color: color, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(monthAbbrev[month.month - 1],
+                            style: AppTextStyles.labelSmall),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    Text(monthAbbrev[month.month - 1],
-                        style: AppTextStyles.labelSmall),
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          month.source == 'vacant'
+                              ? '—'
+                              : month.source == 'unpaid'
+                                  ? (month.paymentState == 'written_off' ? 'WRITTEN OFF' : 'OUTSTANDING')
+                                  : formatRM(month.amount),
+                          maxLines: 1,
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: month.source == 'unpaid' ? _sourceColor(month) : null,
+                            fontWeight: month.source == 'unpaid' ? FontWeight.w600 : null,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  month.source == 'vacant'
-                      ? '—'
-                      : month.source == 'unpaid'
-                          ? (month.paymentState == 'written_off' ? 'WRITTEN OFF' : 'OUTSTANDING')
-                          : formatRM(month.amount),
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: month.source == 'unpaid' ? _sourceColor(month) : null,
-                    fontWeight: month.source == 'unpaid' ? FontWeight.w600 : null,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 
@@ -300,45 +559,4 @@ class _UnitFinanceDetailScreenState
     );
   }
 
-  Widget _buildExpenseLine(BuildContext context, ExpenseLine line) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.hairline),
-      ),
-      child: ListTile(
-        dense: true,
-        leading: const Icon(Icons.description_outlined,
-            size: 20, color: AppColors.registry),
-        title: Text(
-            line.description ??
-                (financeCategoryLabels[line.category] ?? line.category),
-            style: AppTextStyles.titleMedium),
-        subtitle: line.date != null
-            ? Text(line.date!, style: AppTextStyles.bodySmall)
-            : null,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(formatRM(line.amount), style: AppTextStyles.titleMedium),
-            const Icon(Icons.chevron_right,
-                size: 18, color: AppColors.textMuted),
-          ],
-        ),
-        onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => DocumentViewerScreen(
-              propertyId: widget.propertyId,
-              docId: line.docId,
-              filename: line.description ??
-                  (financeCategoryLabels[line.category] ?? line.category),
-              page: null,
-            ),
-          ));
-        },
-      ),
-    );
-  }
 }

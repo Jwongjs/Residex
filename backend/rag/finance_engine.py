@@ -335,6 +335,34 @@ def _expense_lines(
     return lines
 
 
+def _dedup_expense_lines(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collapse exact-duplicate expense lines that differ only by their source
+    document — e.g. the same bill uploaded twice, or a scanner backfill line
+    that also arrived through the LLM. Two lines are the same charge when their
+    unit, category, subtype, description, date and amount all match; doc_id is
+    deliberately excluded from the key so re-uploads collapse. Distinct tax
+    installments ('... (1 of 2)' vs '(2 of 2)') differ in description and
+    semi-annual payments differ in date, so neither is ever merged. Applied
+    before every downstream sum, so lines, direct_expenses and contribution
+    stay consistent (the app never recomputes)."""
+    seen = set()
+    deduped: List[Dict[str, Any]] = []
+    for line in lines:
+        key = (
+            line.get("unit_id"),
+            line.get("category"),
+            line.get("subtype"),
+            line.get("description"),
+            line.get("date"),
+            line.get("amount"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(line)
+    return deduped
+
+
 def _document_years(doc: Dict[str, Any]) -> List[int]:
     """All years a document's facts reference, for the coverage window
     fallback and per-year completeness. Mirrors _expense_lines' allocation
@@ -814,7 +842,9 @@ def compute_finance_summary(
         if has_property_wide_income or not scopes:
             scopes.append({"unit_id": None, "label": "Whole property"})
 
-        expense_lines = _expense_lines(prop_docs, year, prop.get("utilities_paid_by"))
+        expense_lines = _dedup_expense_lines(
+            _expense_lines(prop_docs, year, prop.get("utilities_paid_by"))
+        )
         lines_by_unit: Dict[Optional[str], List[Dict[str, Any]]] = {}
         for line in expense_lines:
             lines_by_unit.setdefault(line.get("unit_id"), []).append(line)
@@ -840,6 +870,16 @@ def compute_finance_summary(
                 l["amount"] for l in unit_lines if l["deductible"]
             )
             prorated_expenses += unit_expense_total * fraction
+            prop_actual += actual_sum
+            prop_derived += derived_sum
+            # Suppress the synthetic whole-property scope from the rendered rows
+            # (and its would-be caveats) when it holds no income and the property
+            # has real units — otherwise it shows as a confusing "Whole property
+            # — RM 0.00" row beside the units that carry the data. Income,
+            # expense and fraction totals above are all zero for an empty scope,
+            # so this changes only what is displayed.
+            if scope["unit_id"] is None and rented == 0 and units_by_property.get(pid):
+                continue
             unit_blocks.append({
                 "unit_id": scope["unit_id"],
                 "label": scope["label"],
@@ -849,8 +889,6 @@ def compute_finance_summary(
                 "missing_invoice_months": vacant,
                 "expense_lines": unit_lines,
             })
-            prop_actual += actual_sum
-            prop_derived += derived_sum
             if derived:
                 derived_notes.append(
                     f"{name} — {scope['label']}: "

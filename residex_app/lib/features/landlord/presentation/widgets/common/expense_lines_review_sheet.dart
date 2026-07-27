@@ -5,16 +5,30 @@ import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart' show formatRM;
 
 /// Display labels for the expense-line subtypes. Keys mirror the backend's
-/// EXPENSE_SUBTYPE_CATEGORY whitelist exactly.
+/// EXPENSE_SUBTYPE_CATEGORY whitelist exactly — every stored subtype must have
+/// an entry here, or the edit dialog's dropdown asserts (zero matching items).
 const Map<String, String> expenseSubtypeLabels = {
   'loan_interest': 'Loan interest',
+  'loan_principal': 'Loan principal',
   'assessment_tax': 'Assessment tax',
   'quit_rent': 'Quit rent',
   'parcel_rent': 'Parcel rent',
   'maintenance': 'Maintenance / service charge',
   'sinking_fund': 'Sinking fund',
+  'management_fee': 'Property management fee',
+  'rent_collection': 'Rent collection fee',
+  'security_fee': 'Security fee',
   'insurance_premium': 'Insurance premium',
   'upkeep': 'Upkeep / repairs',
+  'pest_control': 'Pest control',
+  'agent_commission': 'Agent commission',
+  'legal_fee': 'Legal fee',
+  'stamp_duty': 'Stamp duty',
+  'advertising': 'Advertising',
+  'sst': 'Service tax (SST)',
+  'utilities': 'Utilities',
+  'late_penalty': 'Late payment charge',
+  'renovation': 'Renovation',
 };
 
 /// Post-upload confirmation for extracted expense lines: the human checkpoint
@@ -236,10 +250,14 @@ class _ExpenseLineEditDialogState extends State<_ExpenseLineEditDialog> {
             DropdownButtonFormField<String>(
               initialValue: _subtype,
               decoration: const InputDecoration(labelText: 'Type'),
+              // Guarantee the current value always has exactly one item — a
+              // subtype the label map doesn't know (a future/unknown one)
+              // would otherwise assert. Its raw key is shown as a fallback.
               items: [
-                for (final entry in expenseSubtypeLabels.entries)
+                for (final key in {...expenseSubtypeLabels.keys, _subtype})
                   DropdownMenuItem(
-                      value: entry.key, child: Text(entry.value)),
+                      value: key,
+                      child: Text(expenseSubtypeLabels[key] ?? key)),
               ],
               onChanged: (value) =>
                   setState(() => _subtype = value ?? _subtype),

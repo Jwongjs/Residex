@@ -1,15 +1,18 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/finance_summary.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
+import '../../widgets/common/document_nudge_banner.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
+import '../../widgets/common/missing_documents_sheet.dart';
 import '../../widgets/common/utilities_liability_confirm_sheet.dart';
 import '../../widgets/common/upload_source_sheet.dart';
-import '../../widgets/common/finance_ledger_strip.dart';
+import '../../widgets/common/finance_summary_panel.dart';
 import '../../widgets/common/finance_year_picker.dart';
 import '../../widgets/common/rent_payment_sheets.dart';
 import '../../widgets/common/document_categories.dart' show isAllowedUploadFilename;
@@ -18,22 +21,24 @@ import 'unit_finance_detail_screen.dart';
 
 /// Shared upload affordance: pick a PDF and file it under [category] for
 /// [propertyId], property-wide. Reused by the drill-down screen and the
-/// guided checklist.
-Future<void> uploadDocumentForCategory(
+/// guided checklist. Returns whether a document was actually uploaded —
+/// false if the user backed out of the picker, the file was rejected, or
+/// the upload failed.
+Future<bool> uploadDocumentForCategory(
   BuildContext context,
   WidgetRef ref, {
   required String propertyId,
   required String category,
 }) async {
   final picked = await showUploadSourceSheet(context);
-  if (picked == null) return;
+  if (picked == null) return false;
   if (!isAllowedUploadFilename(picked.name)) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Only PDF, JPG or PNG files are supported.')),
       );
     }
-    return;
+    return false;
   }
   try {
     final uploadAction = ref.read(uploadDocumentActionProvider);
@@ -67,12 +72,14 @@ Future<void> uploadDocumentForCategory(
         );
       }
     }
+    return true;
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Upload failed: $e')),
       );
     }
+    return false;
   }
 }
 
@@ -173,7 +180,7 @@ class FinanceScreen extends ConsumerWidget {
     }
 
     return [
-      FinanceLedgerStrip(
+      FinanceSummaryPanel(
         summary: summary,
         onShowCaveats: () => _showCaveats(context, summary.caveats),
       ),
@@ -184,20 +191,29 @@ class FinanceScreen extends ConsumerWidget {
     ];
   }
 
-  Widget _headlineRow(String label, double value, {bool emphasized = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: AppTextStyles.labelLarge)),
-          Text(
-            formatRM(value),
-            style: emphasized
-                ? AppTextStyles.displayMedium
-                : AppTextStyles.titleMedium,
+  Widget _miniStat(String label, double value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: AppTextStyles.labelSmall.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
+            color: AppColors.textSecondary,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          formatRM(value),
+          style: GoogleFonts.ibmPlexMono(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 
@@ -333,12 +349,29 @@ class FinanceScreen extends ConsumerWidget {
             _buildCoverageStrip(context, ref, block),
             const SizedBox(height: 10),
           ],
-          _headlineRow('Received Rent', block.receivedRent),
-          _headlineRow('Direct Expenses', block.directExpenses),
-          _headlineRow(
-            block.complete ? 'Rental Income/Loss' : 'Rental Income/Loss — so far',
-            block.rentalIncomeOrLoss,
-            emphasized: true,
+          Row(
+            children: [
+              Expanded(child: _miniStat('RECEIVED', block.receivedRent)),
+              Expanded(child: _miniStat('EXPENSES', block.directExpenses)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: AppColors.hairline),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Rental Income/Loss', style: AppTextStyles.labelLarge),
+              ),
+              Text(
+                formatRM(block.rentalIncomeOrLoss),
+                style: AppTextStyles.displayMedium.copyWith(
+                  color: block.rentalIncomeOrLoss < 0
+                      ? AppColors.sealRed
+                      : AppColors.deedGreen,
+                ),
+              ),
+            ],
           ),
           if (!block.complete) ...[
             const SizedBox(height: 4),
@@ -388,42 +421,24 @@ class FinanceScreen extends ConsumerWidget {
           _buildRentIssuesSection(context, ref, block, summary.year),
           if (missing.isNotEmpty) ...[
             const Divider(height: 20, color: AppColors.hairline),
-            Text(
-              topMissingDocumentBanner(summary.year, missing) ??
-                  'Missing for ${summary.year} — figures may be incomplete',
-              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+            DocumentNudgeBanner(
+              count: missing.length,
+              year: summary.year,
+              onUpload: () => showMissingDocumentsSheet(
+                context, ref,
+                propertyId: block.propertyId,
+                year: summary.year,
+                missing: missing,
+                mode: MissingDocsMode.upload,
+              ),
+              onMarkUnavailable: () => showMissingDocumentsSheet(
+                context, ref,
+                propertyId: block.propertyId,
+                year: summary.year,
+                missing: missing,
+                mode: MissingDocsMode.markUnavailable,
+              ),
             ),
-            const SizedBox(height: 8),
-            ...rankMissingDocuments(missing).map((category) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.circle, size: 6, color: AppColors.textMuted),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(coverageLabels[category] ?? category,
-                            style: AppTextStyles.labelSmall),
-                      ),
-                      TextButton(
-                        onPressed: () => uploadDocumentForCategory(
-                          context, ref,
-                          propertyId: block.propertyId,
-                          category: uploadCategoryFor(category),
-                        ),
-                        child: const Text('Upload'),
-                      ),
-                      TextButton(
-                        onPressed: () => _showMarkUnavailableConfirm(
-                          context, ref,
-                          propertyId: block.propertyId,
-                          year: summary.year,
-                          category: category,
-                        ),
-                        child: const Text('Mark unavailable'),
-                      ),
-                    ],
-                  ),
-                )),
           ],
           if ((yearCoverageFor(block.coverage, summary.year)?.unavailable ?? const []).isNotEmpty) ...[
             const SizedBox(height: 4),
@@ -512,46 +527,5 @@ class FinanceScreen extends ConsumerWidget {
         }),
       ],
     );
-  }
-
-  Future<void> _showMarkUnavailableConfirm(
-    BuildContext context,
-    WidgetRef ref, {
-    required String propertyId,
-    required int year,
-    required String category,
-  }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Mark ${coverageLabels[category] ?? category} unavailable for $year?'),
-        content: const Text(
-          'Use this when you genuinely cannot obtain the document — the year '
-          'settles as complete, with this gap acknowledged, instead of nagging '
-          'permanently.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Mark unavailable'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-    try {
-      await ref.read(setDocumentUnavailableActionProvider)(
-        propertyId: propertyId, year: year, category: category,
-      );
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed to mark unavailable: $e')));
-      }
-    }
   }
 }

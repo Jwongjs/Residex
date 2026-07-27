@@ -119,6 +119,31 @@ class IncomeFoldTests(unittest.TestCase):
         self.assertEqual(labels, ["Unit A", "Whole property"])
         self.assertEqual(result["properties"][0]["received_rent"], 800.0)
 
+    def test_empty_whole_property_scope_hidden_when_units_carry_income(self):
+        # A property-wide lease with no extractable rent triggers the synthetic
+        # "Whole property" scope but leaves it empty. Beside a unit that holds
+        # the actual income it would render as a confusing "Whole property —
+        # RM 0.00" row, so it must be suppressed. Totals are unaffected.
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 500.0, "period_month": "2025-01"}, unit_id="u1"),
+            _doc("p1", "lease", {"tenant_name": "Unclear Rent Bhd"}),  # property-wide, no rent
+        ]
+        result = _summary(docs, [_prop("p1", "Block A")], units={"p1": [{"unit_id": "u1", "label": "Unit A"}]})
+        labels = [u["label"] for u in result["properties"][0]["units"]]
+        self.assertEqual(labels, ["Unit A"])
+        self.assertEqual(result["properties"][0]["received_rent"], 500.0)
+        self.assertFalse(
+            any("Whole property" in c for c in result["caveats"]),
+            "suppressed scope must not leave whole-property vacancy caveats",
+        )
+
+    def test_single_let_scope_kept_even_when_empty(self):
+        # No real units: the sole synthetic scope must survive even at zero
+        # income, or a single-let house would render no income row at all.
+        docs = [_doc("p1", "lease", {"tenant_name": "Unclear Rent Bhd"})]
+        result = _summary(docs, [_prop("p1", "House")])
+        self.assertEqual(len(result["properties"][0]["units"]), 1)
+
     def test_malformed_facts_skipped_silently(self):
         docs = [
             _doc("p1", "rental_invoice", None),
@@ -1378,3 +1403,54 @@ class DocumentTagTests(unittest.TestCase):
     def test_no_facts_returns_no_tags(self):
         self.assertEqual(document_tags("expenses", None), [])
         self.assertEqual(document_tags("tax", None), [])
+
+
+class ExpenseLineDedupTests(unittest.TestCase):
+    """A duplicate charge must be counted once. The same bill uploaded twice
+    (or a scanner backfill line that also came through the LLM) inflates both
+    the visible list and — because the app never recomputes — the net
+    contribution. Deduping in the fold keeps lines, direct_expenses and
+    contribution consistent, while genuinely distinct installments/payments
+    stay separate."""
+
+    def test_exact_duplicate_line_from_two_uploads_counted_once(self):
+        docs = [
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 764.0, "date": "2025-02-01"},
+            ]}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 764.0, "date": "2025-02-01"},
+            ]}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")])
+        lines = result["properties"][0]["expense_lines"]
+        maint = [l for l in lines if l["subtype"] == "maintenance"]
+        self.assertEqual(len(maint), 1)
+        self.assertEqual(result["totals"]["direct_expenses"], 764.0)
+
+    def test_distinct_installments_same_year_same_amount_are_kept(self):
+        # Two semi-annual assessment installments of equal amount differ only
+        # by their installment marker in the description — both are real.
+        docs = [
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 434.56,
+                               "period_year": 2025, "installment": "1 of 2"}),
+            _doc("p1", "tax", {"subtype": "assessment", "amount": 434.56,
+                               "period_year": 2025, "installment": "2 of 2"}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")])
+        tax_lines = [l for l in result["properties"][0]["expense_lines"]
+                     if l["category"] == "tax"]
+        self.assertEqual(len(tax_lines), 2)
+        self.assertEqual(result["totals"]["direct_expenses"], 869.12)
+
+    def test_same_charge_on_different_dates_is_kept(self):
+        docs = [
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "assessment_tax", "amount": 434.56, "date": "2025-02-15"},
+                {"subtype": "assessment_tax", "amount": 434.56, "date": "2025-08-15"},
+            ]}),
+        ]
+        result = _summary(docs, [_prop("p1", "House")])
+        tax_lines = [l for l in result["properties"][0]["expense_lines"]
+                     if l["subtype"] == "assessment_tax"]
+        self.assertEqual(len(tax_lines), 2)
