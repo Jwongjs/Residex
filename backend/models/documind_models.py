@@ -261,6 +261,7 @@ class FinanceTotals(BaseModel):
     derived_rent: float
     outstanding_rent: float = 0.0
     direct_expenses: float
+    landlord_expenses: float = 0.0
     net_pl: float
     statutory_rental_income: float
     statutory_note: str

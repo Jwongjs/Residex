@@ -1494,6 +1494,58 @@ class AnnualCollapseDedupTests(unittest.TestCase):
         self.assertEqual(len(_dedup_expense_lines(lines)), 2)
 
 
+class LoanLineDedupTests(unittest.TestCase):
+    """Loan statements have no 'reprinted on every monthly statement' problem
+    the way annual strata/insurance charges do — each is a distinct uploaded
+    document. Two different statements in the same year can legitimately
+    carry equal principal (or interest); they must both survive dedup."""
+
+    def test_two_distinct_loan_statements_same_year_equal_amount_both_kept(self):
+        from rag.finance_engine import _dedup_expense_lines
+        lines = [
+            {"doc_id": "doc-jan", "unit_id": "u1", "category": "loan",
+             "subtype": "loan_principal", "description": "Loan principal",
+             "date": "2025", "amount": 800.0,
+             "deductible": False, "paid_by_landlord": True},
+            {"doc_id": "doc-feb", "unit_id": "u1", "category": "loan",
+             "subtype": "loan_principal", "description": "Loan principal",
+             "date": "2025", "amount": 800.0,
+             "deductible": False, "paid_by_landlord": True},
+        ]
+        self.assertEqual(len(_dedup_expense_lines(lines)), 2)
+
+    def test_two_distinct_loan_interest_lines_same_year_equal_amount_both_kept(self):
+        from rag.finance_engine import _dedup_expense_lines
+        lines = [
+            {"doc_id": "doc-jan", "unit_id": "u1", "category": "loan",
+             "subtype": "interest_statement", "description": "Loan interest",
+             "date": "2025", "amount": 500.0,
+             "deductible": True, "paid_by_landlord": True},
+            {"doc_id": "doc-feb", "unit_id": "u1", "category": "loan",
+             "subtype": "interest_statement", "description": "Loan interest",
+             "date": "2025", "amount": 500.0,
+             "deductible": True, "paid_by_landlord": True},
+        ]
+        self.assertEqual(len(_dedup_expense_lines(lines)), 2)
+
+    def test_same_document_loan_line_reprocessed_still_collapses(self):
+        # Same doc_id, same charge -> still an exact duplicate (e.g. a
+        # scanner backfill line that also arrived through the LLM). The
+        # loan-specific discriminator must not weaken this contract.
+        from rag.finance_engine import _dedup_expense_lines
+        lines = [
+            {"doc_id": "doc-jan", "unit_id": "u1", "category": "loan",
+             "subtype": "loan_principal", "description": "Loan principal",
+             "date": "2025", "amount": 800.0,
+             "deductible": False, "paid_by_landlord": True},
+            {"doc_id": "doc-jan", "unit_id": "u1", "category": "loan",
+             "subtype": "loan_principal", "description": "Loan principal",
+             "date": "2025", "amount": 800.0,
+             "deductible": False, "paid_by_landlord": True},
+        ]
+        self.assertEqual(len(_dedup_expense_lines(lines)), 1)
+
+
 class PaidByLandlordFlagTests(unittest.TestCase):
     def _lines(self, docs, utilities_paid_by=None):
         from rag.finance_engine import _expense_lines
@@ -1586,6 +1638,7 @@ class TwoTierTotalsTests(unittest.TestCase):
         # Statutory-deductible = maintenance 3000 + interest 5000 = 8000.
         # Landlord-paid = 3000 + 200 + 5000 + 8000 = 16200.
         self.assertEqual(totals["direct_expenses"], 8000.0)     # statutory set
+        self.assertEqual(totals["landlord_expenses"], 16200.0)  # all cash out, differs from direct_expenses
         self.assertEqual(totals["net_pl"], 12000.0 - 16200.0)   # -4200 (all cash out)
         prop = result["properties"][0]
         self.assertTrue(prop["complete"])

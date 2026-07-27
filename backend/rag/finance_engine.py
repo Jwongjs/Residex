@@ -393,7 +393,15 @@ def _dedup_expense_lines(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     _ANNUAL_COLLAPSE_SUBTYPES) collapse instead to one per (unit, subtype,
     amount, year) — they're often reprinted on every monthly statement with a
     different date each time, so the exact-line key alone would not catch
-    them; all other subtypes keep the exact-line key."""
+    them; all other subtypes keep the exact-line key. Loan lines (category
+    'loan') are dated with a fixed str(year) and a fixed description ('Loan
+    interest' / 'Loan principal'), so two genuinely distinct statements in
+    the same year with equal interest (or equal principal) would otherwise
+    collapse to one — under-counting real cash out. Loans have no
+    reprint-across-monthly-statements problem the way annual strata/insurance
+    charges do (each is a distinct uploaded document), so doc_id is folded
+    into their key as a per-statement discriminator; an exact reprocessing
+    duplicate (same doc_id) still collapses."""
     seen = set()
     deduped: List[Dict[str, Any]] = []
     for line in lines:
@@ -402,6 +410,10 @@ def _dedup_expense_lines(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             ym = _ym(line.get("date"))
             year = ym[0] if ym is not None else line.get("date")
             key = ("__annual__", line.get("unit_id"), subtype, line.get("amount"), year)
+        elif line.get("category") == "loan":
+            key = (line.get("unit_id"), line.get("category"), subtype,
+                   line.get("description"), line.get("date"), line.get("amount"),
+                   line.get("doc_id"))
         else:
             key = (line.get("unit_id"), line.get("category"), subtype,
                    line.get("description"), line.get("date"), line.get("amount"))
@@ -1104,6 +1116,7 @@ def compute_finance_summary(
             "derived_rent": _round2(total_derived),
             "outstanding_rent": _round2(total_outstanding),
             "direct_expenses": _round2(total_expenses),
+            "landlord_expenses": _round2(total_landlord_expenses),
             "net_pl": _round2(total_received - total_landlord_expenses),
             "statutory_rental_income": statutory,
             "statutory_note": statutory_note,
