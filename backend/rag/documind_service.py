@@ -2,7 +2,8 @@ import os
 import re
 import uuid
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+import asyncio
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from fastapi import UploadFile
 from models.documind_models import *
 from datetime import datetime, timedelta, date
@@ -471,10 +472,22 @@ Rules:
         file: UploadFile,
         unit_id: Optional[str] = None,
         unit_label: Optional[str] = None,
+        progress: Optional[Callable[[str], None]] = None,
     ) -> DocUploadResponse:
         """
         Ingest document into Firestore with vector embeddings.
+
+        progress, when provided, is called with a stage key ("received",
+        "reading", "organising", "indexing", "details") before each stage's
+        work, so a streaming caller can report live progress. The tiny
+        asyncio.sleep(0) after each emit yields control to the event loop so a
+        StreamingResponse can flush the event before the (blocking) stage runs.
         """
+        async def _emit(stage: str) -> None:
+            if progress is not None:
+                progress(stage)
+                await asyncio.sleep(0)
+
         category = normalize_category(category)
         if category not in ALLOWED_CATEGORIES:
             raise ValueError(
@@ -494,7 +507,9 @@ Rules:
                 f.write(content)
             
             print(f"📄 Saved temp file: {temp_path}")
-            
+            await _emit("received")
+
+            await _emit("reading")
             if content_type == "application/pdf":
                 # Step 2a: text-layer extraction, OCR fallback for scans.
                 loader = PyPDFLoader(temp_path)
@@ -519,6 +534,7 @@ Rules:
                     ]
                     print(f"Transcribed image upload ({len(pages)} block(s))")
 
+            await _emit("organising")
             # Step 3: Chunk text
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
@@ -528,6 +544,7 @@ Rules:
             
             print(f"📝 Split into {len(chunks)} chunks")
             
+            await _emit("indexing")
             # Step 4: Embed every chunk in ONE batched call. A quota error
             # here fails fast and visibly (0 chunks, metadata-only) instead
             # of grinding chunk-by-chunk through retry backoff.
@@ -578,6 +595,7 @@ Rules:
             batch.commit()
             print(f"✅ Batch wrote {len(chunk_documents)} chunks to Firestore")
 
+            await _emit("details")
             # Fact extraction (best-effort, one LLM call over the leading
             # text). Failure must never block indexing.
             extracted_facts = None

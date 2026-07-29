@@ -1109,6 +1109,38 @@ class DocuMindServiceStorageTests(unittest.IsolatedAsyncioTestCase):
         stored_doc = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
         self.assertEqual(stored_doc["storage_path"], expected_path)
 
+    async def test_ingest_document_reports_pipeline_stages_in_order(self):
+        fake_db = _FakeDB()
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        service._storage_bucket = _FakeStorageBucket()
+
+        stages = []
+
+        class _FakeUploadFile:
+            filename = "lease.pdf"
+
+            async def read(self):
+                return b"%PDF-1.4 fake content"
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            fake_page = MagicMock()
+            fake_page.page_content = "Some lease text"
+            fake_page.metadata = {"page": 0}
+            loader_mock.return_value.load.return_value = [fake_page]
+
+            response = await service.ingest_document(
+                landlord_id="l1",
+                property_id="p1",
+                category="lease",
+                file=_FakeUploadFile(),
+                progress=lambda stage: stages.append(stage),
+            )
+
+        self.assertEqual(stages, ["received", "reading", "organising", "indexing", "details"])
+        self.assertEqual(response.status, "indexed")
+
     async def test_get_document_view_url_returns_signed_url(self):
         fake_db = _FakeDB(docs=[{
             "landlord_id": "l1",
