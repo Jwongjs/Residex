@@ -14,6 +14,7 @@ import '../../widgets/common/document_categories.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
 import '../../widgets/common/utilities_liability_confirm_sheet.dart';
 import '../../widgets/common/records_grid.dart';
+import '../../widgets/common/upload_progress_overlay.dart';
 import '../../widgets/common/upload_source_sheet.dart';
 import '../2-Documind/documind_upload_summary.dart';
 import '../2-Documind/unit_label_resolver.dart';
@@ -39,6 +40,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   String? _selectedFolderKey;
   bool _isUploading = false;
   double _uploadProgress = 0.0;
+  String _uploadStageLabel = 'Preparing your upload…';
 
   // Display folders (stored categories collapse via displayCategoryFor;
   // uploads from the Expenses folder send category 'expenses' so the
@@ -424,7 +426,12 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                 ),
               ],
             ),
-            if (_isUploading) _buildUploadOverlay(getCategoryColor(_selectedCategory!)),
+            if (_isUploading)
+              UploadProgressOverlay(
+                accentColor: getCategoryColor(_selectedCategory!),
+                label: _uploadStageLabel,
+                progress: _uploadProgress,
+              ),
           ],
         );
       },
@@ -593,46 +600,6 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     );
   }
 
-  /// The "uploading…" overlay shown over both the populated document list
-  /// and the empty-folder state. The two call sites used to carry identical,
-  /// separately-typed-out copies of this widget; consolidated here in the
-  /// move since only the category color ever differed between them.
-  Widget _buildUploadOverlay(Color categoryColor) {
-    return Container(
-      color: Colors.black.withOpacity(0.5),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: categoryColor),
-              const SizedBox(height: 16),
-              Text(
-                'Uploading document...',
-                style: AppTextStyles.bodyMedium.copyWith(
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Processing ${(_uploadProgress * 100).toInt()}%',
-                style: AppTextStyles.bodySmall.copyWith(
-                  color: AppColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildEmptyCategoryState(String category, Property property) {
     final categoryColor = getCategoryColor(category);
     final categoryIcon = getCategoryIcon(category);
@@ -745,7 +712,12 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
             ),
           ],
         ),
-        if (_isUploading) _buildUploadOverlay(categoryColor),
+        if (_isUploading)
+          UploadProgressOverlay(
+            accentColor: categoryColor,
+            label: _uploadStageLabel,
+            progress: _uploadProgress,
+          ),
       ],
     );
   }
@@ -1207,12 +1179,11 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.0;
+      _uploadStageLabel = 'Preparing your upload…';
     });
 
     try {
       final uploadAction = ref.read(uploadDocumentActionProvider);
-
-      setState(() => _uploadProgress = 0.3);
 
       final uploaded = await uploadAction(
         propertyId: _selectedPropertyId!,
@@ -1220,9 +1191,15 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
         file: File(picked.path),
         unitId: unitChoice.unit?.id,
         unitLabel: unitChoice.unit?.label,
+        onProgress: (stage) {
+          final (label, percent) = uploadStageDisplay(stage);
+          if (!mounted) return;
+          setState(() {
+            _uploadStageLabel = label;
+            if (percent != null) _uploadProgress = percent / 100;
+          });
+        },
       );
-
-      setState(() => _uploadProgress = 1.0);
 
       await Future.delayed(const Duration(milliseconds: 500));
 
