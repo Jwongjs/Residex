@@ -1649,6 +1649,7 @@ Rules:
             data = snap.to_dict() or {}
             manual_loan_entries.append({
                 "property_id": data.get("property_id"),
+                "unit_id": data.get("unit_id"),
                 "year": data.get("year"),
                 "month": data.get("month"),
                 "interest_paid": data.get("interest_paid"),

@@ -1787,6 +1787,40 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(summary.properties, [])
         self.assertEqual(summary.totals.net_pl, 0.0)
 
+    async def test_get_finance_summary_preserves_unit_id_on_manual_loan_read(self):
+        # Regression: the read loop in get_finance_summary dropped unit_id when
+        # rebuilding manual_loan_entries dicts from Firestore, so a unit-scoped
+        # entry (stored WITH unit_id) came back property-scoped and per-unit
+        # loan completeness never resolved.
+        fake_db = _FakeDB(
+            property_owners={"p1": "l1"},
+            units=[{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}],
+        )
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "Block",
+             "property_type": "landed", "has_mortgage": True,
+             "loan_input_method": "manual", "loan_input_cadence": "annual"},
+        ]
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", unit_id="u1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=0.0,
+        )
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        block = summary.properties[0]
+        u1 = next(u for u in block.units if u.unit_id == "u1")
+        u2 = next(u for u in block.units if u.unit_id == "u2")
+        u1_loan = [l for l in u1.expense_lines if l.subtype == "interest_statement"]
+        self.assertEqual(sum(l.amount for l in u1_loan), 5000.0)
+        self.assertTrue(all(l.unit_id == "u1" for l in u1_loan))
+        self.assertEqual(u1.loan_status, "complete")
+        self.assertEqual(u2.loan_status, "incomplete")
+
 
 def _fake_finance_summary():
     return FinanceSummaryResponse(
