@@ -21,15 +21,11 @@ class DocuMindRemoteDataSource {
     required File file,
     String? unitId,
     String? unitLabel,
+    void Function(String stage)? onProgress,
   }) async {
-    print('🔵 DataSource: Upload document');
-    print('   - Landlord: $landlordId');
-    print('   - Property: $propertyId');
-    print('   - Category: $category');
-    print('   - Unit: ${unitLabel ?? "whole property"}');
+    print('🔵 DataSource: Upload document (streaming)');
 
-    ///'http://10.0.2.2:8000/api/rex/documind';
-    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindUpload}');
+    final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindUploadStream}');
     final request = http.MultipartRequest('POST', uri);
 
     request.fields['landlord_id'] = landlordId;
@@ -40,18 +36,41 @@ class DocuMindRemoteDataSource {
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
     try {
-      final response = await request.send();
-      final responseBody = await response.stream.bytesToString();
+      // httpClient.send (not request.send) so the injected client is used.
+      final response = await httpClient.send(request);
 
-      print('✅ DataSource: Upload response status ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final jsonResponse = json.decode(responseBody) as Map<String, dynamic>;
-        return DocuMindDocumentModel.fromJson(jsonResponse);
-      } else {
-        print('❌ DataSource: Upload failed: $responseBody');
-        throw Exception('Upload failed: $responseBody');
+      if (response.statusCode != 200) {
+        final errorBody = await response.stream.bytesToString();
+        print('❌ DataSource: Upload failed: $errorBody');
+        throw Exception('Upload failed: $errorBody');
       }
+
+      DocuMindDocumentModel? result;
+      final lines = response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in lines) {
+        if (line.trim().isEmpty) continue;
+        final event = json.decode(line) as Map<String, dynamic>;
+        switch (event['type']) {
+          case 'stage':
+            onProgress?.call(event['stage'] as String);
+            break;
+          case 'result':
+            onProgress?.call('done');
+            result = DocuMindDocumentModel.fromJson(
+                event['result'] as Map<String, dynamic>);
+            break;
+          case 'error':
+            throw Exception('Upload failed: ${event['message']}');
+        }
+      }
+
+      if (result == null) {
+        throw Exception('Upload ended without a result');
+      }
+      return result;
     } catch (e) {
       print('❌ DataSource: Upload error: $e');
       rethrow;

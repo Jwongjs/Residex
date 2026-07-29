@@ -9,6 +9,7 @@ class ApiConstants {
   
   // REX AI endpoints
   static const String documindUpload = '/api/rex/documind/upload';
+  static const String documindUploadStream = '/api/rex/documind/upload/stream';
   static const String documindAsk = '/api/rex/documind/ask';
   static const String documindList = '/api/rex/documind/documents';
   static const String documindUnassignUnit = '/api/rex/documind/documents/unassign-unit';
