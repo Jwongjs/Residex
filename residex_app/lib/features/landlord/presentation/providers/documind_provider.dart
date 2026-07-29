@@ -81,6 +81,7 @@ final uploadDocumentActionProvider = Provider<Future<DocuMindDocument> Function(
   required File file,
   String? unitId,
   String? unitLabel,
+  void Function(String stage)? onProgress,
 })>((ref) {
   return ({
     required String propertyId,
@@ -88,6 +89,7 @@ final uploadDocumentActionProvider = Provider<Future<DocuMindDocument> Function(
     required File file,
     String? unitId,
     String? unitLabel,
+    void Function(String stage)? onProgress,
   }) async {
     final landlordId = ref.read(currentLandlordIdProvider);
     final useCase = ref.read(uploadDocumentUseCaseProvider);
@@ -99,6 +101,7 @@ final uploadDocumentActionProvider = Provider<Future<DocuMindDocument> Function(
       file: file,
       unitId: unitId,
       unitLabel: unitLabel,
+      onProgress: onProgress,
     );
 
     // Invalidate document list to trigger refresh

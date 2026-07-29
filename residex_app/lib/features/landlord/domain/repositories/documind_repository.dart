@@ -15,6 +15,7 @@ abstract class DocuMindRepository {
     required File file,
     String? unitId,
     String? unitLabel,
+    void Function(String stage)? onProgress,
   });
 
   /// Ask a question about documents.

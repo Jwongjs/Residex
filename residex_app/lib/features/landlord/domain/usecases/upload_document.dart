@@ -20,6 +20,7 @@ class UploadDocument {
     required File file,
     String? unitId,
     String? unitLabel,
+    void Function(String stage)? onProgress,
   }) async {
     // ✅ Business validation (domain layer)
     final validCategories = ['lease', 'insurance', 'loan', 'tax', 'upkeep', 'maintenance', 'rental_invoice', 'expenses'];
@@ -52,6 +53,7 @@ class UploadDocument {
       file: file,
       unitId: unitId,
       unitLabel: unitLabel,
+      onProgress: onProgress,
     );
   }
 }

@@ -18,6 +18,7 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
     required File file,
     String? unitId,
     String? unitLabel,
+    void Function(String stage)? onProgress,
   }) async {
     print('🔵 Repository: Upload document');
     print('   - Landlord: $landlordId');
@@ -32,6 +33,7 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
         file: file,
         unitId: unitId,
         unitLabel: unitLabel,
+        onProgress: onProgress,
       );
       print('✅ Repository: Upload successful');
       return model.toEntity();
