@@ -1,4 +1,8 @@
+import asyncio
+import json
+
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
+from fastapi.responses import StreamingResponse
 from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse, UnitLoanExemptionRequest
 from rag.documind_service import documind_service
 
@@ -37,6 +41,56 @@ async def documind_upload(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/documind/upload/stream")
+async def documind_upload_stream(
+    landlord_id: str = Form(...),
+    property_id: str = Form(...),
+    category: str = Form(...),
+    file: UploadFile = File(...),
+    unit_id: str | None = Form(None),
+    unit_label: str | None = Form(None),
+):
+    """
+    Same as /documind/upload but streams newline-delimited JSON progress
+    events as the ingestion pipeline runs, then a final result (or error)
+    event. Media type application/x-ndjson.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def run() -> None:
+        def progress(stage: str) -> None:
+            queue.put_nowait({"type": "stage", "stage": stage})
+
+        try:
+            result = await documind_service.ingest_document(
+                landlord_id=landlord_id,
+                property_id=property_id,
+                category=category,
+                file=file,
+                unit_id=unit_id,
+                unit_label=unit_label,
+                progress=progress,
+            )
+            queue.put_nowait({"type": "result", "result": result.model_dump(mode="json")})
+        except Exception as e:  # noqa: BLE001 - surfaced to the client as an error event
+            queue.put_nowait({"type": "error", "message": str(e)})
+        finally:
+            queue.put_nowait(None)
+
+    async def stream():
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield json.dumps(event) + "\n"
+        finally:
+            await task
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 @router.patch("/documind/documents/{doc_id}/facts", response_model=FactsUpdateResponse)

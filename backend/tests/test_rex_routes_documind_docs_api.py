@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
@@ -46,6 +47,57 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         self.assertEqual(call_kwargs["file"].filename, "lease.pdf")
         self.assertEqual(response.json()["extracted_facts"]["monthly_rent"], 1500.0)
         self.assertEqual(response.json()["facts_confidence"], 0.9)
+
+    def test_documind_upload_stream_emits_stages_then_result(self):
+        mocked_upload_response = DocUploadResponse(
+            doc_id="doc-1",
+            landlord_id="l1",
+            property_id="p1",
+            category="lease",
+            filename="lease.pdf",
+            status="indexed",
+            chunks_indexed=3,
+        )
+
+        async def fake_ingest(*args, progress=None, **kwargs):
+            for stage in ["received", "reading", "organising", "indexing", "details"]:
+                progress(stage)
+            return mocked_upload_response
+
+        with patch("api.rex_routes.documind_service.ingest_document", new=AsyncMock(side_effect=fake_ingest)):
+            response = self.client.post(
+                "/api/rex/documind/upload/stream",
+                data={"landlord_id": "l1", "property_id": "p1", "category": "lease"},
+                files={"file": ("lease.pdf", b"%PDF-1.4 x", "application/pdf")},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        lines = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+        self.assertEqual(
+            [e["stage"] for e in lines if e["type"] == "stage"],
+            ["received", "reading", "organising", "indexing", "details"],
+        )
+        result_events = [e for e in lines if e["type"] == "result"]
+        self.assertEqual(len(result_events), 1)
+        self.assertEqual(result_events[0]["result"]["doc_id"], "doc-1")
+        self.assertEqual(result_events[0]["result"]["chunks_indexed"], 3)
+
+    def test_documind_upload_stream_emits_error_on_failure(self):
+        async def boom(*args, progress=None, **kwargs):
+            raise ValueError("bad category")
+
+        with patch("api.rex_routes.documind_service.ingest_document", new=AsyncMock(side_effect=boom)):
+            response = self.client.post(
+                "/api/rex/documind/upload/stream",
+                data={"landlord_id": "l1", "property_id": "p1", "category": "nope"},
+                files={"file": ("x.pdf", b"%PDF-1.4 x", "application/pdf")},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        lines = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+        error_events = [e for e in lines if e["type"] == "error"]
+        self.assertEqual(len(error_events), 1)
+        self.assertIn("bad category", error_events[0]["message"])
 
     def test_documind_upload_returns_422_when_missing_file(self):
         response = self.client.post(
