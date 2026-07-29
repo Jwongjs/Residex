@@ -53,6 +53,7 @@ void main() {
             required dynamic file,
             String? unitId,
             String? unitLabel,
+            void Function(String stage)? onProgress,
           }) async =>
               throw UnimplementedError('not exercised in this test')),
         ],
