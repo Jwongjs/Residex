@@ -2,9 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/documind_document.dart';
 import 'package:residex_app/features/landlord/presentation/providers/document_folders.dart';
 
-DocuMindDocument _doc(String id, List<DocumentTag> tags) {
+DocuMindDocument _doc(String id, List<DocumentTag> tags, {String category = 'expenses'}) {
   return DocuMindDocument(
-    docId: id, landlordId: 'l1', propertyId: 'p1', category: 'expenses',
+    docId: id, landlordId: 'l1', propertyId: 'p1', category: category,
     filename: '$id.pdf', chunksIndexed: 1, uploadedAt: DateTime(2026, 1, 1),
     tags: tags,
   );
@@ -80,6 +80,12 @@ void main() {
 
     test('no tags at all -> the untagged sentinel', () {
       expect(naturalFolderKey(_doc('unknown', const [])), untaggedFolderKey);
+    });
+
+    test('a loan document gets its own Loan folder, not Expenses', () {
+      final loanDoc = _doc('loan1', const [], category: 'loan');
+      expect(naturalFolderKey(loanDoc), loanFolderKey);
+      expect(proposedFolderName(loanFolderKey), 'Loan');
     });
   });
 

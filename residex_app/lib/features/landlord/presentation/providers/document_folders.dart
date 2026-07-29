@@ -7,12 +7,19 @@ import '../widgets/common/document_categories.dart';
 /// non-empty comma-joined tag list).
 const String untaggedFolderKey = '';
 
+/// Sentinel folder key for loan-category documents, so they get their own
+/// "Loan" folder instead of falling into the catch-all Expenses folder (their
+/// tags are one-off, which otherwise yields no folder identity). Not a real
+/// tag combination.
+const String loanFolderKey = '__loan__';
+
 /// A document's folder identity (spec §9): the periodic tag subset when
 /// non-empty (one-off and ad-hoc tags ride along, never appearing in the
 /// key); otherwise the full tag set; otherwise the untagged sentinel.
 /// Ignores [DocuMindDocument.docId] entirely — manual moves are applied by
 /// the caller ([clusterIntoFolders]), not here.
 String naturalFolderKey(DocuMindDocument doc) {
+  if (doc.category == 'loan') return loanFolderKey;
   final periodic = doc.tags.where((t) => t.rhythm == 'periodic').map((t) => t.tag).toSet();
   if (periodic.isNotEmpty) {
     return (periodic.toList()..sort()).join(',');
@@ -45,6 +52,7 @@ Map<String, List<DocuMindDocument>> clusterIntoFolders(
 /// this is only ever the default; [folderDisplayName] applies the
 /// landlord's override when one exists).
 String proposedFolderName(String folderKey) {
+  if (folderKey == loanFolderKey) return 'Loan';
   if (folderKey == untaggedFolderKey) return 'Expenses';
   return folderKey.split(',').map(tagLabel).join(' + ');
 }
