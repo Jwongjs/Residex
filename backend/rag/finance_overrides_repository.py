@@ -31,6 +31,8 @@ class FinanceOverridesRepository:
         unit_id: Optional[str] = None, reason: Optional[str] = None,
         state: str = "outstanding",
     ) -> Dict[str, Any]:
+        """Upsert a 'no payment received' mark for one month. Deterministic
+        doc id keeps set/clear idempotent — no duplicate marks possible."""
         if not _PAYMENT_MONTH_RE.match(month or ""):
             raise ValueError("month must be formatted YYYY-MM")
         self._require_owned_property(property_id, landlord_id)
@@ -46,6 +48,8 @@ class FinanceOverridesRepository:
     async def clear_payment_exception(
         self, *, landlord_id: str, property_id: str, month: str, unit_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Remove a 'no payment received' mark, if any. Idempotent — clearing
+        an unmarked month is a no-op, not an error."""
         doc_id = self._payment_exception_doc_id(property_id, unit_id, month)
         ref = self._db.collection('documind_payment_exceptions').document(doc_id)
         snapshot = ref.get()
@@ -61,6 +65,9 @@ class FinanceOverridesRepository:
     async def set_document_unavailable(
         self, *, landlord_id: str, property_id: str, year: int, category: str,
     ) -> Dict[str, Any]:
+        """Acknowledge that a coverage gap cannot be filled, so the year
+        settles as complete-with-gaps instead of nagging permanently.
+        Idempotent — re-marking the same scope is a no-op."""
         self._require_owned_property(property_id, landlord_id)
         doc_id = self._document_exception_doc_id(property_id, year, category)
         ref = self._db.collection('documind_document_exceptions').document(doc_id)
@@ -73,6 +80,8 @@ class FinanceOverridesRepository:
     async def clear_document_unavailable(
         self, *, landlord_id: str, property_id: str, year: int, category: str,
     ) -> Dict[str, Any]:
+        """Clear an 'unavailable' mark. Idempotent — clearing an unmarked
+        scope is a no-op, not an error."""
         doc_id = self._document_exception_doc_id(property_id, year, category)
         ref = self._db.collection('documind_document_exceptions').document(doc_id)
         snapshot = ref.get()
@@ -89,6 +98,12 @@ class FinanceOverridesRepository:
         self, *, landlord_id: str, property_id: str, original_month: str,
         amount: float, received_year: int, unit_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Book a written-off month's rent as income in the year it
+        actually arrived, without reopening the original (frozen) year.
+        Requires the month to already be on file as written_off — a
+        recovery corrects a specific write-off, it is never a free-
+        floating credit. Idempotent — recording the same scope again
+        overwrites the amount/year."""
         if not _PAYMENT_MONTH_RE.match(original_month or ""):
             raise ValueError("original_month must be formatted YYYY-MM")
         self._require_owned_property(property_id, landlord_id)
@@ -115,6 +130,9 @@ class FinanceOverridesRepository:
     async def clear_rent_recovery(
         self, *, landlord_id: str, property_id: str, original_month: str, unit_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Remove a recorded recovery. Idempotent — clearing an unrecorded
+        scope is a no-op, not an error. Does not affect the underlying
+        written_off exception."""
         doc_id = self._rent_recovery_doc_id(property_id, unit_id, original_month)
         ref = self._db.collection('documind_rent_recoveries').document(doc_id)
         snapshot = ref.get()
@@ -135,6 +153,11 @@ class FinanceOverridesRepository:
         interest_paid: float, principal_paid: float, unit_id: Optional[str] = None,
         month: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """Book manually-entered loan interest/principal for a period, for
+        landlords whose bank statement cadence makes uploading inconvenient.
+        Ownership-validated against the property. Monthly cadence requires a
+        1-12 month; annual ignores month. Amounts must be >= 0. Idempotent —
+        re-entering the same period overwrites."""
         if cadence not in ("monthly", "annual"):
             raise ValueError("cadence must be 'monthly' or 'annual'")
         if cadence == "monthly":
@@ -163,6 +186,8 @@ class FinanceOverridesRepository:
         self, *, landlord_id: str, property_id: str, year: int, unit_id: Optional[str] = None,
         month: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """Remove a manual loan entry. Idempotent — deleting an absent entry is
+        a no-op, not an error."""
         doc_id = self._manual_loan_entry_doc_id(property_id, unit_id, year, month)
         ref = self._db.collection('documind_manual_loan_entries').document(doc_id)
         snapshot = ref.get()
@@ -171,6 +196,8 @@ class FinanceOverridesRepository:
         return {"property_id": property_id, "year": year, "month": month}
 
     def list_manual_loan_entries(self, landlord_id: str, property_id: str, year: int) -> List[Dict[str, Any]]:
+        """All manual loan entries for one property and year, for the finance-tab
+        list/edit UI. Ownership-scoped by landlord_id."""
         query = self._db.collection('documind_manual_loan_entries').where(
             filter=FieldFilter('landlord_id', '==', landlord_id)
         )
@@ -193,6 +220,8 @@ class FinanceOverridesRepository:
         return f"{property_id}__{unit_id}"
 
     async def set_unit_loan_exemption(self, *, landlord_id: str, property_id: str, unit_id: str) -> Dict[str, Any]:
+        """Record that a unit has no loan, so it stops being expected in the
+        loan-figure completeness check. Ownership-validated; idempotent."""
         self._require_owned_property(property_id, landlord_id)
         doc_id = self._unit_loan_exemption_doc_id(property_id, unit_id)
         ref = self._db.collection('documind_unit_loan_exemptions').document(doc_id)
@@ -203,6 +232,7 @@ class FinanceOverridesRepository:
         return {"property_id": property_id, "unit_id": unit_id}
 
     async def clear_unit_loan_exemption(self, *, landlord_id: str, property_id: str, unit_id: str) -> Dict[str, Any]:
+        """Remove a unit's no-loan mark. Idempotent."""
         doc_id = self._unit_loan_exemption_doc_id(property_id, unit_id)
         ref = self._db.collection('documind_unit_loan_exemptions').document(doc_id)
         snapshot = ref.get()
