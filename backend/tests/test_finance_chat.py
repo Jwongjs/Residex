@@ -1,7 +1,7 @@
 import unittest
 
-from rag.conversation_router import ConversationRouter
-from rag.graph_orchestrator import DocuMindGraphOrchestrator
+from rag.ask.conversation_router import ConversationRouter
+from rag.ask.graph_orchestrator import DocuMindGraphOrchestrator
 
 
 class _LLMResponse:

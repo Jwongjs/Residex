@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
-from rag.pdf_ocr import PdfOcr, TesseractOcr
+from rag.documents.pdf_ocr import PdfOcr, TesseractOcr
 
 
 def _proc(stdout_text):
@@ -14,7 +14,7 @@ def _proc(stdout_text):
 class TesseractOcrTests(unittest.TestCase):
     def test_image_transcribe_pipes_bytes_and_uses_eng_msa(self):
         ocr = TesseractOcr(cmd="tess", lang="eng+msa")
-        with patch("rag.pdf_ocr.subprocess.run") as run:
+        with patch("rag.documents.pdf_ocr.subprocess.run") as run:
             run.return_value = _proc("hello world")
             pages = ocr.transcribe(b"\x89PNGfake", mime_type="image/png")
 
@@ -29,8 +29,8 @@ class TesseractOcrTests(unittest.TestCase):
     def test_pdf_processes_all_pages_without_10_page_cap(self):
         ocr = TesseractOcr(cmd="tess")
         imgs = [f"img{i}".encode() for i in range(12)]
-        with patch("rag.pdf_ocr._extract_page_images", return_value=imgs), \
-             patch("rag.pdf_ocr.subprocess.run") as run:
+        with patch("rag.documents.pdf_ocr._extract_page_images", return_value=imgs), \
+             patch("rag.documents.pdf_ocr.subprocess.run") as run:
             run.side_effect = [_proc(f"page {i}") for i in range(12)]
             pages = ocr.transcribe(b"%PDF", mime_type="application/pdf")
 
@@ -49,7 +49,7 @@ class TesseractOcrTests(unittest.TestCase):
 
     def test_tessdata_dir_becomes_flag(self):
         ocr = TesseractOcr(cmd="tess", tessdata_dir="/td")
-        with patch("rag.pdf_ocr.subprocess.run") as run:
+        with patch("rag.documents.pdf_ocr.subprocess.run") as run:
             run.return_value = _proc("x")
             ocr.transcribe(b"png", mime_type="image/png")
 
@@ -59,8 +59,8 @@ class TesseractOcrTests(unittest.TestCase):
 
     def test_blank_pages_are_dropped(self):
         ocr = TesseractOcr(cmd="tess")
-        with patch("rag.pdf_ocr._extract_page_images", return_value=[b"a", b"b"]), \
-             patch("rag.pdf_ocr.subprocess.run") as run:
+        with patch("rag.documents.pdf_ocr._extract_page_images", return_value=[b"a", b"b"]), \
+             patch("rag.documents.pdf_ocr.subprocess.run") as run:
             run.side_effect = [_proc("   "), _proc("real text")]
             pages = ocr.transcribe(b"%PDF", mime_type="application/pdf")
 
@@ -74,7 +74,7 @@ class PdfOcrProviderRoutingTests(unittest.TestCase):
                 raise AssertionError("hosted LLM must not be called for local OCR")
 
         with patch.dict("os.environ", {"OCR_PROVIDER": "local"}, clear=False), \
-             patch("rag.pdf_ocr.subprocess.run") as run:
+             patch("rag.documents.pdf_ocr.subprocess.run") as run:
             run.return_value = _proc("local text")
             pages = PdfOcr(_LLM()).transcribe(b"pngbytes", mime_type="image/png")
 

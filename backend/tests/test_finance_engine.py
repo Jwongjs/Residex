@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, datetime
 
-from rag.finance_engine import (
+from rag.finance.finance_engine import (
     LOSS_FLOOR_NOTE,
     STATUTORY_NOTE,
     _expected_record_categories,
@@ -1337,8 +1337,8 @@ class ExpectedRecordCategoriesTests(unittest.TestCase):
         self.assertNotIn("quit_rent", categories)
 
 
-from rag.finance_engine import document_tags
-from rag.fact_extractor import EXPENSE_SUBTYPE_CATEGORY, EXPENSE_SUBTYPE_RHYTHM
+from rag.finance.finance_engine import document_tags
+from rag.documents.fact_extractor import EXPENSE_SUBTYPE_CATEGORY, EXPENSE_SUBTYPE_RHYTHM
 
 
 class DocumentTagTests(unittest.TestCase):
@@ -1461,7 +1461,7 @@ class ExpenseLineDedupTests(unittest.TestCase):
 
 class AnnualCollapseDedupTests(unittest.TestCase):
     def test_fire_insurance_on_two_monthly_statements_counts_once(self):
-        from rag.finance_engine import _dedup_expense_lines
+        from rag.finance.finance_engine import _dedup_expense_lines
         lines = [
             {"unit_id": "u1", "category": "insurance", "subtype": "insurance_premium",
              "description": "Fire insurance", "date": "2025-01-31", "amount": 420.0,
@@ -1473,7 +1473,7 @@ class AnnualCollapseDedupTests(unittest.TestCase):
         self.assertEqual(len(_dedup_expense_lines(lines)), 1)
 
     def test_two_different_premiums_same_year_are_kept(self):
-        from rag.finance_engine import _dedup_expense_lines
+        from rag.finance.finance_engine import _dedup_expense_lines
         lines = [
             {"unit_id": "u1", "category": "insurance", "subtype": "insurance_premium",
              "description": "Fire", "date": "2025-01-31", "amount": 420.0,
@@ -1485,7 +1485,7 @@ class AnnualCollapseDedupTests(unittest.TestCase):
         self.assertEqual(len(_dedup_expense_lines(lines)), 2)
 
     def test_assessment_installments_still_kept_separate(self):
-        from rag.finance_engine import _dedup_expense_lines
+        from rag.finance.finance_engine import _dedup_expense_lines
         lines = [
             {"unit_id": None, "category": "tax", "subtype": "assessment_tax",
              "description": "Assessment tax (1/2)", "date": "2025", "amount": 400.0,
@@ -1504,7 +1504,7 @@ class LoanLineDedupTests(unittest.TestCase):
     carry equal principal (or interest); they must both survive dedup."""
 
     def test_two_distinct_loan_statements_same_year_equal_amount_both_kept(self):
-        from rag.finance_engine import _dedup_expense_lines
+        from rag.finance.finance_engine import _dedup_expense_lines
         lines = [
             {"doc_id": "doc-jan", "unit_id": "u1", "category": "loan",
              "subtype": "loan_principal", "description": "Loan principal",
@@ -1518,7 +1518,7 @@ class LoanLineDedupTests(unittest.TestCase):
         self.assertEqual(len(_dedup_expense_lines(lines)), 2)
 
     def test_two_distinct_loan_interest_lines_same_year_equal_amount_both_kept(self):
-        from rag.finance_engine import _dedup_expense_lines
+        from rag.finance.finance_engine import _dedup_expense_lines
         lines = [
             {"doc_id": "doc-jan", "unit_id": "u1", "category": "loan",
              "subtype": "interest_statement", "description": "Loan interest",
@@ -1535,7 +1535,7 @@ class LoanLineDedupTests(unittest.TestCase):
         # Same doc_id, same charge -> still an exact duplicate (e.g. a
         # scanner backfill line that also arrived through the LLM). The
         # loan-specific discriminator must not weaken this contract.
-        from rag.finance_engine import _dedup_expense_lines
+        from rag.finance.finance_engine import _dedup_expense_lines
         lines = [
             {"doc_id": "doc-jan", "unit_id": "u1", "category": "loan",
              "subtype": "loan_principal", "description": "Loan principal",
@@ -1551,7 +1551,7 @@ class LoanLineDedupTests(unittest.TestCase):
 
 class PaidByLandlordFlagTests(unittest.TestCase):
     def _lines(self, docs, utilities_paid_by=None):
-        from rag.finance_engine import _expense_lines
+        from rag.finance.finance_engine import _expense_lines
         return _expense_lines(docs, 2025, utilities_paid_by)
 
     def test_penalty_is_landlord_paid_but_not_deductible(self):

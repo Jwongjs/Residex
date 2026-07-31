@@ -6,8 +6,8 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 from models.documind_models import DocListResponse, DocumentInfo, DocumentTag
 from rag.categories import facts_status_for, normalize_category
-from rag.fact_extractor import validate_expense_lines
-from rag.finance_engine import document_tags
+from rag.documents.fact_extractor import validate_expense_lines
+from rag.finance.finance_engine import document_tags
 
 
 class DocumentLifecycleService:

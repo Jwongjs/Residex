@@ -16,17 +16,17 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 # Firebase Storage imports
 import firebase_admin
 from firebase_admin import storage as firebase_storage
-from rag.conversation_router import ConversationRouter
-from rag.category_predictor import CategoryPredictor
-from rag.fact_extractor import FactExtractor
-from rag.ollama_chat import OllamaChat
-from rag.groq_chat import GroqChat
-from rag.pdf_ocr import PdfOcr
-from rag.ollama_embeddings import OllamaEmbeddings
-from rag.conversation_store import ConversationStore
-from rag.graph_orchestrator import DocuMindGraphOrchestrator
-from rag.retriever import HybridRetriever
-from rag.finance_engine import compute_finance_summary
+from rag.ask.conversation_router import ConversationRouter
+from rag.ask.category_predictor import CategoryPredictor
+from rag.documents.fact_extractor import FactExtractor
+from rag.providers.ollama_chat import OllamaChat
+from rag.providers.groq_chat import GroqChat
+from rag.documents.pdf_ocr import PdfOcr
+from rag.providers.ollama_embeddings import OllamaEmbeddings
+from rag.ask.conversation_store import ConversationStore
+from rag.ask.graph_orchestrator import DocuMindGraphOrchestrator
+from rag.ask.retriever import HybridRetriever
+from rag.finance.finance_engine import compute_finance_summary
 # Re-exported: tests import these directly from rag.documind_service.
 from rag.categories import (
     ALLOWED_CATEGORIES,
@@ -41,10 +41,10 @@ from rag.categories import (
 )
 from rag.unit_resolution import resolve_unit_mention
 from rag import property_directory
-from rag.finance_overrides_repository import FinanceOverridesRepository
-from rag.document_lifecycle_service import DocumentLifecycleService
-from rag.ingestion_service import IngestionService
-from rag.ask_orchestrator import AskOrchestrator
+from rag.finance.finance_overrides_repository import FinanceOverridesRepository
+from rag.documents.document_lifecycle_service import DocumentLifecycleService
+from rag.documents.ingestion_service import IngestionService
+from rag.ask.ask_orchestrator import AskOrchestrator
 
 EMBED_DIM = 768 # Default to 768 if not set
 

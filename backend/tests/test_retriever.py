@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from rag.retriever import HybridRetriever
+from rag.ask.retriever import HybridRetriever
 
 
 @pytest.mark.asyncio

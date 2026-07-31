@@ -1,6 +1,6 @@
 import unittest
 
-from rag.fact_extractor import (
+from rag.documents.fact_extractor import (
     FactExtractor,
     EXPENSE_SUBTYPE_CATEGORY,
     LANDLORD_BORNE_SUBTYPES,
@@ -451,7 +451,7 @@ class CoerceDateToleranceTests(unittest.TestCase):
         self.assertIsNone(FactExtractor._coerce("expenses", "date", "sometime last spring"))
 
 
-from rag.fact_extractor import _end_from_term, _start_from_term
+from rag.documents.fact_extractor import _end_from_term, _start_from_term
 
 
 class LeaseTermComputationTests(unittest.TestCase):
@@ -515,7 +515,7 @@ class LeaseExtractionTests(unittest.TestCase):
         self.assertEqual(facts["lease_start"], "2023-01-01")
 
 
-from rag.fact_extractor import _lease_input, LEASE_MAX_CHARS
+from rag.documents.fact_extractor import _lease_input, LEASE_MAX_CHARS
 
 
 class LeaseInputWindowTests(unittest.TestCase):

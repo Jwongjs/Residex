@@ -12,7 +12,7 @@ import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from rag.fact_extractor import (
+from rag.documents.fact_extractor import (
     EXPENSE_SUBTYPE_CATEGORY,
     EXPENSE_SUBTYPE_RHYTHM,
     LANDLORD_BORNE_SUBTYPES,

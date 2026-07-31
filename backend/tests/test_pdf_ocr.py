@@ -14,7 +14,7 @@ def _force_gemini_ocr(test_case):
     patcher.start()
     test_case.addCleanup(patcher.stop)
 
-from rag.pdf_ocr import MAX_OCR_PAGES, PdfOcr, _first_pages
+from rag.documents.pdf_ocr import MAX_OCR_PAGES, PdfOcr, _first_pages
 
 
 class _LLMResponse:

@@ -1,6 +1,6 @@
 import unittest
 
-from rag.category_predictor import CategoryPredictor
+from rag.ask.category_predictor import CategoryPredictor
 
 
 class _LLMResponse:
@@ -60,7 +60,7 @@ class CategoryPredictorHonestUnknownTests(unittest.TestCase):
         self.assertEqual(result["predicted_categories"], ["lease"])
 
 
-from rag.graph_orchestrator import DocuMindGraphOrchestrator
+from rag.ask.graph_orchestrator import DocuMindGraphOrchestrator
 
 
 class _FakeRouter:

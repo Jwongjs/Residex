@@ -13,8 +13,8 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from rag.documind_service import DocuMindService
-from rag.fact_extractor import FactExtractor
-from rag.groq_chat import GroqChat
+from rag.documents.fact_extractor import FactExtractor
+from rag.providers.groq_chat import GroqChat
 
 
 def _bare():

@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from rag.groq_chat import GroqChat
+from rag.providers.groq_chat import GroqChat
 
 
 def _fake_post(content):
@@ -28,14 +28,14 @@ def _fake_post(content):
 class TestGroqChat:
     def test_invoke_returns_message_content(self):
         chat = GroqChat(model="llama-3.3-70b-versatile", api_key="k")
-        with patch("rag.groq_chat.requests.post", return_value=_fake_post("hello")) as post:
+        with patch("rag.providers.groq_chat.requests.post", return_value=_fake_post("hello")) as post:
             out = chat.invoke("prompt")
         assert out.content == "hello"
         assert post.called
 
     def test_sends_model_prompt_and_temperature_zero(self):
         chat = GroqChat(model="llama-3.3-70b-versatile", api_key="secret")
-        with patch("rag.groq_chat.requests.post", return_value=_fake_post("x")) as post:
+        with patch("rag.providers.groq_chat.requests.post", return_value=_fake_post("x")) as post:
             chat.invoke("EXTRACT THIS")
         body = post.call_args.kwargs["json"]
         assert body["model"] == "llama-3.3-70b-versatile"
@@ -44,7 +44,7 @@ class TestGroqChat:
 
     def test_authorization_header_carries_api_key(self):
         chat = GroqChat(api_key="secret-token")
-        with patch("rag.groq_chat.requests.post", return_value=_fake_post("x")) as post:
+        with patch("rag.providers.groq_chat.requests.post", return_value=_fake_post("x")) as post:
             chat.invoke("p")
         headers = post.call_args.kwargs["headers"]
         assert headers["Authorization"] == "Bearer secret-token"
@@ -70,13 +70,13 @@ class TestGroqChat:
         # the strict fact parser.
         chat = GroqChat(api_key="k")
         raw = "<think>reasoning here</think>{\"monthly_rent\": 8000}"
-        with patch("rag.groq_chat.requests.post", return_value=_fake_post(raw)):
+        with patch("rag.providers.groq_chat.requests.post", return_value=_fake_post(raw)):
             out = chat.invoke("p")
         assert out.content == '{"monthly_rent": 8000}'
 
     def test_missing_choices_degrades_to_empty_string(self):
         chat = GroqChat(api_key="k")
-        with patch("rag.groq_chat.requests.post", return_value=_fake_post("")) as post:
+        with patch("rag.providers.groq_chat.requests.post", return_value=_fake_post("")) as post:
             post.return_value.json.return_value = {}
             out = chat.invoke("p")
         assert out.content == ""

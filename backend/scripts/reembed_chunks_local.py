@@ -31,7 +31,7 @@ load_dotenv()
 from google.cloud import firestore  # noqa: E402  (import after load_dotenv)
 from google.cloud.firestore_v1.vector import Vector  # noqa: E402
 
-from rag.ollama_embeddings import OllamaEmbeddings  # noqa: E402
+from rag.providers.ollama_embeddings import OllamaEmbeddings  # noqa: E402
 
 CHUNKS = "documind_chunks"
 EXPECTED_DIM = 768

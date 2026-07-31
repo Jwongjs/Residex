@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from rag.expense_scanner import backfill_expense_lines
+from rag.documents.expense_scanner import backfill_expense_lines
 
 MAX_INPUT_CHARS = 8000
 

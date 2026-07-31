@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
-from rag.ollama_embeddings import OllamaEmbeddings
+from rag.providers.ollama_embeddings import OllamaEmbeddings
 
 
 class OllamaEmbeddingsTests(unittest.TestCase):
@@ -13,7 +13,7 @@ class OllamaEmbeddingsTests(unittest.TestCase):
 
     def test_embed_documents_posts_search_document_prefix_and_returns_vectors(self):
         adapter = OllamaEmbeddings(model="nomic-embed-text", base_url="http://host:11434")
-        with patch("rag.ollama_embeddings.requests.post") as post:
+        with patch("rag.providers.ollama_embeddings.requests.post") as post:
             post.return_value = self._fake_response([[0.1, 0.2], [0.3, 0.4]])
             vectors = adapter.embed_documents(["alpha", "beta"])
 
@@ -28,7 +28,7 @@ class OllamaEmbeddingsTests(unittest.TestCase):
 
     def test_embed_query_uses_search_query_prefix_and_returns_single_vector(self):
         adapter = OllamaEmbeddings(base_url="http://host:11434")
-        with patch("rag.ollama_embeddings.requests.post") as post:
+        with patch("rag.providers.ollama_embeddings.requests.post") as post:
             post.return_value = self._fake_response([[0.9, 0.8, 0.7]])
             vector = adapter.embed_query("what is the rent?")
 
@@ -39,7 +39,7 @@ class OllamaEmbeddingsTests(unittest.TestCase):
     def test_base_url_defaults_from_env(self):
         with patch.dict("os.environ", {"OLLAMA_BASE_URL": "http://envhost:1234"}, clear=False):
             adapter = OllamaEmbeddings()
-        with patch("rag.ollama_embeddings.requests.post") as post:
+        with patch("rag.providers.ollama_embeddings.requests.post") as post:
             post.return_value = self._fake_response([[0.1]])
             adapter.embed_query("q")
 
@@ -47,7 +47,7 @@ class OllamaEmbeddingsTests(unittest.TestCase):
 
     def test_base_url_trailing_slash_is_stripped(self):
         adapter = OllamaEmbeddings(base_url="http://host:11434/")
-        with patch("rag.ollama_embeddings.requests.post") as post:
+        with patch("rag.providers.ollama_embeddings.requests.post") as post:
             post.return_value = self._fake_response([[0.1]])
             adapter.embed_query("q")
 

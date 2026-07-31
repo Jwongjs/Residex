@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from rag.expense_scanner import scan_expense_lines, backfill_expense_lines
+from rag.documents.expense_scanner import scan_expense_lines, backfill_expense_lines
 
 
 # The verbatim FEB 2025 Ayer@8 chunk as stored in Firestore (user-supplied).
