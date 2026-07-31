@@ -32,6 +32,7 @@ from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
 from rag.fact_extractor import FactExtractor, validate_expense_lines
 from rag.ollama_chat import OllamaChat
+from rag.groq_chat import GroqChat
 from rag.pdf_ocr import PdfOcr
 from rag.ollama_embeddings import OllamaEmbeddings
 from rag.pii_scrub import scrub_for_hosted
@@ -81,6 +82,14 @@ LEGACY_CATEGORY_ALIASES = {
 }
 # Granular stored names the Expenses bucket groups at display/query time.
 EXPENSE_GROUP = ["insurance", "loan", "tax", "upkeep", "maintenance"]
+
+
+def facts_status_for(extracted_facts: Optional[dict]) -> str:
+    """'ok' when ingest extraction captured something, 'needs_review' when it
+    came back empty. Every supported category attempts extraction, so an empty
+    result means a silent miss the user should be able to see and re-check —
+    not a document that legitimately carries no facts."""
+    return "ok" if extracted_facts else "needs_review"
 
 
 def normalize_category(category: Optional[str]) -> Optional[str]:
@@ -230,6 +239,7 @@ class DocuMindService:
             allowed_categories=sorted(ALLOWED_CATEGORIES),
         )
         self._fact_extractor = FactExtractor(self._fact_llm())
+        self._groq_fact_extractor, self._groq_categories = self._configure_groq_extractor()
         self._pdf_ocr = PdfOcr(self._llm)
         self._graph_orchestrator = DocuMindGraphOrchestrator(
             conversation_router=self._conversation_router,
@@ -302,10 +312,47 @@ class DocuMindService:
         'gemini' keeps the hosted client."""
         provider = os.getenv("FACT_PROVIDER", "gemini").lower()
         if provider in ("ollama", "local"):
-            model = os.getenv("OLLAMA_FACT_MODEL", "qwen2.5:3b")
+            model = os.getenv("OLLAMA_FACT_MODEL", "qwen2.5:7b")
             print(f"🔄 Fact extraction routed to local Ollama ({model})")
             return OllamaChat(model=model, base_url=os.getenv("OLLAMA_BASE_URL"))
+        if provider == "groq":
+            model = os.getenv("GROQ_FACT_MODEL", "llama-3.3-70b-versatile")
+            print(f"🔄 Fact extraction routed to Groq ({model}) — ZDR must be enabled")
+            return GroqChat(model=model)
         return self._llm
+
+    def _configure_groq_extractor(self):
+        """Build the dedicated Groq extractor for the categories that need it.
+
+        Returns (extractor_or_None, categories). Enabled only when GROQ_API_KEY
+        is set; GROQ_FACT_CATEGORIES (default 'lease') names the categories that
+        route to Groq — everything else stays on the local/default extractor so
+        the least PII possible leaves the machine. Leases are the case local
+        qwen fails (free-form prose), and the account owner is responsible for
+        enabling Zero Data Retention before any unscrubbed text is sent."""
+        if not os.getenv("GROQ_API_KEY"):
+            return None, frozenset()
+        categories = frozenset(
+            c.strip().lower()
+            for c in os.getenv("GROQ_FACT_CATEGORIES", "lease").split(",")
+            if c.strip()
+        )
+        if not categories:
+            return None, frozenset()
+        model = os.getenv("GROQ_FACT_MODEL", "llama-3.3-70b-versatile")
+        print(f"🔄 Groq fact extraction enabled for {sorted(categories)} ({model})")
+        return FactExtractor(GroqChat(model=model)), categories
+
+    def _extractor_for(self, category: str):
+        """Route a document category to the Groq extractor when configured, else
+        the default (local/hosted) extractor. Inert on test instances built via
+        __new__: the _groq_* attrs are absent, so this always returns the
+        default extractor and can never divert a test to a live Groq call."""
+        groq_extractor = getattr(self, "_groq_fact_extractor", None)
+        groq_categories = getattr(self, "_groq_categories", frozenset())
+        if groq_extractor is not None and category in groq_categories:
+            return groq_extractor
+        return self._fact_extractor
 
     def _list_available_categories(self, landlord_id: str, property_id: str) -> List[str]:
         """List categories that have uploaded docs for this landlord/property."""
@@ -602,7 +649,7 @@ Rules:
             facts_confidence = None
             try:
                 full_text = "\n".join(page.page_content or "" for page in pages)
-                facts = self._fact_extractor.extract(category, full_text)
+                facts = self._extractor_for(category).extract(category, full_text)
                 if facts:
                     facts_confidence = facts.pop("confidence", None)
                     extracted_facts = facts or None
@@ -630,6 +677,7 @@ Rules:
                 'status': 'indexed',
                 'extracted_facts': extracted_facts,
                 'facts_confidence': facts_confidence,
+                'facts_status': facts_status_for(extracted_facts),
                 'facts_extracted_at': firestore.SERVER_TIMESTAMP if extracted_facts else None,
                 'uploaded_at': firestore.SERVER_TIMESTAMP,
             })
@@ -646,6 +694,7 @@ Rules:
                 chunks_indexed=len(chunk_documents),
                 extracted_facts=extracted_facts,
                 facts_confidence=facts_confidence,
+                facts_status=facts_status_for(extracted_facts),
             )
         
         except Exception as e:
@@ -683,6 +732,38 @@ Rules:
             "facts_extracted_at": firestore.SERVER_TIMESTAMP,
         })
         return {"doc_id": doc_id, "extracted_facts": facts}
+
+    async def rename_document(
+        self, doc_id: str, landlord_id: str, filename: str
+    ) -> Dict[str, Any]:
+        """Rename a document's display filename. Ownership-scoped: a doc that
+        isn't the landlord's is reported as not found, never renamed. The
+        stored file, chunks' text and embeddings are untouched — only the
+        label changes, including on the chunks so citations show the new name."""
+        cleaned = (filename or "").strip()
+        if not cleaned:
+            raise ValueError("Filename cannot be empty.")
+        if len(cleaned) > 200:
+            raise ValueError("Filename is too long (200 characters max).")
+        doc_ref = self.db.collection('documind_docs').document(doc_id)
+        snapshot = doc_ref.get()
+        if not snapshot.exists:
+            raise ValueError("Document not found.")
+        data = snapshot.to_dict() or {}
+        if data.get("landlord_id") != landlord_id:
+            raise ValueError("Document not found.")
+        doc_ref.update({"filename": cleaned})
+
+        # Keep chunk filenames in sync so RAG citations show the new label.
+        chunks_query = self.db.collection('documind_chunks').where(
+            filter=FieldFilter('doc_id', '==', doc_id)
+        )
+        batch = self.db.batch()
+        for chunk_doc in chunks_query.stream():
+            batch.update(chunk_doc.reference, {"filename": cleaned})
+        batch.commit()
+
+        return {"doc_id": doc_id, "filename": cleaned}
 
     def _payment_exception_doc_id(self, property_id: str, unit_id: Optional[str], month: str) -> str:
         return f"{property_id}__{unit_id or 'property'}__{month}"
@@ -1582,6 +1663,7 @@ Rules:
                 unit_label=data.get('unit_label'),
                 extracted_facts=data.get('extracted_facts'),
                 facts_confidence=data.get('facts_confidence'),
+                facts_status=facts_status_for(data.get('extracted_facts')),
                 tags=[DocumentTag(**t) for t in document_tags(category, data.get('extracted_facts'))],
             ))
         

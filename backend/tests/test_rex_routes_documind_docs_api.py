@@ -180,6 +180,34 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         response = self.client.delete("/api/rex/documind/documents/doc-1")
         self.assertEqual(response.status_code, 422)
 
+    def test_rename_document_returns_200_and_calls_service(self):
+        with patch(
+            "api.rex_routes.documind_service.rename_document",
+            new=AsyncMock(return_value={"doc_id": "doc-1", "filename": "Ayer 8 lease 2023.pdf"}),
+        ) as mocked_rename:
+            response = self.client.patch(
+                "/api/rex/documind/documents/doc-1/filename",
+                json={"landlord_id": "landlord-1", "filename": "Ayer 8 lease 2023.pdf"},
+            )
+            call_kwargs = mocked_rename.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["filename"], "Ayer 8 lease 2023.pdf")
+        self.assertEqual(call_kwargs["doc_id"], "doc-1")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
+        self.assertEqual(call_kwargs["filename"], "Ayer 8 lease 2023.pdf")
+
+    def test_rename_document_returns_400_on_invalid_name(self):
+        with patch(
+            "api.rex_routes.documind_service.rename_document",
+            new=AsyncMock(side_effect=ValueError("Filename cannot be empty.")),
+        ):
+            response = self.client.patch(
+                "/api/rex/documind/documents/doc-1/filename",
+                json={"landlord_id": "landlord-1", "filename": "   "},
+            )
+        self.assertEqual(response.status_code, 400)
+
     def test_get_document_view_url_returns_200(self):
         with patch(
             "api.rex_routes.documind_service.get_document_view_url",

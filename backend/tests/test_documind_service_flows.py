@@ -1523,13 +1523,16 @@ class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status, "indexed")
         self.assertIsNone(response.extracted_facts)
+        self.assertEqual(response.facts_status, "needs_review")
         stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
         self.assertIsNone(stored["extracted_facts"])
         self.assertIsNone(stored["facts_confidence"])
+        self.assertEqual(stored["facts_status"], "needs_review")
 
     async def test_successful_extraction_lands_in_metadata_and_response(self):
         fake_db = _FakeDB()
-        fake_llm = _FakeLLM("monthly_rent=1500;lease_start=2025-09-01;lease_end=2026-09-01;confidence=0.9")
+        fake_llm = _FakeLLM('{"monthly_rent": 1500, "lease_start": "2025-09-01", '
+                            '"lease_end": "2026-09-01", "confidence": 0.9}')
         service = _build_service(
             fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), fake_llm
         )
@@ -1551,9 +1554,11 @@ class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
         }
         self.assertEqual(response.extracted_facts, expected_facts)
         self.assertEqual(response.facts_confidence, 0.9)
+        self.assertEqual(response.facts_status, "ok")
         stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
         self.assertEqual(stored["extracted_facts"], expected_facts)
         self.assertEqual(stored["facts_confidence"], 0.9)
+        self.assertEqual(stored["facts_status"], "ok")
         self.assertIsNotNone(stored["facts_extracted_at"])
 
     async def test_list_documents_passes_extraction_fields_through(self):
@@ -1578,8 +1583,10 @@ class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
         by_id = {d.doc_id: d for d in response.documents}
         self.assertEqual(by_id["d1"].extracted_facts["subtype"], "quit_rent")
         self.assertEqual(by_id["d1"].facts_confidence, 0.9)
+        self.assertEqual(by_id["d1"].facts_status, "ok")
         self.assertIsNone(by_id["d2"].extracted_facts)
         self.assertIsNone(by_id["d2"].facts_confidence)
+        self.assertEqual(by_id["d2"].facts_status, "needs_review")
 
     async def test_list_documents_computes_sub_category_tags(self):
         fake_db = _FakeDB(docs=[{
@@ -1981,7 +1988,10 @@ class EmbeddingClientAndBatchingTests(unittest.IsolatedAsyncioTestCase):
     def test_embeddings_property_creates_client_once_and_caches(self):
         service = DocuMindService.__new__(DocuMindService)
         service._embeddings = None
-        with patch("rag.documind_service.GoogleGenerativeAIEmbeddings") as ctor:
+        # Pin the provider so the test stays hermetic even when the ambient
+        # .env sets EMBEDDINGS_PROVIDER=ollama (the local-hybrid runtime).
+        with patch.dict("os.environ", {"EMBEDDINGS_PROVIDER": "gemini"}, clear=False), \
+                patch("rag.documind_service.GoogleGenerativeAIEmbeddings") as ctor:
             ctor.return_value = MagicMock(name="embeddings_client")
             first = service.embeddings
             second = service.embeddings

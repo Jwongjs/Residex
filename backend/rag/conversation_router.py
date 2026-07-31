@@ -21,7 +21,7 @@ class ConversationRouter:
     def _default_conversation_reply(property_name: Optional[str]) -> str:
         base = (
             "Hey! If you have anything that needs help with on property documents "
-            "(leases, insurance, loans, taxes, upkeep, maintenance, rental invoices), please let me know."
+            "(tenancy agreements, insurance, loans, taxes, upkeep, maintenance, rental invoices), please let me know."
         )
         if property_name and property_name != "Unknown Property":
             return f"For {property_name}, {base}"

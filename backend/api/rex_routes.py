@@ -3,7 +3,7 @@ import json
 
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
 from fastapi.responses import StreamingResponse
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse, UnitLoanExemptionRequest
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, DocumentRenameRequest, DocumentRenameResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse, UnitLoanExemptionRequest
 from rag.documind_service import documind_service
 
 router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
@@ -108,6 +108,27 @@ async def update_document_facts(doc_id: str, payload: FactsUpdateRequest):
             lines=[line.model_dump() for line in payload.expense_lines],
         )
         return FactsUpdateResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/documind/documents/{doc_id}/filename", response_model=DocumentRenameResponse)
+async def rename_document(doc_id: str, payload: DocumentRenameRequest):
+    """
+    Rename a document's display filename (ownership-scoped).
+
+    A blank or over-long name returns 400; a doc that isn't the landlord's is
+    reported as not found. Only the label changes — the stored file and its
+    indexed chunks' text are untouched (chunk filenames are re-synced so
+    citations show the new name).
+    """
+    try:
+        result = await documind_service.rename_document(
+            doc_id=doc_id,
+            landlord_id=payload.landlord_id,
+            filename=payload.filename,
+        )
+        return DocumentRenameResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

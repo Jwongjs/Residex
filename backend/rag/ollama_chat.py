@@ -35,15 +35,20 @@ class _Response:
 class OllamaChat:
     def __init__(
         self,
-        model: str = "qwen2.5:3b",
+        model: str = "qwen2.5:7b",
         base_url: Optional[str] = None,
         timeout: int = 600,
         keep_alive: str = "30m",
     ):
-        # Default to a NON-reasoning instruct model. A reasoning model (qwen3)
-        # spends ~3400 thinking tokens and ~4 min/doc on a 4 GB GPU for this
-        # fixed-schema task, and its thinking can't be disabled via the API;
-        # qwen2.5:3b answers directly in ~4 s. Override with OLLAMA_FACT_MODEL.
+        # Default to a NON-reasoning instruct model: a reasoning model (qwen3)
+        # spends ~3400 thinking tokens per doc and can't have thinking disabled
+        # via the API. qwen2.5:7b is the accuracy pick for structured extraction
+        # — markedly better than the 3b at getting the schema right. On a 4 GB
+        # GPU it only partially fits (remaining layers run on CPU), so expect
+        # ~20-60 s per doc versus the 3b's ~4 s — acceptable for background
+        # ingest. Override with OLLAMA_FACT_MODEL (e.g. qwen2.5:3b for a faster,
+        # lower-accuracy fallback). The 600 s timeout covers a cold load + a
+        # slow partially-offloaded generation.
         self.model = model
         self.base_url = (
             base_url or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434"
