@@ -1,19 +1,10 @@
 import os
-import uuid
-import tempfile
-import asyncio
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from fastapi import UploadFile
+from typing import Dict, List
 from models.documind_models import *
-from datetime import datetime, timedelta, date
+from datetime import date
 
 from dotenv import load_dotenv
-load_dotenv()  
-
-# LangChain core
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+load_dotenv()
 
 # Gemini embeddings & LLM
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
@@ -21,24 +12,22 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 # Firestore imports
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
-from google.cloud.firestore_v1.vector import Vector
-from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
 
 # Firebase Storage imports
 import firebase_admin
 from firebase_admin import storage as firebase_storage
 from rag.conversation_router import ConversationRouter
 from rag.category_predictor import CategoryPredictor
-from rag.fact_extractor import FactExtractor, validate_expense_lines
+from rag.fact_extractor import FactExtractor
 from rag.ollama_chat import OllamaChat
 from rag.groq_chat import GroqChat
 from rag.pdf_ocr import PdfOcr
 from rag.ollama_embeddings import OllamaEmbeddings
-from rag.pii_scrub import scrub_for_hosted
 from rag.conversation_store import ConversationStore
 from rag.graph_orchestrator import DocuMindGraphOrchestrator
 from rag.retriever import HybridRetriever
-from rag.finance_engine import compute_finance_summary, document_tags
+from rag.finance_engine import compute_finance_summary
+# Re-exported: tests import these directly from rag.documind_service.
 from rag.categories import (
     ALLOWED_CATEGORIES,
     CATEGORY_ORDER,
@@ -131,11 +120,6 @@ class DocuMindService:
         
     @property
     def db(self):
-        """Lazy-load Firestore client (only when first accessed)"""
-        if self._db is None:
-            print("🔄 Initializing Firestore client...")
-            self._db = firestore.Client()
-            print("✅ Firestore client ready")
         return self._db
 
     @property

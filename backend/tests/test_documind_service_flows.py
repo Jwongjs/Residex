@@ -541,6 +541,11 @@ class _LivePdfOcrProxy:
         return self._service._pdf_ocr.transcribe(*args, **kwargs)
 
 
+# NOTE: the collaborators below (_finance_overrides, _document_lifecycle,
+# _ingestion_service, _ask_orchestrator) capture db/conversation_store/
+# graph_orchestrator/hybrid_retriever/etc. eagerly at construction time.
+# Reassigning service._X after this function returns does NOT reach them —
+# also repoint the corresponding attribute on the relevant collaborator.
 def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service = DocuMindService.__new__(DocuMindService)
     service._db = fake_db

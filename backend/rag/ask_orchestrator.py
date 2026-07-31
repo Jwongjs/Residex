@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from models.documind_models import AskRequest, AskResponse, Citation, UnitOption
 from rag.categories import ALLOWED_CATEGORIES, expand_categories_for_query, normalize_category
