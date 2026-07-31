@@ -851,6 +851,9 @@ class DocumentLifecycleService:
         self._storage_bucket_getter = storage_bucket_getter
 
     async def update_expense_lines(self, doc_id: str, landlord_id: str, lines: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Replace a document's expense_lines after user review. Validation
+        reuses the extractor whitelist, so the API can never store a subtype
+        the finance engine doesn't understand."""
         cleaned = validate_expense_lines(lines)
         if not cleaned:
             raise ValueError("No valid expense lines. Each line needs a known subtype and an amount.")
@@ -867,6 +870,10 @@ class DocumentLifecycleService:
         return {"doc_id": doc_id, "extracted_facts": facts}
 
     async def rename_document(self, doc_id: str, landlord_id: str, filename: str) -> Dict[str, Any]:
+        """Rename a document's display filename. Ownership-scoped: a doc that
+        isn't the landlord's is reported as not found, never renamed. The
+        stored file, chunks' text and embeddings are untouched — only the
+        label changes, including on the chunks so citations show the new name."""
         cleaned = (filename or "").strip()
         if not cleaned:
             raise ValueError("Filename cannot be empty.")
@@ -890,6 +897,21 @@ class DocumentLifecycleService:
         return {"doc_id": doc_id, "filename": cleaned}
 
     async def list_documents(self, landlord_id: str, property_id: Optional[str] = None, unit_id: Optional[str] = None) -> DocListResponse:
+        """
+        List documents from Firestore metadata collection.
+
+        Args:
+            landlord_id: Filter by landlord
+            property_id: Optional filter by specific property
+            unit_id: Optional unit filter — matches documents assigned to
+                this unit plus property-wide documents. Applied as a Python
+                post-filter because docs uploaded before units existed have
+                no unit_id field, which a Firestore where-clause can never
+                match.
+
+        Returns:
+            DocListResponse with documents array, total_count
+        """
         query = self._db.collection('documind_docs').where(filter=FieldFilter('landlord_id', '==', landlord_id))
         if property_id:
             query = query.where(filter=FieldFilter('property_id', '==', property_id))
@@ -921,6 +943,25 @@ class DocumentLifecycleService:
         return DocListResponse(documents=documents, total_count=len(documents), filtered_by_property=property_id)
 
     async def delete_document(self, landlord_id: str, property_id: str, doc_id: str) -> dict:
+        """
+        Delete a document and all its chunks from Firestore.
+
+        Security:
+        - Verifies landlord owns the document
+        - Verifies document belongs to property
+        - Cascades deletion to all chunks
+
+        Args:
+            landlord_id: Landlord ID for ownership verification
+            property_id: Property ID for scoping
+            doc_id: Document ID to delete
+
+        Returns:
+            dict with deletion summary
+
+        Raises:
+            ValueError: If document not found or ownership mismatch
+        """
         doc_ref = self._db.collection('documind_docs').document(doc_id)
         doc_snapshot = doc_ref.get()
         if not doc_snapshot.exists:
@@ -958,6 +999,12 @@ class DocumentLifecycleService:
         }
 
     async def delete_documents_for_property(self, landlord_id: str, property_id: str) -> dict:
+        """
+        Delete ALL documents (metadata + chunks + stored PDFs) for a property.
+
+        Used by the property-deletion cascade in the app. Idempotent: a
+        property with no documents returns a zero-count success.
+        """
         docs_query = (
             self._db.collection('documind_docs')
             .where(filter=FieldFilter('landlord_id', '==', landlord_id))
@@ -977,6 +1024,15 @@ class DocumentLifecycleService:
         }
 
     async def unassign_unit_documents(self, landlord_id: str, property_id: str, unit_id: str) -> dict:
+        """
+        Clear the unit assignment on every doc + chunk scoped to a unit,
+        converting them to property-wide documents.
+
+        Called by the app before deleting a unit so its documents are
+        unassigned rather than orphaned with a stale unit_id. Idempotent: a
+        unit with no assigned documents returns zero counts. A single batch
+        is fine at this scale (Firestore's 500-op batch limit).
+        """
         batch = self._db.batch()
         documents_updated = 0
         chunks_updated = 0
@@ -1010,6 +1066,12 @@ class DocumentLifecycleService:
         }
 
     async def get_document_view_url(self, landlord_id: str, property_id: str, doc_id: str) -> str:
+        """
+        Generate a short-lived signed URL to view a document's original PDF.
+
+        Raises:
+            ValueError: If document not found or ownership/scope mismatch.
+        """
         doc_ref = self._db.collection('documind_docs').document(doc_id)
         doc_snapshot = doc_ref.get()
         if not doc_snapshot.exists:
