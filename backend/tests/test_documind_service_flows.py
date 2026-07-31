@@ -7,6 +7,7 @@ from rag.documind_service import DocuMindService, resolve_unit_mention
 from rag.fact_extractor import FactExtractor
 from rag.finance_overrides_repository import FinanceOverridesRepository
 from rag.document_lifecycle_service import DocumentLifecycleService
+from rag.ingestion_service import IngestionService
 
 
 class _LLMResponse:
@@ -524,6 +525,21 @@ class _FakePdfOcr:
         return self.transcripts
 
 
+class _LivePdfOcrProxy:
+    """Delegates to service._pdf_ocr at call time. IngestionService captures
+    its pdf_ocr collaborator once at construction (mirroring production,
+    where self._pdf_ocr never changes after __init__), but several tests
+    below reassign service._pdf_ocr after _build_service() returns. This
+    proxy keeps ingest_document seeing whatever object currently sits at
+    service._pdf_ocr instead of the one that existed at wiring time."""
+
+    def __init__(self, service):
+        self._service = service
+
+    def transcribe(self, *args, **kwargs):
+        return self._service._pdf_ocr.transcribe(*args, **kwargs)
+
+
 def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service = DocuMindService.__new__(DocuMindService)
     service._db = fake_db
@@ -536,6 +552,13 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service._hybrid_retriever = _FakeHybridRetriever(fake_db)
     service._fact_extractor = FactExtractor(fake_llm)
     service._pdf_ocr = _FakePdfOcr()
+    service._ingestion_service = IngestionService(
+        db=fake_db,
+        storage_bucket_getter=lambda: service.storage_bucket,
+        embeddings_getter=lambda: service.embeddings,
+        pdf_ocr=_LivePdfOcrProxy(service),
+        extractor_for=service._extractor_for,
+    )
     return service
 
 
@@ -1091,7 +1114,7 @@ class DocuMindServiceStorageTests(unittest.IsolatedAsyncioTestCase):
                 return pdf_bytes
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
-             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+             patch("rag.ingestion_service.PyPDFLoader") as loader_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
             fake_page = MagicMock()
             fake_page.page_content = "Some lease text"
@@ -1127,7 +1150,7 @@ class DocuMindServiceStorageTests(unittest.IsolatedAsyncioTestCase):
                 return b"%PDF-1.4 fake content"
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
-             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+             patch("rag.ingestion_service.PyPDFLoader") as loader_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
             fake_page = MagicMock()
             fake_page.page_content = "Some lease text"
@@ -1410,7 +1433,7 @@ class CategoryTaxonomyIngestTests(unittest.IsolatedAsyncioTestCase):
         service._storage_bucket = _FakeStorageBucket()
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
-             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+             patch("rag.ingestion_service.PyPDFLoader") as loader_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
             fake_page = MagicMock()
             fake_page.page_content = "TNB electricity bill for the unit's aircon repair"
@@ -1517,7 +1540,7 @@ class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
         service._fact_extractor = _RaisingExtractor()
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
-             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+             patch("rag.ingestion_service.PyPDFLoader") as loader_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
             loader_mock.return_value.load.return_value = [self._patched_loader_page()]
 
@@ -1543,7 +1566,7 @@ class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
         service._storage_bucket = _FakeStorageBucket()
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
-             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+             patch("rag.ingestion_service.PyPDFLoader") as loader_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
             loader_mock.return_value.load.return_value = [self._patched_loader_page()]
 
@@ -1627,7 +1650,7 @@ class OcrIngestTests(unittest.IsolatedAsyncioTestCase):
 
     async def _ingest(self, service, pages):
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
-             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+             patch("rag.ingestion_service.PyPDFLoader") as loader_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
             loader_mock.return_value.load.return_value = pages
             return await service.ingest_document(
@@ -2046,7 +2069,7 @@ class EmbeddingClientAndBatchingTests(unittest.IsolatedAsyncioTestCase):
                 return b"%PDF-1.4 fake content"
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
-             patch("rag.documind_service.PyPDFLoader") as loader_mock:
+             patch("rag.ingestion_service.PyPDFLoader") as loader_mock:
             embeddings_mock.return_value = fake_embeddings
             fake_page = MagicMock()
             # ~2.5k chars -> multiple 1000-char chunks, so batching is observable.
