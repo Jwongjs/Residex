@@ -6,6 +6,7 @@ from models.documind_models import AskRequest, FinanceSummaryResponse, FinanceTo
 from rag.documind_service import DocuMindService, resolve_unit_mention
 from rag.fact_extractor import FactExtractor
 from rag.finance_overrides_repository import FinanceOverridesRepository
+from rag.document_lifecycle_service import DocumentLifecycleService
 
 
 class _LLMResponse:
@@ -527,6 +528,7 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service = DocuMindService.__new__(DocuMindService)
     service._db = fake_db
     service._finance_overrides = FinanceOverridesRepository(fake_db)
+    service._document_lifecycle = DocumentLifecycleService(fake_db, lambda: service.storage_bucket)
     service._embeddings = _FakeEmbeddings()
     service._llm = fake_llm
     service._conversation_store = fake_store
