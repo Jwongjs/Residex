@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from models.documind_models import AskRequest, FinanceSummaryResponse, FinanceTotals
 from rag.documind_service import DocuMindService, resolve_unit_mention
 from rag.fact_extractor import FactExtractor
+from rag.finance_overrides_repository import FinanceOverridesRepository
 
 
 class _LLMResponse:
@@ -525,6 +526,7 @@ class _FakePdfOcr:
 def _build_service(fake_db, fake_store, fake_graph, fake_llm):
     service = DocuMindService.__new__(DocuMindService)
     service._db = fake_db
+    service._finance_overrides = FinanceOverridesRepository(fake_db)
     service._embeddings = _FakeEmbeddings()
     service._llm = fake_llm
     service._conversation_store = fake_store
