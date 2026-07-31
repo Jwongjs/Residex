@@ -8,6 +8,7 @@ from rag.fact_extractor import FactExtractor
 from rag.finance_overrides_repository import FinanceOverridesRepository
 from rag.document_lifecycle_service import DocumentLifecycleService
 from rag.ingestion_service import IngestionService
+from rag.ask_orchestrator import AskOrchestrator
 
 
 class _LLMResponse:
@@ -558,6 +559,16 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
         embeddings_getter=lambda: service.embeddings,
         pdf_ocr=_LivePdfOcrProxy(service),
         extractor_for=service._extractor_for,
+    )
+    service._ask_orchestrator = AskOrchestrator(
+        conversation_store=service._conversation_store,
+        graph_orchestrator=service._graph_orchestrator,
+        hybrid_retriever=service._hybrid_retriever,
+        llm_getter=lambda: service.llm,
+        list_available_categories=service._list_available_categories,
+        get_property_name=service._get_property_name,
+        list_property_units=service._list_property_units,
+        get_finance_summary=service.get_finance_summary,
     )
     return service
 
@@ -1922,6 +1933,10 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
             fake_db, _FakeConversationStore(), self._finance_graph(), _FakeLLM(narration)
         )
         service.get_finance_summary = AsyncMock(return_value=_fake_finance_summary())
+        # Reassigned after construction: AskOrchestrator captured the earlier
+        # bound method at _build_service() time, so it needs to be repointed
+        # at the mock too (same hazard as the _pdf_ocr proxy in Task 6).
+        service._ask_orchestrator._get_finance_summary = service.get_finance_summary
 
         response = await service.ask_documind(
             AskRequest(landlord_id="l1", property_id="p1", question="how much profit did I make in 2025?")
@@ -1953,8 +1968,14 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
             fake_db, _FakeConversationStore(), self._finance_graph(), _FakeLLM(narration)
         )
         service.get_finance_summary = AsyncMock(return_value=_fake_finance_summary())
+        service._ask_orchestrator._get_finance_summary = service.get_finance_summary
         exploding = _ExplodingRetriever()
         service._hybrid_retriever = exploding
+        # AskOrchestrator also captured its own hybrid_retriever reference at
+        # construction time; repoint it too so the exploding stub above is
+        # actually reachable and this privacy-lock test still bites on a
+        # regression instead of silently passing against the stale fake.
+        service._ask_orchestrator._hybrid_retriever = exploding
 
         response = await service.ask_documind(
             AskRequest(landlord_id="l1", property_id="p1", question="how much profit did I make in 2025?")
@@ -1970,6 +1991,7 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
             fake_db, _FakeConversationStore(), self._finance_graph(year=None), _FakeLLM("Narrated.")
         )
         service.get_finance_summary = AsyncMock(return_value=_fake_finance_summary())
+        service._ask_orchestrator._get_finance_summary = service.get_finance_summary
 
         await service.ask_documind(
             AskRequest(landlord_id="l1", property_id="p1", question="how is my rental doing?")
@@ -1988,6 +2010,7 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
             fake_db, _FakeConversationStore(), self._finance_graph(), _RaisingLLM()
         )
         service.get_finance_summary = AsyncMock(return_value=_fake_finance_summary())
+        service._ask_orchestrator._get_finance_summary = service.get_finance_summary
 
         response = await service.ask_documind(
             AskRequest(landlord_id="l1", property_id="p1", question="profit in 2025?")
@@ -2002,6 +2025,7 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
             fake_db, _FakeConversationStore(), self._finance_graph(), _FakeLLM("unused")
         )
         service.get_finance_summary = AsyncMock(side_effect=RuntimeError("firestore down"))
+        service._ask_orchestrator._get_finance_summary = service.get_finance_summary
 
         response = await service.ask_documind(
             AskRequest(landlord_id="l1", property_id="p1", question="profit in 2025?")
