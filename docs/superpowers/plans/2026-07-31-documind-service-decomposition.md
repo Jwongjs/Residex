@@ -1186,11 +1186,18 @@ class IngestionService:
         self._extractor_for = extractor_for
 
     async def ingest_document(
-        self, landlord_id: str, property_id: str, category: str, file: UploadFile,
-        unit_id: Optional[str] = None, unit_label: Optional[str] = None,
+        self,
+        landlord_id: str,
+        property_id: str,
+        category: str,
+        file: UploadFile,
+        unit_id: Optional[str] = None,
+        unit_label: Optional[str] = None,
         progress: Optional[Callable[[str], None]] = None,
     ) -> DocUploadResponse:
         """
+        Ingest document into Firestore with vector embeddings.
+
         progress, when provided, is called with a stage key ("received",
         "reading", "organising", "indexing", "details") before each stage's
         work, so a streaming caller can report live progress. The tiny
@@ -1204,11 +1211,15 @@ class IngestionService:
 
         category = normalize_category(category)
         if category not in ALLOWED_CATEGORIES:
-            raise ValueError(f"Unsupported category '{category}'. Allowed: {', '.join(CATEGORY_ORDER)}")
+            raise ValueError(
+                f"Unsupported category '{category}'. Allowed: {', '.join(CATEGORY_ORDER)}"
+            )
 
         ext, content_type = resolve_upload_kind(file.filename)
+
         doc_id = str(uuid.uuid4())
 
+        # Step 1: Save file temporarily
         temp_dir = tempfile.gettempdir()
         temp_path = os.path.join(temp_dir, f"{doc_id}_{file.filename}")
         try:
@@ -1216,54 +1227,98 @@ class IngestionService:
                 content = await file.read()
                 f.write(content)
 
+            print(f"📄 Saved temp file: {temp_path}")
             await _emit("received")
 
             await _emit("reading")
             if content_type == "application/pdf":
+                # Step 2a: text-layer extraction, OCR fallback for scans.
                 loader = PyPDFLoader(temp_path)
                 pages = loader.load()
                 total_text = sum(len((page.page_content or "").strip()) for page in pages)
                 if total_text < OCR_TEXT_THRESHOLD:
                     transcripts = self._pdf_ocr.transcribe(content)
                     if transcripts:
-                        pages = [Document(page_content=text, metadata={"page": index}) for index, text in enumerate(transcripts)]
+                        pages = [
+                            Document(page_content=text, metadata={"page": index})
+                            for index, text in enumerate(transcripts)
+                        ]
+                        print(f"OCR fallback transcribed {len(pages)} page(s)")
             else:
+                # Step 2b: images have no text layer — transcribe directly.
                 pages = []
                 transcripts = self._pdf_ocr.transcribe(content, mime_type=content_type)
                 if transcripts:
-                    pages = [Document(page_content=text, metadata={"page": index}) for index, text in enumerate(transcripts)]
+                    pages = [
+                        Document(page_content=text, metadata={"page": index})
+                        for index, text in enumerate(transcripts)
+                    ]
+                    print(f"Transcribed image upload ({len(pages)} block(s))")
 
             await _emit("organising")
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            # Step 3: Chunk text
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+            )
             chunks = text_splitter.split_documents(pages)
 
+            print(f"📝 Split into {len(chunks)} chunks")
+
             await _emit("indexing")
+            # Step 4: Embed every chunk in ONE batched call. A quota error
+            # here fails fast and visibly (0 chunks, metadata-only) instead
+            # of grinding chunk-by-chunk through retry backoff.
             vectors = []
             if chunks:
                 try:
-                    vectors = self._embeddings_getter().embed_documents([chunk.page_content for chunk in chunks])
+                    vectors = self._embeddings_getter().embed_documents(
+                        [chunk.page_content for chunk in chunks]
+                    )
                 except Exception as e:
                     print(f"⚠️ Batch embedding failed; indexing metadata only: {e}")
                     vectors = []
 
             chunk_documents = []
             for i, (chunk, embedding) in enumerate(zip(chunks, vectors)):
-                chunk_documents.append({
-                    'doc_id': doc_id, 'landlord_id': landlord_id, 'property_id': property_id,
-                    'unit_id': unit_id, 'unit_label': unit_label, 'category': category,
-                    'filename': file.filename, 'chunk_index': i, 'text': chunk.page_content,
+                chunk_doc = {
+                    'doc_id': doc_id,
+                    'landlord_id': landlord_id,
+                    'property_id': property_id,
+                    'unit_id': unit_id,
+                    'unit_label': unit_label,
+                    'category': category,
+                    'filename': file.filename,
+                    'chunk_index': i,
+                    'text': chunk.page_content,
                     'embedding': Vector(embedding),
+                    # ✅ FIXED: Ensure page is always an integer (never None)
                     'page': chunk.metadata.get('page', 0) if chunk.metadata.get('page') is not None else 0,
                     'created_at': firestore.SERVER_TIMESTAMP,
-                })
+                }
+                chunk_documents.append(chunk_doc)
 
+            print(f"✅ Generated {len(chunk_documents)} embeddings")
+
+            if len(chunk_documents) == 0:
+                # Scanned document whose OCR fallback also produced nothing:
+                # keep the document (Storage + metadata, 0 chunks) so it still
+                # lists and can be re-uploaded; there is just nothing to search.
+                print("⚠️ No text extracted; indexing metadata with 0 chunks")
+
+            # Step 5: Batch write chunks to Firestore
             batch = self._db.batch()
             for chunk_doc in chunk_documents:
                 chunk_ref = self._db.collection('documind_chunks').document()
                 batch.set(chunk_ref, chunk_doc)
+
+            # Commit all chunks at once
             batch.commit()
+            print(f"✅ Batch wrote {len(chunk_documents)} chunks to Firestore")
 
             await _emit("details")
+            # Fact extraction (best-effort, one LLM call over the leading
+            # text). Failure must never block indexing.
             extracted_facts = None
             facts_confidence = None
             try:
@@ -1275,37 +1330,59 @@ class IngestionService:
             except Exception as e:
                 print(f"⚠️ Fact extraction failed (non-blocking): {e}")
 
+            # Step 5.5: Upload original file to Firebase Storage
             storage_path = f"documind/{landlord_id}/{property_id}/{doc_id}{ext}"
             blob = self._storage_bucket_getter().blob(storage_path)
             blob.upload_from_string(content, content_type=content_type)
 
+            # Step 6: Store document metadata
             file_size = os.path.getsize(temp_path)
             doc_ref = self._db.collection('documind_docs').document(doc_id)
             doc_ref.set({
-                'landlord_id': landlord_id, 'property_id': property_id, 'unit_id': unit_id,
-                'unit_label': unit_label, 'category': category, 'filename': file.filename,
-                'chunks_indexed': len(chunk_documents), 'file_size': file_size, 'storage_path': storage_path,
-                'status': 'indexed', 'extracted_facts': extracted_facts, 'facts_confidence': facts_confidence,
+                'landlord_id': landlord_id,
+                'property_id': property_id,
+                'unit_id': unit_id,
+                'unit_label': unit_label,
+                'category': category,
+                'filename': file.filename,
+                'chunks_indexed': len(chunk_documents),
+                'file_size': file_size,
+                'storage_path': storage_path,
+                'status': 'indexed',
+                'extracted_facts': extracted_facts,
+                'facts_confidence': facts_confidence,
                 'facts_status': facts_status_for(extracted_facts),
                 'facts_extracted_at': firestore.SERVER_TIMESTAMP if extracted_facts else None,
                 'uploaded_at': firestore.SERVER_TIMESTAMP,
             })
 
+            print(f"✅ Indexed {file.filename}: {len(chunk_documents)} chunks")
+
             return DocUploadResponse(
-                doc_id=doc_id, landlord_id=landlord_id, property_id=property_id, category=category,
-                filename=file.filename, status="indexed", chunks_indexed=len(chunk_documents),
-                extracted_facts=extracted_facts, facts_confidence=facts_confidence,
+                doc_id=doc_id,
+                landlord_id=landlord_id,
+                property_id=property_id,
+                category=category,
+                filename=file.filename,
+                status="indexed",
+                chunks_indexed=len(chunk_documents),
+                extracted_facts=extracted_facts,
+                facts_confidence=facts_confidence,
                 facts_status=facts_status_for(extracted_facts),
             )
+
         except Exception as e:
             print(f"❌ Document ingestion failed: {e}")
             raise
+
         finally:
+            # Step 7: Clean up temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
+                print(f"🗑️ Cleaned up temp file: {temp_path}")
 ```
 
-(This is a verbatim move — every `print` line and comment from the original stays; only the `self.` targets listed above change.)
+(This is a verbatim move — every `print` line and comment from the original stays; only the `self.` targets listed above change. Corrected 2026-07-31: an earlier draft of this block had condensed the code and silently dropped the progress-log prints and several WHY-comments — e.g. the Step 4 batching rationale and the "scanned document whose OCR fallback also produced nothing" note. This version is a byte-for-byte substitution-only transcription of the source, verified by diff.)
 
 - [ ] **Step 2: In `backend/rag/documind_service.py`**, delete `ingest_document`'s body (`documind_service.py:514-708`) and replace with:
 
