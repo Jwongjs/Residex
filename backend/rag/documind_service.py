@@ -70,10 +70,6 @@ if not firebase_admin._apps:
         ),
     })
 
-embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",  
-            google_api_key=os.getenv("GOOGLE_API_KEY"), # explicit key: os.getenv("GEMINI_API_KEY")
-        )
 llm = ChatGoogleGenerativeAI(
                 model="models/gemini-2.5-flash",
                 google_api_key=os.getenv('GOOGLE_API_KEY'),
@@ -178,15 +174,6 @@ class DocuMindService:
 
     @property
     def llm(self):
-        """Lazy-load Gemini LLM (only when first accessed)"""
-        if self._llm is None:
-            print("🔄 Initializing Gemini LLM...")
-            self._llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
-                google_api_key=os.getenv('GEMINI_API_KEY'),
-                temperature=0.3,
-            )
-            print("✅ Gemini LLM ready")
         return self._llm
 
     def _fact_llm(self):
