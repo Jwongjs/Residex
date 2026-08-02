@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart'; // StateProvider is legacy in Riverpod 3.x
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import 'dart:io';
+import '../../../../core/network/authed_client.dart';
 import '../../data/datasources/documind_remote_datasource.dart';
 import '../../data/repositories/documind_repository_impl.dart';
 import '../../domain/entities/documind_document.dart';
@@ -16,7 +19,11 @@ import 'finance_providers.dart';
 
 /// Data source provider
 final documindRemoteDataSourceProvider = Provider<DocuMindRemoteDataSource>((ref) {
-  return DocuMindRemoteDataSource();
+  final http.Client client = AuthedClient(
+    http.Client(),
+    () => FirebaseAuth.instance.currentUser?.getIdToken() ?? Future.value(null),
+  );
+  return DocuMindRemoteDataSource(httpClient: client);
 });
 
 /// Repository provider
