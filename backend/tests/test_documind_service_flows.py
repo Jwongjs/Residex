@@ -595,8 +595,8 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         })
         service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
 
-        payload = AskRequest(landlord_id="l1", property_id="p1", question="zzz qqq")
-        response = await service.ask_documind(payload)
+        payload = AskRequest(property_id="p1", question="zzz qqq")
+        response = await service.ask_documind(payload, "l1")
 
         self.assertTrue(response.needs_category_clarification)
         self.assertEqual(response.clarification_options, ["lease", "insurance"])
@@ -617,8 +617,8 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         )
         service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
 
-        payload = AskRequest(landlord_id="l1", property_id="p1", question="what is covered")
-        response = await service.ask_documind(payload)
+        payload = AskRequest(property_id="p1", question="what is covered")
+        response = await service.ask_documind(payload, "l1")
 
         self.assertTrue(response.user_action_required)
         self.assertTrue(response.needs_category_clarification)
@@ -639,13 +639,12 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="cancel that",
             session_id="session-9",
             user_action="cancel",
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         self.assertEqual(response.category_filter_mode, "cancel")
         self.assertFalse(response.user_action_required)
@@ -684,7 +683,6 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("Pets are allowed with owner approval."))
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="yes",
             session_id="session-1",
@@ -693,7 +691,7 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
-            response = await service.ask_documind(payload)
+            response = await service.ask_documind(payload, "l1")
 
         self.assertEqual(response.category_filter_mode, "clarification_selected")
         self.assertEqual(response.searched_categories, ["lease"])
@@ -733,7 +731,6 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("Coverage includes parts and labor."))
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="choose upkeep",
             session_id="session-2",
@@ -742,7 +739,7 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
-            response = await service.ask_documind(payload)
+            response = await service.ask_documind(payload, "l1")
 
         self.assertEqual(response.category_filter_mode, "clarification_selected")
         self.assertEqual(response.searched_categories, ["upkeep"])
@@ -773,8 +770,8 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         fake_llm = _FakeLLM("The tenancy ends 31 December 2026.")
         service = _build_service(fake_db, fake_store, fake_graph, fake_llm)
 
-        payload = AskRequest(landlord_id="l1", property_id="p1", question="when does the lease end")
-        response = await service.ask_documind(payload)
+        payload = AskRequest(property_id="p1", question="when does the lease end")
+        response = await service.ask_documind(payload, "l1")
 
         citations_by_doc = {c.doc_id: c for c in response.citations}
         self.assertEqual(citations_by_doc["d1"].unit_id, "unit-A")
@@ -836,8 +833,8 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         fake_llm = _FakeLLM("Unit A ends 2026; Unit B ends 2027.")
         service = _build_service(fake_db, fake_store, self._retrieve_graph(), fake_llm)
 
-        payload = AskRequest(landlord_id="l1", property_id="p1", question="when does the lease expire?")
-        response = await service.ask_documind(payload)
+        payload = AskRequest(property_id="p1", question="when does the lease expire?")
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.needs_unit_clarification)
         self.assertFalse(response.user_action_required)
@@ -854,7 +851,7 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(
             landlord_id="l1", property_id="p1", question="When does unit A's lease expire?"
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.needs_unit_clarification)
         retriever_call = service._hybrid_retriever.calls[-1]
@@ -870,7 +867,7 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(
             landlord_id="l1", property_id="p1", question="What is the rent for unit D?"
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.needs_unit_clarification)
         self.assertFalse(response.user_action_required)
@@ -890,11 +887,10 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         )
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="What is the total monthly rent across all units?",
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.needs_unit_clarification)
         self.assertFalse(response.user_action_required)
@@ -918,11 +914,10 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("Ends 30 June 2027."))
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="when does the tenancy for the second unit end?",
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.needs_unit_clarification)
         retriever_call = service._hybrid_retriever.calls[-1]
@@ -942,8 +937,8 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         })
         service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
 
-        payload = AskRequest(landlord_id="l1", property_id="p1", question="rent for unit D?")
-        response = await service.ask_documind(payload)
+        payload = AskRequest(property_id="p1", question="rent for unit D?")
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.user_action_required)
         self.assertIn("Unit D", response.answer)
@@ -967,7 +962,7 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(
             landlord_id="l1", property_id="p1", question="what is the rent for unit A?"
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         self.assertTrue(response.needs_unit_clarification)
         self.assertTrue(response.user_action_required)
@@ -986,13 +981,12 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("It ends 31 December 2026."))
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="Unit A",
             session_id="session-7",
             user_action="unit:unit-A",
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.needs_unit_clarification)
         self.assertEqual(len(response.citations), 1)
@@ -1009,13 +1003,12 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("Unit A ends 2026; Unit B ends 2027."))
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="All units",
             session_id="session-8",
             user_action="unit:all",
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.needs_unit_clarification)
         self.assertFalse(response.user_action_required)
@@ -1049,8 +1042,8 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         })
         service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("It ends 31 December 2026."))
 
-        payload = AskRequest(landlord_id="l1", property_id="p1", question="when does the lease expire?")
-        response = await service.ask_documind(payload)
+        payload = AskRequest(property_id="p1", question="when does the lease expire?")
+        response = await service.ask_documind(payload, "l1")
 
         self.assertFalse(response.needs_unit_clarification)
         self.assertEqual(len(response.citations), 2)
@@ -1078,13 +1071,12 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, empty_pred_graph, _FakeLLM("It ends 31 December 2026."))
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="Unit A",
             session_id="session-scope",
             user_action="unit:unit-A",
         )
-        response = await service.ask_documind(payload)
+        response = await service.ask_documind(payload, "l1")
 
         # The resumed retrieval must keep the ORIGINAL lease scope, not search all categories.
         retriever_call = service._hybrid_retriever.calls[-1]
@@ -1504,7 +1496,7 @@ class CategoryAliasReadPathTests(unittest.IsolatedAsyncioTestCase):
             fake_db, _FakeConversationStore(), fake_graph, _FakeLLM("Serviced on 12 March 2026.")
         )
         response = await service.ask_documind(
-            AskRequest(landlord_id="l1", property_id="p1", question="when was the aircon serviced?")
+            AskRequest(property_id="p1", question="when was the aircon serviced?"), "l1"
         )
         self.assertEqual(
             service._hybrid_retriever.calls[0]["categories"],
@@ -1944,7 +1936,7 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
         service._ask_orchestrator._get_finance_summary = service.get_finance_summary
 
         response = await service.ask_documind(
-            AskRequest(landlord_id="l1", property_id="p1", question="how much profit did I make in 2025?")
+            AskRequest(property_id="p1", question="how much profit did I make in 2025?"), "l1"
         )
 
         service.get_finance_summary.assert_awaited_once_with("l1", 2025)
@@ -1983,7 +1975,7 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
         service._ask_orchestrator._hybrid_retriever = exploding
 
         response = await service.ask_documind(
-            AskRequest(landlord_id="l1", property_id="p1", question="how much profit did I make in 2025?")
+            AskRequest(property_id="p1", question="how much profit did I make in 2025?"), "l1"
         )
 
         self.assertFalse(exploding.called)       # no chunk retrieval at all
@@ -1999,7 +1991,7 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
         service._ask_orchestrator._get_finance_summary = service.get_finance_summary
 
         await service.ask_documind(
-            AskRequest(landlord_id="l1", property_id="p1", question="how is my rental doing?")
+            AskRequest(property_id="p1", question="how is my rental doing?"), "l1"
         )
 
         awaited_year = service.get_finance_summary.await_args.args[1]
@@ -2018,7 +2010,7 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
         service._ask_orchestrator._get_finance_summary = service.get_finance_summary
 
         response = await service.ask_documind(
-            AskRequest(landlord_id="l1", property_id="p1", question="profit in 2025?")
+            AskRequest(property_id="p1", question="profit in 2025?"), "l1"
         )
 
         self.assertIn("60,106.58", response.answer)
@@ -2033,7 +2025,7 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
         service._ask_orchestrator._get_finance_summary = service.get_finance_summary
 
         response = await service.ask_documind(
-            AskRequest(landlord_id="l1", property_id="p1", question="profit in 2025?")
+            AskRequest(property_id="p1", question="profit in 2025?"), "l1"
         )
 
         self.assertIn("couldn't compute", response.answer)
@@ -2154,7 +2146,6 @@ class HostedContextScrubTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, fake_graph, fake_llm)
 
         payload = AskRequest(
-            landlord_id="l1",
             property_id="p1",
             question="yes",
             session_id="session-pii",
@@ -2163,7 +2154,7 @@ class HostedContextScrubTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock:
             embeddings_mock.return_value = _FakeEmbeddings()
-            await service.ask_documind(payload)
+            await service.ask_documind(payload, "l1")
 
         self.assertIsNotNone(fake_llm.last_prompt)
         self.assertNotIn("123456-78-9012", fake_llm.last_prompt)

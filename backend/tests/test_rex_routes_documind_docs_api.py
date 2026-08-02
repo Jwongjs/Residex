@@ -35,7 +35,6 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/upload",
                 data={
-                    "landlord_id": "landlord-1",
                     "property_id": "property-1",
                     "category": "lease",
                 },
@@ -72,7 +71,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         with patch("api.rex_routes.documind_service.ingest_document", new=AsyncMock(side_effect=fake_ingest)):
             response = self.client.post(
                 "/api/rex/documind/upload/stream",
-                data={"landlord_id": "l1", "property_id": "p1", "category": "lease"},
+                data={"property_id": "p1", "category": "lease"},
                 files={"file": ("lease.pdf", b"%PDF-1.4 x", "application/pdf")},
             )
 
@@ -94,7 +93,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         with patch("api.rex_routes.documind_service.ingest_document", new=AsyncMock(side_effect=boom)):
             response = self.client.post(
                 "/api/rex/documind/upload/stream",
-                data={"landlord_id": "l1", "property_id": "p1", "category": "nope"},
+                data={"property_id": "p1", "category": "nope"},
                 files={"file": ("x.pdf", b"%PDF-1.4 x", "application/pdf")},
             )
 
@@ -108,7 +107,6 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/rex/documind/upload",
             data={
-                "landlord_id": "landlord-1",
                 "property_id": "property-1",
                 "category": "warranty",
             },
@@ -138,7 +136,6 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
             response = self.client.get(
                 "/api/rex/documind/documents",
                 params={
-                    "landlord_id": "landlord-1",
                     "property_id": "property-1",
                 },
             )
@@ -181,7 +178,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         ) as mocked_delete:
             response = self.client.delete(
                 "/api/rex/documind/documents/doc-1",
-                params={"landlord_id": "landlord-1", "property_id": "property-1"},
+                params={"property_id": "property-1"},
             )
 
             call_kwargs = mocked_delete.await_args.kwargs
@@ -203,7 +200,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         ) as mocked_rename:
             response = self.client.patch(
                 "/api/rex/documind/documents/doc-1/filename",
-                json={"landlord_id": "landlord-1", "filename": "Ayer 8 lease 2023.pdf"},
+                json={"filename": "Ayer 8 lease 2023.pdf"},
             )
             call_kwargs = mocked_rename.await_args.kwargs
 
@@ -220,7 +217,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         ):
             response = self.client.patch(
                 "/api/rex/documind/documents/doc-1/filename",
-                json={"landlord_id": "landlord-1", "filename": "   "},
+                json={"filename": "   "},
             )
         self.assertEqual(response.status_code, 400)
 
@@ -231,7 +228,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         ) as mocked_view_url:
             response = self.client.get(
                 "/api/rex/documind/documents/doc-1/view-url",
-                params={"landlord_id": "landlord-1", "property_id": "property-1"},
+                params={"property_id": "property-1"},
             )
 
             call_kwargs = mocked_view_url.await_args.kwargs
@@ -249,7 +246,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         ):
             response = self.client.get(
                 "/api/rex/documind/documents/doc-1/view-url",
-                params={"landlord_id": "landlord-1", "property_id": "property-1"},
+                params={"property_id": "property-1"},
             )
 
         self.assertEqual(response.status_code, 404)
@@ -271,7 +268,6 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/documents/unassign-unit",
                 json={
-                    "landlord_id": "landlord-1",
                     "property_id": "property-1",
                     "unit_id": "unit-9",
                 },
@@ -288,7 +284,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
     def test_unassign_unit_documents_returns_422_when_missing_fields(self):
         response = self.client.post(
             "/api/rex/documind/documents/unassign-unit",
-            json={"landlord_id": "landlord-1"},
+            json={},
         )
         self.assertEqual(response.status_code, 422)
 

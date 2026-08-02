@@ -306,8 +306,8 @@ class DocuMindService:
     def list_manual_loan_entries(self, landlord_id, property_id, year):
         return self._finance_overrides.list_manual_loan_entries(landlord_id, property_id, year)
 
-    async def ask_documind(self, payload: AskRequest) -> AskResponse:
-        return await self._ask_orchestrator.ask(payload)
+    async def ask_documind(self, payload: AskRequest, landlord_id: str) -> AskResponse:
+        return await self._ask_orchestrator.ask(payload, landlord_id)
 
     async def list_documents(self, landlord_id, property_id=None, unit_id=None):
         return await self._document_lifecycle.list_documents(landlord_id, property_id, unit_id)

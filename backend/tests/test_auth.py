@@ -54,5 +54,33 @@ class TestAuthDependency(unittest.TestCase):
         self.assertEqual(r.json()["landlord_id"], "landlord_123")
 
 
+def test_no_landlord_id_in_any_request_input():
+    """landlord_id must never be a client-supplied input (query/form/body).
+    Response models may still expose it — this checks inputs only."""
+    from main import app
+    spec = app.openapi()
+    schemas = spec.get("components", {}).get("schemas", {})
+
+    offenders = []
+    for path, methods in spec.get("paths", {}).items():
+        for method, op in methods.items():
+            for param in op.get("parameters", []):
+                if param.get("name") == "landlord_id":
+                    offenders.append(f"{method.upper()} {path} param")
+            body = op.get("requestBody", {})
+            for content in body.get("content", {}).values():
+                schema = content.get("schema", {})
+                ref = schema.get("$ref")
+                if ref:
+                    name = ref.split("/")[-1]
+                    props = schemas.get(name, {}).get("properties", {})
+                else:
+                    props = schema.get("properties", {})
+                if "landlord_id" in props:
+                    offenders.append(f"{method.upper()} {path} body")
+
+    assert not offenders, f"landlord_id is still a client input: {offenders}"
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -35,7 +35,6 @@ class DocuMindAskApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/ask",
                 json={
-                    "landlord_id": "landlord-1",
                     "property_id": "property-1",
                     "question": "What does my warranty cover?",
                     "categories": ["warranty"],
@@ -70,7 +69,6 @@ class DocuMindAskApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/ask",
                 json={
-                    "landlord_id": "landlord-1",
                     "property_id": "property-1",
                     "question": "yes proceed",
                     "session_id": "sess-99",
@@ -91,7 +89,7 @@ class DocuMindAskApiTests(unittest.TestCase):
             "/api/rex/documind/ask",
             json={
                 "property_id": "property-1",
-                "question": "What does my lease say?",
+                # Missing required 'question' field
             },
         )
 
@@ -120,7 +118,6 @@ class DocuMindAskApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/ask",
                 json={
-                    "landlord_id": "landlord-1",
                     "property_id": "property-1",
                     "question": "when does the lease expire?",
                 },

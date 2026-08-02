@@ -57,7 +57,6 @@ class DocuMindStructuralEvaluationTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/ask",
                 json={
-                    "landlord_id": "landlord-eval-1",
                     "property_id": "property-eval-1",
                     "question": "Is compressor replacement covered?",
                     "categories": ["warranty"],
@@ -107,7 +106,6 @@ class DocuMindStructuralEvaluationTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/ask",
                 json={
-                    "landlord_id": "landlord-eval-2",
                     "property_id": "property-eval-2",
                     "question": "Tell me about time travel regulations?",
                     "session_id": "sess-eval-2",
@@ -145,7 +143,6 @@ class DocuMindStructuralEvaluationTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/ask",
                 json={
-                    "landlord_id": "landlord-eval-3",
                     "property_id": "property-eval-3",
                     "question": "What are my maintenance responsibilities?",
                     "categories": ["lease", "warranty"],
@@ -156,11 +153,12 @@ class DocuMindStructuralEvaluationTests(unittest.TestCase):
 
             # Verify the categories were passed to the service
             called_payload = mocked_ask.await_args.args[0]
+            called_landlord_id = mocked_ask.await_args.args[1]
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(called_payload.categories, ["lease", "warranty"])
         self.assertEqual(called_payload.question, "What are my maintenance responsibilities?")
-        self.assertEqual(called_payload.landlord_id, "landlord_123")  # token uid, not the wire value ("landlord-eval-3") sent above
+        self.assertEqual(called_landlord_id, "landlord_123")  # token uid; landlord_id is no longer part of the payload
         self.assertEqual(called_payload.property_id, "property-eval-3")
 
     def test_invalid_payload_missing_question(self):
@@ -168,7 +166,6 @@ class DocuMindStructuralEvaluationTests(unittest.TestCase):
         response = self.client.post(
             "/api/rex/documind/ask",
             json={
-                "landlord_id": "landlord-eval-4",
                 "property_id": "property-eval-4",
                 # Missing required 'question' field
             },
@@ -206,7 +203,6 @@ class DocuMindStructuralEvaluationTests(unittest.TestCase):
             response = self.client.post(
                 "/api/rex/documind/ask",
                 json={
-                    "landlord_id": "landlord-eval-5",
                     "property_id": "property-eval-5",
                     "question": "when does the lease expire?",
                     "session_id": "sess-eval-5",

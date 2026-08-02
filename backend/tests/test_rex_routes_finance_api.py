@@ -48,7 +48,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.get(
                 "/api/rex/documind/finance/summary",
-                params={"landlord_id": "landlord-1", "year": 2025},
+                params={"year": 2025},
             )
             call_args = mocked.await_args.args
 
@@ -61,7 +61,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
     def test_finance_summary_requires_year(self):
         response = self.client.get(
             "/api/rex/documind/finance/summary",
-            params={"landlord_id": "landlord-1"},
+            params={},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -72,7 +72,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.put(
                 "/api/rex/documind/finance/payment-exception",
-                json={"landlord_id": "l1", "property_id": "p1", "month": "2025-03", "reason": "late"},
+                json={"property_id": "p1", "month": "2025-03", "reason": "late"},
             )
             call_kwargs = mocked.await_args.kwargs
 
@@ -92,7 +92,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
             response = self.client.put(
                 "/api/rex/documind/finance/payment-exception",
                 json={
-                    "landlord_id": "landlord-1", "property_id": "p1",
+                    "property_id": "p1",
                     "month": "2025-08", "state": "written_off",
                 },
             )
@@ -109,7 +109,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ):
             response = self.client.put(
                 "/api/rex/documind/finance/payment-exception",
-                json={"landlord_id": "l1", "property_id": "p1", "month": "March"},
+                json={"property_id": "p1", "month": "March"},
             )
         self.assertEqual(response.status_code, 400)
 
@@ -121,7 +121,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
             response = self.client.request(
                 "DELETE",
                 "/api/rex/documind/finance/payment-exception",
-                params={"landlord_id": "l1", "property_id": "p1", "month": "2025-03"},
+                params={"property_id": "p1", "month": "2025-03"},
             )
             call_kwargs = mocked.await_args.kwargs
 
@@ -156,7 +156,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ):
             response = self.client.get(
                 "/api/rex/documind/finance/summary",
-                params={"landlord_id": "landlord-1", "year": 2026},
+                params={"year": 2026},
             )
         body = response.json()
         self.assertEqual(
@@ -200,7 +200,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ):
             response = self.client.get(
                 "/api/rex/documind/finance/summary",
-                params={"landlord_id": "landlord-1", "year": 2025},
+                params={"year": 2025},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -221,7 +221,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.put(
                 "/api/rex/documind/finance/document-exception",
-                json={"landlord_id": "landlord-1", "property_id": "p1", "year": 2025, "category": "loan"},
+                json={"property_id": "p1", "year": 2025, "category": "loan"},
             )
             kwargs = mocked.await_args.kwargs
 
@@ -236,7 +236,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.delete(
                 "/api/rex/documind/finance/document-exception",
-                params={"landlord_id": "landlord-1", "property_id": "p1", "year": 2025, "category": "loan"},
+                params={"property_id": "p1", "year": 2025, "category": "loan"},
             )
             kwargs = mocked.await_args.kwargs
 
@@ -254,7 +254,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
             response = self.client.put(
                 "/api/rex/documind/finance/rent-recovery",
                 json={
-                    "landlord_id": "landlord-1", "property_id": "p1",
+                    "property_id": "p1",
                     "original_month": "2025-08", "amount": 3000.0, "received_year": 2026,
                 },
             )
@@ -271,7 +271,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.delete(
                 "/api/rex/documind/finance/rent-recovery",
-                params={"landlord_id": "landlord-1", "property_id": "p1", "original_month": "2025-08"},
+                params={"property_id": "p1", "original_month": "2025-08"},
             )
             kwargs = mocked.await_args.kwargs
 
@@ -289,7 +289,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
             response = self.client.put(
                 "/api/rex/documind/finance/manual-loan-entry",
                 json={
-                    "landlord_id": "landlord-1", "property_id": "p1", "year": 2025,
+                    "property_id": "p1", "year": 2025,
                     "cadence": "annual", "interest_paid": 5000.0, "principal_paid": 3000.0,
                 },
             )
@@ -303,7 +303,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         response = self.client.put(
             "/api/rex/documind/finance/manual-loan-entry",
             json={
-                "landlord_id": "landlord-1", "property_id": "p1", "year": 2025,
+                "property_id": "p1", "year": 2025,
                 "cadence": "monthly", "interest_paid": 500.0, "principal_paid": 0.0,
             },
         )
@@ -313,7 +313,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         response = self.client.put(
             "/api/rex/documind/finance/manual-loan-entry",
             json={
-                "landlord_id": "landlord-1", "property_id": "p1", "year": 2025,
+                "property_id": "p1", "year": 2025,
                 "cadence": "annual", "interest_paid": -1.0, "principal_paid": 0.0,
             },
         )
@@ -326,7 +326,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.delete(
                 "/api/rex/documind/finance/manual-loan-entry",
-                params={"landlord_id": "landlord-1", "property_id": "p1", "year": 2025},
+                params={"property_id": "p1", "year": 2025},
             )
             kwargs = mocked.await_args.kwargs
 
@@ -343,7 +343,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.put(
                 "/api/rex/documind/finance/manual-loan-entry",
-                json={"landlord_id": "l1", "property_id": "p1", "unit_id": "u1", "year": 2025,
+                json={"property_id": "p1", "unit_id": "u1", "year": 2025,
                       "cadence": "annual", "interest_paid": 5000.0, "principal_paid": 0.0},
             )
             kwargs = mocked.await_args.kwargs
@@ -358,7 +358,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.delete(
                 "/api/rex/documind/finance/manual-loan-entry",
-                params={"landlord_id": "l1", "property_id": "p1", "unit_id": "u1", "year": 2025},
+                params={"property_id": "p1", "unit_id": "u1", "year": 2025},
             )
             kwargs = mocked.await_args.kwargs
         self.assertEqual(response.status_code, 200)
@@ -374,7 +374,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ):
             response = self.client.get(
                 "/api/rex/documind/finance/manual-loan-entry",
-                params={"landlord_id": "landlord-1", "property_id": "p1", "year": 2025},
+                params={"property_id": "p1", "year": 2025},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -388,7 +388,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.put(
                 "/api/rex/documind/finance/unit-loan-exemption",
-                json={"landlord_id": "l1", "property_id": "p1", "unit_id": "u1"},
+                json={"property_id": "p1", "unit_id": "u1"},
             )
             kwargs = mocked.await_args.kwargs
         self.assertEqual(response.status_code, 200)
@@ -401,7 +401,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         ) as mocked:
             response = self.client.delete(
                 "/api/rex/documind/finance/unit-loan-exemption",
-                params={"landlord_id": "l1", "property_id": "p1", "unit_id": "u1"},
+                params={"property_id": "p1", "unit_id": "u1"},
             )
             kwargs = mocked.await_args.kwargs
         self.assertEqual(response.status_code, 200)

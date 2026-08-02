@@ -22,7 +22,6 @@ class DocUploadResponse(BaseModel):
 
 class AskRequest(BaseModel):
     """Request to ask DocuMind a question"""
-    landlord_id: str
     property_id: str  # Scopes search to specific property
     question: str
     top_k: int = Field(default=4, ge=1, le=10, description="Number of chunks to retrieve")
@@ -158,7 +157,6 @@ class DocListResponse(BaseModel):
 
 class UnassignUnitRequest(BaseModel):
     """Request to convert one unit's documents to property-wide"""
-    landlord_id: str
     property_id: str
     unit_id: str
 
@@ -289,7 +287,6 @@ class ExpenseLineEdit(BaseModel):
 
 
 class FactsUpdateRequest(BaseModel):
-    landlord_id: str
     expense_lines: List[ExpenseLineEdit]
 
 
@@ -299,7 +296,6 @@ class FactsUpdateResponse(BaseModel):
 
 
 class DocumentRenameRequest(BaseModel):
-    landlord_id: str
     filename: str = Field(..., description="New display filename")
 
 
@@ -311,7 +307,6 @@ class DocumentRenameResponse(BaseModel):
 # ========== PAYMENT EXCEPTION MODELS ==========
 
 class PaymentExceptionRequest(BaseModel):
-    landlord_id: str
     property_id: str
     month: str = Field(..., description="Calendar month, YYYY-MM")
     unit_id: Optional[str] = None
@@ -330,7 +325,6 @@ class PaymentExceptionResponse(BaseModel):
 # ========== DOCUMENT EXCEPTION MODELS ==========
 
 class DocumentExceptionRequest(BaseModel):
-    landlord_id: str
     property_id: str
     year: int = Field(..., ge=2000, le=2100)
     category: str = Field(
@@ -349,7 +343,6 @@ class DocumentExceptionResponse(BaseModel):
 # ========== RENT RECOVERY MODELS ==========
 
 class RentRecoveryRequest(BaseModel):
-    landlord_id: str
     property_id: str
     original_month: str = Field(..., description="The written-off month being recovered, YYYY-MM")
     amount: float = Field(..., gt=0)
@@ -368,7 +361,6 @@ class RentRecoveryResponse(BaseModel):
 # ========== MANUAL LOAN ENTRY MODELS ==========
 
 class ManualLoanEntryRequest(BaseModel):
-    landlord_id: str
     property_id: str
     unit_id: Optional[str] = None
     year: int = Field(..., ge=2000, le=2100)
@@ -403,6 +395,5 @@ class ManualLoanEntryListResponse(BaseModel):
 # ========== UNIT LOAN EXEMPTION MODELS ==========
 
 class UnitLoanExemptionRequest(BaseModel):
-    landlord_id: str
     property_id: str
     unit_id: str = Field(..., min_length=1)

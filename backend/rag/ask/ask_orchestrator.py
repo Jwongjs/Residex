@@ -59,7 +59,7 @@ Rules:
                 f"({totals.statutory_note})."
             )
 
-    async def ask(self, payload: AskRequest) -> AskResponse:
+    async def ask(self, payload: AskRequest, landlord_id: str) -> AskResponse:
         """
         Answer question using Firestore Vector Search.
 
@@ -71,14 +71,15 @@ Rules:
         5. Return answer with citations
 
         Args:
-            payload: AskRequest with landlord_id, property_id, question, top_k
+            payload: AskRequest with property_id, question, top_k
+            landlord_id: Landlord ID derived from the verified auth token
 
         Returns:
             AskResponse with answer, citations, confidence
         """
 
         category_filter_mode = "all"
-        available_categories = self._list_available_categories(payload.landlord_id, payload.property_id)
+        available_categories = self._list_available_categories(landlord_id, payload.property_id)
         property_name = self._get_property_name(payload.property_id)
 
         # Normalize explicit category filters from payload
@@ -87,7 +88,7 @@ Rules:
         explicit_valid = [category for category in normalized_explicit if category in ALLOWED_CATEGORIES]
 
         session = self._conversation_store.get_or_create_session(
-            landlord_id=payload.landlord_id,
+            landlord_id=landlord_id,
             property_id=payload.property_id,
             session_id=payload.session_id,
         )
@@ -153,7 +154,7 @@ Rules:
         if graph_action == "finance":
             requested_year = graph_state.get("finance_year") or datetime.now().year
             try:
-                summary = await self._get_finance_summary(payload.landlord_id, requested_year)
+                summary = await self._get_finance_summary(landlord_id, requested_year)
                 answer = self._narrate_finance_summary(payload.question, property_name, summary)
             except Exception as e:
                 print(f"❌ Finance summary failed: {e}")
@@ -451,7 +452,7 @@ Rules:
         try:
             retrieved_chunks = await self._hybrid_retriever.retrieve(
                 question=working_question,
-                landlord_id=payload.landlord_id,
+                landlord_id=landlord_id,
                 property_id=payload.property_id,
                 top_k=payload.top_k,
                 categories=expand_categories_for_query(selected_categories) if selected_categories else None,

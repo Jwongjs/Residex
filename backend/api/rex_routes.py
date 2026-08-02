@@ -171,8 +171,7 @@ async def documind_ask(payload: AskRequest, landlord_id: str = Depends(current_l
     - session_id provided -> continues prior conversation memory
     - user_action='confirm' -> executes previously suggested category action
     """
-    payload.landlord_id = landlord_id  # token identity wins over any client value
-    return await documind_service.ask_documind(payload)
+    return await documind_service.ask_documind(payload, landlord_id)
 
 
 @router.get("/documind/documents", response_model=DocListResponse)
@@ -188,13 +187,13 @@ async def list_documents(
     List all documents for a landlord, optionally filtered by property and unit.
 
     Examples:
-    - GET /api/rex/documind/documents?landlord_id=landlord_123
+    - GET /api/rex/documind/documents
       → Returns ALL documents across all properties
 
-    - GET /api/rex/documind/documents?landlord_id=landlord_123&property_id=property_1
+    - GET /api/rex/documind/documents?property_id=property_1
       → Returns documents for specific property only
 
-    - GET /api/rex/documind/documents?landlord_id=landlord_123&property_id=property_1&unit_id=unit_9
+    - GET /api/rex/documind/documents?property_id=property_1&unit_id=unit_9
       → Returns unit_9's documents plus property-wide documents
     """
     return await documind_service.list_documents(landlord_id, property_id, unit_id)
@@ -438,7 +437,7 @@ async def delete_document(
         Success message with deletion count
     
     Example:
-        DELETE /api/rex/documind/documents/abc123?landlord_id=landlord_456&property_id=property_789
+        DELETE /api/rex/documind/documents/abc123?property_id=property_789
     """
     return await documind_service.delete_document(
         landlord_id=landlord_id,
@@ -459,7 +458,7 @@ async def delete_property_documents(
     with no documents returns a zero-count success.
 
     Example:
-        DELETE /api/rex/documind/properties/property_789/documents?landlord_id=landlord_456
+        DELETE /api/rex/documind/properties/property_789/documents
     """
     return await documind_service.delete_documents_for_property(
         landlord_id=landlord_id,
@@ -479,7 +478,7 @@ async def unassign_unit_documents(
 
     Example:
         POST /api/rex/documind/documents/unassign-unit
-        {"landlord_id": "landlord_456", "property_id": "property_789", "unit_id": "unit_9"}
+        {"property_id": "property_789", "unit_id": "unit_9"}
     """
     return await documind_service.unassign_unit_documents(
         landlord_id=landlord_id,
@@ -498,7 +497,7 @@ async def get_document_view_url(
     Get a short-lived signed URL to view a document's original PDF.
 
     Example:
-        GET /api/rex/documind/documents/abc123/view-url?landlord_id=landlord_456&property_id=property_789
+        GET /api/rex/documind/documents/abc123/view-url?property_id=property_789
     """
     try:
         view_url = await documind_service.get_document_view_url(
