@@ -1,23 +1,28 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from api.auth import verify_firebase_token, current_landlord_id
 from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, DocumentRenameRequest, DocumentRenameResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse, UnitLoanExemptionRequest
 from rag.documind_service import documind_service
 
-router = APIRouter(prefix="/api/rex", tags=["rex-ai"])
+router = APIRouter(
+    prefix="/api/rex",
+    tags=["rex-ai"],
+    dependencies=[Depends(verify_firebase_token)],
+)
 
 # ========== DOCUMIND ROUTES ==========
 
 @router.post("/documind/upload", response_model=DocUploadResponse)
 async def documind_upload(
-    landlord_id: str = Form(...),
     property_id: str = Form(...),
     category: str = Form(...),
     file: UploadFile = File(...),
     unit_id: str | None = Form(None),
     unit_label: str | None = Form(None),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Upload a document (PDF, or JPG/PNG photo) for a property.
@@ -45,12 +50,12 @@ async def documind_upload(
 
 @router.post("/documind/upload/stream")
 async def documind_upload_stream(
-    landlord_id: str = Form(...),
     property_id: str = Form(...),
     category: str = Form(...),
     file: UploadFile = File(...),
     unit_id: str | None = Form(None),
     unit_label: str | None = Form(None),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Same as /documind/upload but streams newline-delimited JSON progress
@@ -94,7 +99,11 @@ async def documind_upload_stream(
 
 
 @router.patch("/documind/documents/{doc_id}/facts", response_model=FactsUpdateResponse)
-async def update_document_facts(doc_id: str, payload: FactsUpdateRequest):
+async def update_document_facts(
+    doc_id: str,
+    payload: FactsUpdateRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
     """
     Replace a document's reviewed expense lines (Expenses uploads).
 
@@ -104,7 +113,7 @@ async def update_document_facts(doc_id: str, payload: FactsUpdateRequest):
     try:
         result = await documind_service.update_expense_lines(
             doc_id=doc_id,
-            landlord_id=payload.landlord_id,
+            landlord_id=landlord_id,
             lines=[line.model_dump() for line in payload.expense_lines],
         )
         return FactsUpdateResponse(**result)
@@ -113,7 +122,11 @@ async def update_document_facts(doc_id: str, payload: FactsUpdateRequest):
 
 
 @router.patch("/documind/documents/{doc_id}/filename", response_model=DocumentRenameResponse)
-async def rename_document(doc_id: str, payload: DocumentRenameRequest):
+async def rename_document(
+    doc_id: str,
+    payload: DocumentRenameRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
     """
     Rename a document's display filename (ownership-scoped).
 
@@ -125,7 +138,7 @@ async def rename_document(doc_id: str, payload: DocumentRenameRequest):
     try:
         result = await documind_service.rename_document(
             doc_id=doc_id,
-            landlord_id=payload.landlord_id,
+            landlord_id=landlord_id,
             filename=payload.filename,
         )
         return DocumentRenameResponse(**result)
@@ -134,7 +147,7 @@ async def rename_document(doc_id: str, payload: DocumentRenameRequest):
 
 
 @router.post("/documind/ask", response_model=AskResponse)
-async def documind_ask(payload: AskRequest):
+async def documind_ask(payload: AskRequest, landlord_id: str = Depends(current_landlord_id)):
     """
     Ask a question about documents for a specific property.
 
@@ -158,17 +171,18 @@ async def documind_ask(payload: AskRequest):
     - session_id provided -> continues prior conversation memory
     - user_action='confirm' -> executes previously suggested category action
     """
+    payload.landlord_id = landlord_id  # token identity wins over any client value
     return await documind_service.ask_documind(payload)
 
 
 @router.get("/documind/documents", response_model=DocListResponse)
 async def list_documents(
-    landlord_id: str = Query(..., description="Landlord ID"),
     property_id: str | None = Query(None, description="Filter by property ID"),
     unit_id: str | None = Query(
         None,
         description="Filter by unit: returns this unit's documents plus property-wide documents",
     ),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     List all documents for a landlord, optionally filtered by property and unit.
@@ -188,8 +202,8 @@ async def list_documents(
 
 @router.get("/documind/finance/summary", response_model=FinanceSummaryResponse)
 async def finance_summary(
-    landlord_id: str = Query(..., description="Landlord ID"),
     year: int = Query(..., ge=2000, le=2100, description="Calendar year (YA)"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Deterministic finance summary for one landlord and calendar year.
@@ -201,7 +215,10 @@ async def finance_summary(
     return await documind_service.get_finance_summary(landlord_id, year)
 
 @router.put("/documind/finance/payment-exception", response_model=PaymentExceptionResponse)
-async def set_payment_exception(payload: PaymentExceptionRequest):
+async def set_payment_exception(
+    payload: PaymentExceptionRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
     """
     Mark one month as 'no payment received' for a property or unit scope.
 
@@ -211,7 +228,7 @@ async def set_payment_exception(payload: PaymentExceptionRequest):
     """
     try:
         return await documind_service.set_payment_exception(
-            landlord_id=payload.landlord_id,
+            landlord_id=landlord_id,
             property_id=payload.property_id,
             unit_id=payload.unit_id,
             month=payload.month,
@@ -224,10 +241,10 @@ async def set_payment_exception(payload: PaymentExceptionRequest):
 
 @router.delete("/documind/finance/payment-exception")
 async def clear_payment_exception(
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID"),
     month: str = Query(..., description="Calendar month, YYYY-MM"),
     unit_id: str | None = Query(None, description="Unit ID; omit for a whole-property mark"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Clear a 'no payment received' mark. Idempotent — clearing an unmarked
@@ -242,7 +259,10 @@ async def clear_payment_exception(
 
 
 @router.put("/documind/finance/document-exception", response_model=DocumentExceptionResponse)
-async def set_document_unavailable(payload: DocumentExceptionRequest):
+async def set_document_unavailable(
+    payload: DocumentExceptionRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
     """
     Acknowledge that a coverage gap cannot be filled for one (year, category).
     The year then settles as complete-with-gaps: no longer counted as
@@ -251,7 +271,7 @@ async def set_document_unavailable(payload: DocumentExceptionRequest):
     """
     try:
         return await documind_service.set_document_unavailable(
-            landlord_id=payload.landlord_id,
+            landlord_id=landlord_id,
             property_id=payload.property_id,
             year=payload.year,
             category=payload.category,
@@ -262,10 +282,10 @@ async def set_document_unavailable(payload: DocumentExceptionRequest):
 
 @router.delete("/documind/finance/document-exception")
 async def clear_document_unavailable(
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID"),
     year: int = Query(..., ge=2000, le=2100),
     category: str = Query(..., description="The category or tax label previously marked unavailable"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Clear an 'unavailable' mark. Idempotent — clearing an unmarked scope is
@@ -277,7 +297,10 @@ async def clear_document_unavailable(
 
 
 @router.put("/documind/finance/rent-recovery", response_model=RentRecoveryResponse)
-async def record_rent_recovery(payload: RentRecoveryRequest):
+async def record_rent_recovery(
+    payload: RentRecoveryRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
     """
     Book a written-off month's rent as income in the year it actually
     arrived. The original (written-off) year is never reopened or
@@ -287,7 +310,7 @@ async def record_rent_recovery(payload: RentRecoveryRequest):
     """
     try:
         return await documind_service.record_rent_recovery(
-            landlord_id=payload.landlord_id,
+            landlord_id=landlord_id,
             property_id=payload.property_id,
             unit_id=payload.unit_id,
             original_month=payload.original_month,
@@ -300,10 +323,10 @@ async def record_rent_recovery(payload: RentRecoveryRequest):
 
 @router.delete("/documind/finance/rent-recovery")
 async def clear_rent_recovery(
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID"),
     original_month: str = Query(..., description="The written-off month the recovery was recorded against, YYYY-MM"),
     unit_id: str | None = Query(None, description="Unit ID; omit for a whole-property mark"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Remove a recorded rent recovery. Idempotent — clearing an unrecorded
@@ -315,14 +338,17 @@ async def clear_rent_recovery(
 
 
 @router.put("/documind/finance/manual-loan-entry", response_model=ManualLoanEntryResponse)
-async def record_manual_loan_entry(payload: ManualLoanEntryRequest):
+async def record_manual_loan_entry(
+    payload: ManualLoanEntryRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
     """Book manually-entered loan interest/principal for a period, for
     landlords whose bank statement cadence makes uploading inconvenient. The
     figures flow through the same two-tier loan pipeline as an uploaded
     statement. Idempotent per (property, year, month)."""
     try:
         return await documind_service.record_manual_loan_entry(
-            landlord_id=payload.landlord_id,
+            landlord_id=landlord_id,
             property_id=payload.property_id,
             unit_id=payload.unit_id,
             year=payload.year,
@@ -337,11 +363,11 @@ async def record_manual_loan_entry(payload: ManualLoanEntryRequest):
 
 @router.delete("/documind/finance/manual-loan-entry")
 async def delete_manual_loan_entry(
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID"),
     unit_id: str | None = Query(None, description="Unit ID; omit for a whole-property entry"),
     year: int = Query(..., ge=2000, le=2100),
     month: int | None = Query(None, ge=1, le=12, description="Month for a monthly entry; omit for annual"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """Remove a manual loan entry. Idempotent — deleting an absent entry is a
     no-op, not an error."""
@@ -352,9 +378,9 @@ async def delete_manual_loan_entry(
 
 @router.get("/documind/finance/manual-loan-entry", response_model=ManualLoanEntryListResponse)
 async def list_manual_loan_entries(
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID"),
     year: int = Query(..., ge=2000, le=2100),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """All manual loan entries for one property and year, for the finance-tab
     list/edit UI."""
@@ -363,12 +389,15 @@ async def list_manual_loan_entries(
 
 
 @router.put("/documind/finance/unit-loan-exemption")
-async def set_unit_loan_exemption(payload: UnitLoanExemptionRequest):
+async def set_unit_loan_exemption(
+    payload: UnitLoanExemptionRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
     """Mark a unit as having no loan (excludes it from the loan-figure
     completeness check). Idempotent."""
     try:
         return await documind_service.set_unit_loan_exemption(
-            landlord_id=payload.landlord_id, property_id=payload.property_id, unit_id=payload.unit_id,
+            landlord_id=landlord_id, property_id=payload.property_id, unit_id=payload.unit_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -376,9 +405,9 @@ async def set_unit_loan_exemption(payload: UnitLoanExemptionRequest):
 
 @router.delete("/documind/finance/unit-loan-exemption")
 async def clear_unit_loan_exemption(
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID"),
     unit_id: str = Query(..., description="Unit ID"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """Remove a unit's no-loan mark. Idempotent."""
     return await documind_service.clear_unit_loan_exemption(
@@ -389,8 +418,8 @@ async def clear_unit_loan_exemption(
 @router.delete("/documind/documents/{doc_id}")
 async def delete_document(
     doc_id: str,
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID for scoping"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Delete a document and its associated chunks from Firestore.
@@ -421,7 +450,7 @@ async def delete_document(
 @router.delete("/documind/properties/{property_id}/documents")
 async def delete_property_documents(
     property_id: str,
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Delete ALL documents for a property (metadata, chunks, stored PDFs).
@@ -439,7 +468,10 @@ async def delete_property_documents(
 
 
 @router.post("/documind/documents/unassign-unit")
-async def unassign_unit_documents(payload: UnassignUnitRequest):
+async def unassign_unit_documents(
+    payload: UnassignUnitRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
     """
     Clear the unit assignment on all of a unit's documents and chunks,
     converting them to property-wide. Called before a unit is deleted so its
@@ -450,7 +482,7 @@ async def unassign_unit_documents(payload: UnassignUnitRequest):
         {"landlord_id": "landlord_456", "property_id": "property_789", "unit_id": "unit_9"}
     """
     return await documind_service.unassign_unit_documents(
-        landlord_id=payload.landlord_id,
+        landlord_id=landlord_id,
         property_id=payload.property_id,
         unit_id=payload.unit_id,
     )
@@ -459,8 +491,8 @@ async def unassign_unit_documents(payload: UnassignUnitRequest):
 @router.get("/documind/documents/{doc_id}/view-url")
 async def get_document_view_url(
     doc_id: str,
-    landlord_id: str = Query(..., description="Landlord ID for ownership verification"),
     property_id: str = Query(..., description="Property ID for scoping"),
+    landlord_id: str = Depends(current_landlord_id),
 ):
     """
     Get a short-lived signed URL to view a document's original PDF.

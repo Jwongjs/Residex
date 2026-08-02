@@ -4,12 +4,17 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
+from api.auth import verify_firebase_token
 from models.documind_models import AskResponse, Citation, UnitOption
 
 
 class DocuMindStructuralEvaluationTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        app.dependency_overrides[verify_firebase_token] = lambda: {"uid": "landlord_123"}
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
 
     def test_happy_path_with_citations(self):
         """Test successful response with populated citations and relevance scores."""
@@ -155,7 +160,7 @@ class DocuMindStructuralEvaluationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(called_payload.categories, ["lease", "warranty"])
         self.assertEqual(called_payload.question, "What are my maintenance responsibilities?")
-        self.assertEqual(called_payload.landlord_id, "landlord-eval-3")
+        self.assertEqual(called_payload.landlord_id, "landlord_123")  # token uid, not the wire value ("landlord-eval-3") sent above
         self.assertEqual(called_payload.property_id, "property-eval-3")
 
     def test_invalid_payload_missing_question(self):

@@ -6,12 +6,17 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
+from api.auth import verify_firebase_token
 from models.documind_models import DocListResponse, DocUploadResponse, DocumentInfo
 
 
 class DocuMindDocumentsApiTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        app.dependency_overrides[verify_firebase_token] = lambda: {"uid": "landlord_123"}
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
 
     def test_documind_upload_returns_200_and_calls_service(self):
         mocked_upload_response = DocUploadResponse(
@@ -41,7 +46,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["doc_id"], "doc-123")
-        self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord_123")  # token uid, not the wire value ("landlord-1") sent above
         self.assertEqual(call_kwargs["property_id"], "property-1")
         self.assertEqual(call_kwargs["category"], "lease")
         self.assertEqual(call_kwargs["file"].filename, "lease.pdf")
@@ -144,12 +149,23 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["total_count"], 1)
         self.assertEqual(payload["documents"][0]["filename"], "lease.pdf")
-        self.assertEqual(call_args[0], "landlord-1")
+        self.assertEqual(call_args[0], "landlord_123")  # token uid, not the wire value ("landlord-1") sent above
         self.assertEqual(call_args[1], "property-1")
 
-    def test_list_documents_returns_422_without_landlord_id(self):
-        response = self.client.get("/api/rex/documind/documents")
-        self.assertEqual(response.status_code, 422)
+    def test_list_documents_succeeds_without_landlord_id_query_param(self):
+        # landlord_id is no longer a client-supplied query param — it comes
+        # from the authenticated token (see Depends(current_landlord_id)),
+        # so omitting it from the query string is no longer a 422; the
+        # authenticated (overridden) identity is used instead.
+        with patch(
+            "api.rex_routes.documind_service.list_documents",
+            new=AsyncMock(return_value=DocListResponse(documents=[], total_count=0)),
+        ) as mocked_list:
+            response = self.client.get("/api/rex/documind/documents")
+            call_args = mocked_list.await_args.args
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(call_args[0], "landlord_123")
 
     def test_delete_document_returns_200_and_calls_service(self):
         with patch(
@@ -172,7 +188,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["doc_id"], "doc-1")
-        self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord_123")  # token uid, not the wire value ("landlord-1") sent above
         self.assertEqual(call_kwargs["property_id"], "property-1")
         self.assertEqual(call_kwargs["doc_id"], "doc-1")
 
@@ -194,7 +210,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["filename"], "Ayer 8 lease 2023.pdf")
         self.assertEqual(call_kwargs["doc_id"], "doc-1")
-        self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord_123")  # token uid, not the wire value ("landlord-1") sent above
         self.assertEqual(call_kwargs["filename"], "Ayer 8 lease 2023.pdf")
 
     def test_rename_document_returns_400_on_invalid_name(self):
@@ -222,7 +238,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["view_url"], "https://fake-storage.example/doc-1.pdf?exp=123")
-        self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord_123")  # token uid, not the wire value ("landlord-1") sent above
         self.assertEqual(call_kwargs["property_id"], "property-1")
         self.assertEqual(call_kwargs["doc_id"], "doc-1")
 
@@ -265,7 +281,7 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["documents_updated"], 2)
-        self.assertEqual(call_kwargs["landlord_id"], "landlord-1")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord_123")  # token uid, not the wire value ("landlord-1") sent above
         self.assertEqual(call_kwargs["property_id"], "property-1")
         self.assertEqual(call_kwargs["unit_id"], "unit-9")
 
@@ -275,6 +291,16 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
             json={"landlord_id": "landlord-1"},
         )
         self.assertEqual(response.status_code, 422)
+
+    def test_list_documents_without_token_is_401(self):
+        # A fresh client with no auth override installed.
+        from main import app
+        from fastapi.testclient import TestClient
+        app.dependency_overrides.clear()   # exercise the REAL auth dependency, not the override
+        bare = TestClient(app)
+        r = bare.get("/api/rex/documind/documents?property_id=p1")
+        assert r.status_code == 401
+        assert r.json()["detail"]["code"] == "token_missing"
 
 
 if __name__ == "__main__":

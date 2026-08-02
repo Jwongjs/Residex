@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
+from api.auth import verify_firebase_token
 from models.documind_models import (
     ExpenseLine,
     FinanceSummaryResponse,
@@ -35,6 +36,10 @@ def _fake_summary():
 class FinanceSummaryApiTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        app.dependency_overrides[verify_firebase_token] = lambda: {"uid": "landlord_123"}
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
 
     def test_finance_summary_returns_200_and_forwards_params(self):
         with patch(
@@ -51,7 +56,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["totals"]["statutory_rental_income"], 60106.58)
         self.assertEqual(body["totals"]["statutory_note"], "Estimate — for your tax agent")
-        self.assertEqual(call_args, ("landlord-1", 2025))
+        self.assertEqual(call_args, ("landlord_123", 2025))  # token uid, not the wire value ("landlord-1") sent above
 
     def test_finance_summary_requires_year(self):
         response = self.client.get(
@@ -73,7 +78,7 @@ class FinanceSummaryApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["month"], "2025-03")
-        self.assertEqual(call_kwargs["landlord_id"], "l1")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord_123")  # token uid, not the wire value ("l1") sent above
         self.assertEqual(call_kwargs["month"], "2025-03")
 
     def test_set_payment_exception_forwards_state(self):

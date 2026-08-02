@@ -4,12 +4,17 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
+from api.auth import verify_firebase_token
 from models.documind_models import AskResponse, UnitOption
 
 
 class DocuMindAskApiTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        app.dependency_overrides[verify_firebase_token] = lambda: {"uid": "landlord_123"}
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
 
     def test_documind_ask_returns_200_with_mocked_service_response(self):
         mocked_response = AskResponse(
