@@ -51,13 +51,8 @@ EMBED_DIM = 768 # Default to 768 if not set
 
 db = firestore.Client()
 
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(options={
-        'storageBucket': os.getenv(
-            'FIREBASE_STORAGE_BUCKET',
-            f"{os.getenv('GOOGLE_CLOUD_PROJECT')}.firebasestorage.app",
-        ),
-    })
+from firebase_app import ensure_initialized as _ensure_firebase_initialized
+_ensure_firebase_initialized()
 
 llm = ChatGoogleGenerativeAI(
                 model="models/gemini-2.5-flash",
