@@ -12,7 +12,6 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
   @override
   Future<DocuMindDocument> uploadDocument({
-    required String landlordId,
     required String propertyId,
     required String category,
     required File file,
@@ -21,13 +20,11 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
     void Function(String stage)? onProgress,
   }) async {
     print('🔵 Repository: Upload document');
-    print('   - Landlord: $landlordId');
     print('   - Property: $propertyId');
     print('   - Category: $category');
 
     try {
       final model = await remoteDataSource.uploadDocument(
-        landlordId: landlordId,
         propertyId: propertyId,
         category: category,
         file: file,
@@ -45,7 +42,6 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
   @override
   Future<DocuMindAnswer> askQuestion({
-    required String landlordId,
     required String propertyId,
     required String question,
     int topK = 4,
@@ -56,13 +52,11 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
     String? userAction,
   }) async {
     print('🔵 Repository: Ask question');
-    print('   - Landlord: $landlordId');
     print('   - Property: $propertyId');
     print('   - Question: $question');
 
     try {
       final model = await remoteDataSource.askQuestion(
-        landlordId: landlordId,
         propertyId: propertyId,
         question: question,
         topK: topK,
@@ -82,17 +76,14 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
   @override
   Future<List<DocuMindDocument>> listDocuments({
-    required String landlordId,
     String? propertyId,
     String? unitId,
   }) async {
     print('🔵 Repository: List documents');
-    print('   - Landlord: $landlordId');
     print('   - Property: ${propertyId ?? "ALL"}');
 
     try {
       final models = await remoteDataSource.listDocuments(
-        landlordId: landlordId,
         propertyId: propertyId,
         unitId: unitId,
       );
@@ -106,18 +97,15 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
   @override
   Future<void> deleteDocument({
-    required String landlordId,
     required String propertyId,
     required String docId,
   }) async {
     print('🔵 Repository: Delete document');
-    print('   - Landlord: $landlordId');
     print('   - Property: $propertyId');
     print('   - Doc ID: $docId');
 
     try {
       await remoteDataSource.deleteDocument(
-        landlordId: landlordId,
         propertyId: propertyId,
         docId: docId,
       );
@@ -130,14 +118,12 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
   @override
   Future<void> deleteDocumentsForProperty({
-    required String landlordId,
     required String propertyId,
   }) async {
     print('🔵 Repository: Delete all documents for property $propertyId');
 
     try {
       await remoteDataSource.deleteDocumentsForProperty(
-        landlordId: landlordId,
         propertyId: propertyId,
       );
       print('✅ Repository: Property documents deleted');
@@ -149,7 +135,6 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
   @override
   Future<void> unassignUnitDocuments({
-    required String landlordId,
     required String propertyId,
     required String unitId,
   }) async {
@@ -157,7 +142,6 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
     try {
       await remoteDataSource.unassignUnitDocuments(
-        landlordId: landlordId,
         propertyId: propertyId,
         unitId: unitId,
       );
@@ -170,12 +154,10 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
   @override
   Future<String> getDocumentViewUrl({
-    required String landlordId,
     required String propertyId,
     required String docId,
   }) async {
     return await remoteDataSource.getDocumentViewUrl(
-      landlordId: landlordId,
       propertyId: propertyId,
       docId: docId,
     );
@@ -183,9 +165,8 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
 
   @override
   Future<FinanceSummary> getFinanceSummary({
-    required String landlordId,
     required int year,
   }) {
-    return remoteDataSource.getFinanceSummary(landlordId: landlordId, year: year);
+    return remoteDataSource.getFinanceSummary(year: year);
   }
 }

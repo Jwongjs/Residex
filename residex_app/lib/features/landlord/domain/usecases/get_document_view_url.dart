@@ -7,12 +7,10 @@ class GetDocumentViewUrl {
   const GetDocumentViewUrl(this.repository);
 
   Future<String> call({
-    required String landlordId,
     required String propertyId,
     required String docId,
   }) async {
     return await repository.getDocumentViewUrl(
-      landlordId: landlordId,
       propertyId: propertyId,
       docId: docId,
     );

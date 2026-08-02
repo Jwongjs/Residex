@@ -9,7 +9,6 @@ class _FakeRepo implements DocuMindRepository {
 
   @override
   Future<DocuMindDocument> uploadDocument({
-    required String landlordId,
     required String propertyId,
     required String category,
     required File file,
@@ -46,7 +45,6 @@ void main() {
 
     final stages = <String>[];
     await usecase(
-      landlordId: 'l1',
       propertyId: 'p1',
       category: 'lease',
       file: tempFile,

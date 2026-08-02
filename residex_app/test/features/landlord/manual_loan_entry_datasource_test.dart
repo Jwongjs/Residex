@@ -14,7 +14,6 @@ void main() {
     final ds = DocuMindRemoteDataSource(httpClient: client);
 
     await ds.recordManualLoanEntry(
-      landlordId: 'l1',
       propertyId: 'p1',
       year: 2025,
       cadence: 'annual',
@@ -25,7 +24,6 @@ void main() {
     expect(captured.method, 'PUT');
     expect(captured.url.path, contains('/documind/finance/manual-loan-entry'));
     final body = json.decode(captured.body) as Map<String, dynamic>;
-    expect(body['landlord_id'], 'l1');
     expect(body['property_id'], 'p1');
     expect(body['year'], 2025);
     expect(body['cadence'], 'annual');
@@ -43,7 +41,6 @@ void main() {
     final ds = DocuMindRemoteDataSource(httpClient: client);
 
     await ds.recordManualLoanEntry(
-      landlordId: 'l1',
       propertyId: 'p1',
       year: 2025,
       cadence: 'monthly',
@@ -62,7 +59,6 @@ void main() {
 
     expect(
       () => ds.recordManualLoanEntry(
-        landlordId: 'l1',
         propertyId: 'p1',
         year: 2025,
         cadence: 'annual',
@@ -82,7 +78,6 @@ void main() {
     final ds = DocuMindRemoteDataSource(httpClient: client);
 
     await ds.deleteManualLoanEntry(
-      landlordId: 'l1',
       propertyId: 'p1',
       year: 2025,
       month: 3,
@@ -90,7 +85,6 @@ void main() {
 
     expect(captured.method, 'DELETE');
     expect(captured.url.path, contains('/documind/finance/manual-loan-entry'));
-    expect(captured.url.queryParameters['landlord_id'], 'l1');
     expect(captured.url.queryParameters['property_id'], 'p1');
     expect(captured.url.queryParameters['year'], '2025');
     expect(captured.url.queryParameters['month'], '3');
@@ -105,7 +99,6 @@ void main() {
     final ds = DocuMindRemoteDataSource(httpClient: client);
 
     await ds.recordManualLoanEntry(
-      landlordId: 'l1',
       propertyId: 'p1',
       year: 2025,
       cadence: 'annual',
@@ -127,7 +120,6 @@ void main() {
     final ds = DocuMindRemoteDataSource(httpClient: client);
 
     await ds.setUnitLoanExemption(
-      landlordId: 'l1',
       propertyId: 'p1',
       unitId: 'u1',
     );
@@ -135,7 +127,6 @@ void main() {
     expect(captured.method, 'PUT');
     expect(captured.url.path, contains('/documind/finance/unit-loan-exemption'));
     final body = json.decode(captured.body) as Map<String, dynamic>;
-    expect(body['landlord_id'], 'l1');
     expect(body['property_id'], 'p1');
     expect(body['unit_id'], 'u1');
   });
@@ -154,7 +145,6 @@ void main() {
     final ds = DocuMindRemoteDataSource(httpClient: client);
 
     final entries = await ds.listManualLoanEntries(
-      landlordId: 'l1',
       propertyId: 'p1',
       year: 2025,
     );

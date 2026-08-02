@@ -14,7 +14,6 @@ class UploadDocument {
   const UploadDocument(this.repository);
 
   Future<DocuMindDocument> call({
-    required String landlordId,
     required String propertyId,
     required String category,
     required File file,
@@ -47,7 +46,6 @@ class UploadDocument {
     print('   - Category: $category');
 
     return await repository.uploadDocument(
-      landlordId: landlordId,
       propertyId: propertyId,
       category: category,
       file: file,

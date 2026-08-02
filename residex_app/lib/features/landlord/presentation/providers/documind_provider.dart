@@ -70,11 +70,9 @@ final documindNavTargetProvider = StateProvider<String?>((ref) => null);
 /// is a category file manager and always shows the whole property.
 final documindDocumentsProvider = FutureProvider.family<List<DocuMindDocument>, String>(
   (ref, propertyId) async {
-    final landlordId = ref.watch(currentLandlordIdProvider);
     final useCase = ref.watch(listDocumentsUseCaseProvider);
 
     return await useCase(
-      landlordId: landlordId,
       propertyId: propertyId,
     );
   },
@@ -98,11 +96,9 @@ final uploadDocumentActionProvider = Provider<Future<DocuMindDocument> Function(
     String? unitLabel,
     void Function(String stage)? onProgress,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final useCase = ref.read(uploadDocumentUseCaseProvider);
 
     final result = await useCase(
-      landlordId: landlordId,
       propertyId: propertyId,
       category: category,
       file: file,
@@ -141,13 +137,11 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
     int conversationTurn = 1,
     String? userAction,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final useCase = ref.read(askDocuMindQuestionUseCaseProvider);
 
     // No client-side unit scoping: the backend's search router infers the
     // unit from the question and the recent conversation.
     return await useCase(
-      landlordId: landlordId,
       propertyId: propertyId,
       question: question,
       topK: topK,
@@ -173,11 +167,9 @@ final deleteDocumentActionProvider = Provider<
     print('   - Property: $propertyId');
     print('   - Doc ID: $docId');
 
-    final landlordId = ref.read(currentLandlordIdProvider);
     final repository = ref.read(documindRepositoryProvider);
 
     await repository.deleteDocument(
-      landlordId: landlordId,
       propertyId: propertyId,
       docId: docId,
     );
@@ -203,11 +195,9 @@ final unassignUnitDocumentsActionProvider = Provider<
     required String propertyId,
     required String unitId,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final repository = ref.read(documindRepositoryProvider);
 
     await repository.unassignUnitDocuments(
-      landlordId: landlordId,
       propertyId: propertyId,
       unitId: unitId,
     );
@@ -227,11 +217,9 @@ final documindGetViewUrlActionProvider = Provider<
     required String propertyId,
     required String docId,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final useCase = ref.read(getDocumentViewUrlUseCaseProvider);
 
     return await useCase(
-      landlordId: landlordId,
       propertyId: propertyId,
       docId: docId,
     );
@@ -247,10 +235,8 @@ final updateExpenseLinesActionProvider = Provider<Future<void> Function({
     required String docId,
     required List<Map<String, dynamic>> lines,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.updateExpenseLines(
-      landlordId: landlordId,
       docId: docId,
       lines: lines,
     );
@@ -258,6 +244,29 @@ final updateExpenseLinesActionProvider = Provider<Future<void> Function({
     ref.invalidate(documindDocumentsProvider);
     ref.invalidate(financeSummaryProvider);
     ref.invalidate(financeYearsProvider);
+  };
+});
+
+/// Rename a document's display filename. Returns the cleaned name the
+/// backend stored (trimmed). Invalidates the document list for [propertyId]
+/// so the new label shows immediately.
+final renameDocumentActionProvider = Provider<Future<String> Function({
+  required String propertyId,
+  required String docId,
+  required String filename,
+})>((ref) {
+  return ({
+    required String propertyId,
+    required String docId,
+    required String filename,
+  }) async {
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    final saved = await dataSource.renameDocument(
+      docId: docId,
+      filename: filename,
+    );
+    ref.invalidate(documindDocumentsProvider(propertyId));
+    return saved;
   };
 });
 
@@ -276,10 +285,8 @@ final setPaymentExceptionActionProvider = Provider<Future<void> Function({
     String? reason,
     String? state,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.setPaymentException(
-      landlordId: landlordId,
       propertyId: propertyId,
       unitId: unitId,
       month: month,
@@ -301,10 +308,8 @@ final clearPaymentExceptionActionProvider = Provider<Future<void> Function({
     required String month,
     String? unitId,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.clearPaymentException(
-      landlordId: landlordId,
       propertyId: propertyId,
       unitId: unitId,
       month: month,
@@ -324,10 +329,9 @@ final setDocumentUnavailableActionProvider = Provider<Future<void> Function({
     required int year,
     required String category,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.setDocumentUnavailable(
-      landlordId: landlordId, propertyId: propertyId, year: year, category: category,
+      propertyId: propertyId, year: year, category: category,
     );
     ref.invalidate(financeSummaryProvider);
   };
@@ -344,10 +348,9 @@ final clearDocumentUnavailableActionProvider = Provider<Future<void> Function({
     required int year,
     required String category,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.clearDocumentUnavailable(
-      landlordId: landlordId, propertyId: propertyId, year: year, category: category,
+      propertyId: propertyId, year: year, category: category,
     );
     ref.invalidate(financeSummaryProvider);
   };
@@ -368,10 +371,9 @@ final recordRentRecoveryActionProvider = Provider<Future<void> Function({
     required int receivedYear,
     String? unitId,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.recordRentRecovery(
-      landlordId: landlordId, propertyId: propertyId, unitId: unitId,
+      propertyId: propertyId, unitId: unitId,
       originalMonth: originalMonth, amount: amount, receivedYear: receivedYear,
     );
     ref.invalidate(financeSummaryProvider);
@@ -389,10 +391,9 @@ final clearRentRecoveryActionProvider = Provider<Future<void> Function({
     required String originalMonth,
     String? unitId,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.clearRentRecovery(
-      landlordId: landlordId, propertyId: propertyId, unitId: unitId, originalMonth: originalMonth,
+      propertyId: propertyId, unitId: unitId, originalMonth: originalMonth,
     );
     ref.invalidate(financeSummaryProvider);
   };
@@ -417,10 +418,9 @@ final recordManualLoanEntryActionProvider = Provider<Future<void> Function({
     int? month,
     String? unitId,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.recordManualLoanEntry(
-      landlordId: landlordId, propertyId: propertyId, year: year, cadence: cadence,
+      propertyId: propertyId, year: year, cadence: cadence,
       interestPaid: interestPaid, principalPaid: principalPaid, month: month, unitId: unitId,
     );
     ref.invalidate(financeSummaryProvider);
@@ -440,10 +440,9 @@ final deleteManualLoanEntryActionProvider = Provider<Future<void> Function({
     int? month,
     String? unitId,
   }) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.deleteManualLoanEntry(
-      landlordId: landlordId, propertyId: propertyId, year: year, month: month, unitId: unitId,
+      propertyId: propertyId, year: year, month: month, unitId: unitId,
     );
     ref.invalidate(financeSummaryProvider);
   };
@@ -455,10 +454,9 @@ final setUnitLoanExemptionActionProvider = Provider<Future<void> Function({
   required String unitId,
 })>((ref) {
   return ({required String propertyId, required String unitId}) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.setUnitLoanExemption(
-      landlordId: landlordId, propertyId: propertyId, unitId: unitId,
+      propertyId: propertyId, unitId: unitId,
     );
     ref.invalidate(financeSummaryProvider);
   };
@@ -470,10 +468,9 @@ final clearUnitLoanExemptionActionProvider = Provider<Future<void> Function({
   required String unitId,
 })>((ref) {
   return ({required String propertyId, required String unitId}) async {
-    final landlordId = ref.read(currentLandlordIdProvider);
     final dataSource = ref.read(documindRemoteDataSourceProvider);
     await dataSource.clearUnitLoanExemption(
-      landlordId: landlordId, propertyId: propertyId, unitId: unitId,
+      propertyId: propertyId, unitId: unitId,
     );
     ref.invalidate(financeSummaryProvider);
   };
@@ -482,9 +479,8 @@ final clearUnitLoanExemptionActionProvider = Provider<Future<void> Function({
 /// All manual loan entries for one property and year.
 final manualLoanEntriesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, ({String propertyId, int year})>((ref, arg) async {
-  final landlordId = ref.read(currentLandlordIdProvider);
   final dataSource = ref.read(documindRemoteDataSourceProvider);
   return dataSource.listManualLoanEntries(
-    landlordId: landlordId, propertyId: arg.propertyId, year: arg.year,
+    propertyId: arg.propertyId, year: arg.year,
   );
 });

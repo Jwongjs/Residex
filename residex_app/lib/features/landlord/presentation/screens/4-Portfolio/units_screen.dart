@@ -42,10 +42,8 @@ class UnitsScreen extends ConsumerWidget {
     // happens to them. A count failure must never block unit deletion.
     int assignedDocCount = 0;
     try {
-      final landlordId = ref.read(currentLandlordIdProvider);
       final listDocuments = ref.read(listDocumentsUseCaseProvider);
       final docs = await listDocuments(
-        landlordId: landlordId,
         propertyId: propertyId,
       );
       assignedDocCount = docs.where((doc) => doc.unitId == unit.id).length;

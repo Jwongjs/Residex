@@ -8,16 +8,13 @@ class ListDocuments {
   const ListDocuments(this.repository);
 
   Future<List<DocuMindDocument>> call({
-    required String landlordId,
     String? propertyId,
     String? unitId,
   }) async {
     print('✅ UseCase: List documents');
-    print('   - Landlord: $landlordId');
     print('   - Property: ${propertyId ?? "All"}');
 
     final documents = await repository.listDocuments(
-      landlordId: landlordId,
       propertyId: propertyId,
       unitId: unitId,
     );

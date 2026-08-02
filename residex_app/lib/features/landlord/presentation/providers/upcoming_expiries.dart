@@ -93,8 +93,7 @@ String formatExpiryDate(DateTime date) =>
 
 /// Landlord-wide upcoming expiries (lease + insurance), next 90 days.
 final upcomingExpiriesProvider = FutureProvider<List<ExpiryEntry>>((ref) async {
-  final landlordId = ref.watch(currentLandlordIdProvider);
   final useCase = ref.watch(listDocumentsUseCaseProvider);
-  final docs = await useCase(landlordId: landlordId);
+  final docs = await useCase();
   return foldUpcomingExpiries(docs, DateTime.now());
 });

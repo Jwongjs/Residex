@@ -10,9 +10,8 @@ final financeYearProvider = StateProvider<int>((ref) => DateTime.now().year);
 /// Year-selector options, derived from the extracted facts on the
 /// landlord's documents plus the current year.
 final financeYearsProvider = FutureProvider<List<int>>((ref) async {
-  final landlordId = ref.watch(currentLandlordIdProvider);
   final useCase = ref.watch(listDocumentsUseCaseProvider);
-  final docs = await useCase(landlordId: landlordId);
+  final docs = await useCase();
   return financeYearOptions(docs, DateTime.now().year);
 });
 
@@ -20,7 +19,6 @@ final financeYearsProvider = FutureProvider<List<int>>((ref) async {
 /// folds extracted facts fresh on every request — no schedule, zero LLM.
 final financeSummaryProvider =
     FutureProvider.family<FinanceSummary, int>((ref, year) async {
-  final landlordId = ref.watch(currentLandlordIdProvider);
   final repository = ref.watch(documindRepositoryProvider);
-  return repository.getFinanceSummary(landlordId: landlordId, year: year);
+  return repository.getFinanceSummary(year: year);
 });

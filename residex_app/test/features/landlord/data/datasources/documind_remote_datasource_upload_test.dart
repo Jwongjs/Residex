@@ -40,7 +40,6 @@ void main() {
     final stages = <String>[];
 
     final model = await ds.uploadDocument(
-      landlordId: 'l1',
       propertyId: 'p1',
       category: 'lease',
       file: tempFile,
@@ -60,7 +59,7 @@ void main() {
 
     expect(
       () => ds.uploadDocument(
-        landlordId: 'l1', propertyId: 'p1', category: 'nope', file: tempFile),
+        propertyId: 'p1', category: 'nope', file: tempFile),
       throwsA(isA<Exception>()),
     );
   });
@@ -71,7 +70,7 @@ void main() {
 
     expect(
       () => ds.uploadDocument(
-        landlordId: 'l1', propertyId: 'p1', category: 'lease', file: tempFile),
+        propertyId: 'p1', category: 'lease', file: tempFile),
       throwsA(isA<Exception>()),
     );
   });

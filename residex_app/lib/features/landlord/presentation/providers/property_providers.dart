@@ -293,9 +293,7 @@ class PropertyController {
   /// simply resumes.
   Future<void> deleteProperty(String propertyId) async {
     try {
-      final landlordId = _ref.read(currentLandlordIdProvider);
       await _ref.read(documindRepositoryProvider).deleteDocumentsForProperty(
-            landlordId: landlordId,
             propertyId: propertyId,
           );
 

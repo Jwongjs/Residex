@@ -8,7 +8,6 @@ class AskDocuMindQuestion {
   const AskDocuMindQuestion(this.repository);
 
   Future<DocuMindAnswer> call({
-    required String landlordId,
     required String propertyId,
     required String question,
     int topK = 4,
@@ -32,7 +31,6 @@ class AskDocuMindQuestion {
     print('   - Property: $propertyId');
 
     return await repository.askQuestion(
-      landlordId: landlordId,
       propertyId: propertyId,
       question: question,
       topK: topK,

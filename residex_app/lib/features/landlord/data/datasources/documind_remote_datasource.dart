@@ -15,7 +15,6 @@ class DocuMindRemoteDataSource {
 
   /// Upload document to backend
   Future<DocuMindDocumentModel> uploadDocument({
-    required String landlordId,
     required String propertyId,
     required String category,
     required File file,
@@ -28,7 +27,6 @@ class DocuMindRemoteDataSource {
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindUploadStream}');
     final request = http.MultipartRequest('POST', uri);
 
-    request.fields['landlord_id'] = landlordId;
     request.fields['property_id'] = propertyId;
     request.fields['category'] = category;
     if (unitId != null) request.fields['unit_id'] = unitId;
@@ -79,7 +77,6 @@ class DocuMindRemoteDataSource {
 
   /// Ask question to DocuMind
   Future<DocuMindAnswerModel> askQuestion({
-    required String landlordId,
     required String propertyId,
     required String question,
     int topK = 4,
@@ -90,7 +87,6 @@ class DocuMindRemoteDataSource {
     String? userAction,
   }) async {
     print('🔵 DataSource: Ask question');
-    print('   - Landlord: $landlordId');
     print('   - Property: $propertyId');
     print('   - Question: $question');
 
@@ -101,7 +97,6 @@ class DocuMindRemoteDataSource {
         uri,
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'landlord_id': landlordId,
           'property_id': propertyId,
           'question': question,
           'top_k': topK,
@@ -130,18 +125,14 @@ class DocuMindRemoteDataSource {
 
   /// List documents for a property
   Future<List<DocuMindDocumentModel>> listDocuments({
-    required String landlordId,
     String? propertyId,
     String? unitId,
   }) async {
     print('🔵 DataSource: List documents');
-    print('   - Landlord: $landlordId');
     print('   - Property: ${propertyId ?? "ALL"}');
     print('   - Unit: ${unitId ?? "ALL"}');
 
-    final queryParams = <String, String>{
-      'landlord_id': landlordId,
-    };
+    final queryParams = <String, String>{};
 
     if (propertyId != null) {
       queryParams['property_id'] = propertyId;
@@ -179,18 +170,15 @@ class DocuMindRemoteDataSource {
   // ✅ ADDED: Delete document method
   /// Delete a document from backend
   Future<void> deleteDocument({
-    required String landlordId,
     required String propertyId,
     required String docId,
   }) async {
     print('🔵 DataSource: Delete document');
-    print('   - Landlord: $landlordId');
     print('   - Property: $propertyId');
     print('   - Doc ID: $docId');
 
     final uri = Uri.parse('${ApiConstants.baseUrl}/api/rex/documind/documents/$docId')
         .replace(queryParameters: {
-      'landlord_id': landlordId,
       'property_id': propertyId,
     });
 
@@ -211,14 +199,12 @@ class DocuMindRemoteDataSource {
 
   /// Delete ALL documents for a property (part of the property-delete cascade)
   Future<void> deleteDocumentsForProperty({
-    required String landlordId,
     required String propertyId,
   }) async {
     print('🔵 DataSource: Delete all documents for property $propertyId');
 
     final uri = Uri.parse(
-            '${ApiConstants.baseUrl}${ApiConstants.documindPropertyDocs(propertyId)}')
-        .replace(queryParameters: {'landlord_id': landlordId});
+            '${ApiConstants.baseUrl}${ApiConstants.documindPropertyDocs(propertyId)}');
 
     try {
       final response = await httpClient.delete(uri);
@@ -238,7 +224,6 @@ class DocuMindRemoteDataSource {
   /// Convert one unit's documents to property-wide (called before deleting
   /// the unit, so its documents don't keep a stale unit_id)
   Future<void> unassignUnitDocuments({
-    required String landlordId,
     required String propertyId,
     required String unitId,
   }) async {
@@ -253,7 +238,6 @@ class DocuMindRemoteDataSource {
         uri,
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'landlord_id': landlordId,
           'property_id': propertyId,
           'unit_id': unitId,
         }),
@@ -273,12 +257,10 @@ class DocuMindRemoteDataSource {
 
   /// Deterministic finance summary for one landlord and calendar year.
   Future<FinanceSummary> getFinanceSummary({
-    required String landlordId,
     required int year,
   }) async {
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindFinanceSummary}')
         .replace(queryParameters: {
-      'landlord_id': landlordId,
       'year': '$year',
     });
 
@@ -293,13 +275,11 @@ class DocuMindRemoteDataSource {
 
   /// Get a short-lived signed URL to view a document's original PDF
   Future<String> getDocumentViewUrl({
-    required String landlordId,
     required String propertyId,
     required String docId,
   }) async {
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindViewUrl(docId)}')
         .replace(queryParameters: {
-      'landlord_id': landlordId,
       'property_id': propertyId,
     });
 
@@ -317,7 +297,6 @@ class DocuMindRemoteDataSource {
 
   /// Replace a document's reviewed expense lines.
   Future<void> updateExpenseLines({
-    required String landlordId,
     required String docId,
     required List<Map<String, dynamic>> lines,
   }) async {
@@ -326,11 +305,32 @@ class DocuMindRemoteDataSource {
     final response = await httpClient.patch(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: json.encode({'landlord_id': landlordId, 'expense_lines': lines}),
+      body: json.encode({'expense_lines': lines}),
     );
     if (response.statusCode != 200) {
       throw Exception('Failed to update expense lines: ${response.body}');
     }
+  }
+
+  /// Rename a document's display filename. Only the label changes — the
+  /// stored file and its indexed chunks' text are untouched. Returns the
+  /// cleaned filename the backend stored.
+  Future<String> renameDocument({
+    required String docId,
+    required String filename,
+  }) async {
+    final uri = Uri.parse(
+        '${ApiConstants.baseUrl}${ApiConstants.documindRenameDocument(docId)}');
+    final response = await httpClient.patch(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'filename': filename}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to rename document: ${response.body}');
+    }
+    final decoded = json.decode(response.body) as Map<String, dynamic>;
+    return decoded['filename'] as String? ?? filename;
   }
 
   /// Mark one month as "no payment received". Excludes that month from
@@ -338,7 +338,6 @@ class DocuMindRemoteDataSource {
   /// 'outstanding' (still being chased, default) or 'written_off' (given
   /// up on, irrecoverable).
   Future<void> setPaymentException({
-    required String landlordId,
     required String propertyId,
     required String month,
     String? unitId,
@@ -350,7 +349,6 @@ class DocuMindRemoteDataSource {
       uri,
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
-        'landlord_id': landlordId,
         'property_id': propertyId,
         'unit_id': unitId,
         'month': month,
@@ -365,13 +363,11 @@ class DocuMindRemoteDataSource {
 
   /// Clear a "no payment received" mark. Idempotent.
   Future<void> clearPaymentException({
-    required String landlordId,
     required String propertyId,
     required String month,
     String? unitId,
   }) async {
     final queryParameters = {
-      'landlord_id': landlordId,
       'property_id': propertyId,
       'month': month,
       if (unitId != null) 'unit_id': unitId,
@@ -387,7 +383,6 @@ class DocuMindRemoteDataSource {
   /// Acknowledge that a coverage gap cannot be filled for one (year,
   /// category). The year then settles as complete-with-gaps.
   Future<void> setDocumentUnavailable({
-    required String landlordId,
     required String propertyId,
     required int year,
     required String category,
@@ -397,7 +392,6 @@ class DocuMindRemoteDataSource {
       uri,
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
-        'landlord_id': landlordId,
         'property_id': propertyId,
         'year': year,
         'category': category,
@@ -410,13 +404,11 @@ class DocuMindRemoteDataSource {
 
   /// Clear an 'unavailable' mark. Idempotent.
   Future<void> clearDocumentUnavailable({
-    required String landlordId,
     required String propertyId,
     required int year,
     required String category,
   }) async {
     final queryParameters = {
-      'landlord_id': landlordId,
       'property_id': propertyId,
       'year': '$year',
       'category': category,
@@ -432,7 +424,6 @@ class DocuMindRemoteDataSource {
   /// Book a written-off month's rent as income in the year it actually
   /// arrived. Requires the month to already be on file as written_off.
   Future<void> recordRentRecovery({
-    required String landlordId,
     required String propertyId,
     required String originalMonth,
     required double amount,
@@ -444,7 +435,6 @@ class DocuMindRemoteDataSource {
       uri,
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
-        'landlord_id': landlordId,
         'property_id': propertyId,
         'unit_id': unitId,
         'original_month': originalMonth,
@@ -459,13 +449,11 @@ class DocuMindRemoteDataSource {
 
   /// Remove a recorded rent recovery. Idempotent.
   Future<void> clearRentRecovery({
-    required String landlordId,
     required String propertyId,
     required String originalMonth,
     String? unitId,
   }) async {
     final queryParameters = {
-      'landlord_id': landlordId,
       'property_id': propertyId,
       'original_month': originalMonth,
       if (unitId != null) 'unit_id': unitId,
@@ -481,7 +469,6 @@ class DocuMindRemoteDataSource {
   /// Book manually-entered loan interest/principal for a period. Idempotent
   /// per (property, year, month). [month] is required only for monthly cadence.
   Future<void> recordManualLoanEntry({
-    required String landlordId,
     required String propertyId,
     required int year,
     required String cadence,
@@ -495,7 +482,6 @@ class DocuMindRemoteDataSource {
       uri,
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
-        'landlord_id': landlordId,
         'property_id': propertyId,
         'year': year,
         'cadence': cadence,
@@ -512,14 +498,12 @@ class DocuMindRemoteDataSource {
 
   /// Remove a manual loan entry. Idempotent.
   Future<void> deleteManualLoanEntry({
-    required String landlordId,
     required String propertyId,
     required int year,
     int? month,
     String? unitId,
   }) async {
     final queryParameters = {
-      'landlord_id': landlordId,
       'property_id': propertyId,
       'year': '$year',
       if (month != null) 'month': '$month',
@@ -535,7 +519,6 @@ class DocuMindRemoteDataSource {
 
   /// Mark a unit as having no loan (excludes it from loan-figure completeness).
   Future<void> setUnitLoanExemption({
-    required String landlordId,
     required String propertyId,
     required String unitId,
   }) async {
@@ -543,7 +526,7 @@ class DocuMindRemoteDataSource {
     final response = await httpClient.put(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: json.encode({'landlord_id': landlordId, 'property_id': propertyId, 'unit_id': unitId}),
+      body: json.encode({'property_id': propertyId, 'unit_id': unitId}),
     );
     if (response.statusCode != 200) {
       throw Exception('Failed to mark unit no-loan: ${response.body}');
@@ -552,13 +535,12 @@ class DocuMindRemoteDataSource {
 
   /// Remove a unit's no-loan mark. Idempotent.
   Future<void> clearUnitLoanExemption({
-    required String landlordId,
     required String propertyId,
     required String unitId,
   }) async {
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindUnitLoanExemption}')
         .replace(queryParameters: {
-      'landlord_id': landlordId, 'property_id': propertyId, 'unit_id': unitId,
+      'property_id': propertyId, 'unit_id': unitId,
     });
     final response = await httpClient.delete(uri);
     if (response.statusCode != 200) {
@@ -568,12 +550,10 @@ class DocuMindRemoteDataSource {
 
   /// All manual loan entries for one property and year.
   Future<List<Map<String, dynamic>>> listManualLoanEntries({
-    required String landlordId,
     required String propertyId,
     required int year,
   }) async {
     final queryParameters = {
-      'landlord_id': landlordId,
       'property_id': propertyId,
       'year': '$year',
     };
