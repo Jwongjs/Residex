@@ -849,7 +849,7 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         )
 
         payload = AskRequest(
-            landlord_id="l1", property_id="p1", question="When does unit A's lease expire?"
+            property_id="p1", question="When does unit A's lease expire?"
         )
         response = await service.ask_documind(payload, "l1")
 
@@ -865,7 +865,7 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("unused"))
 
         payload = AskRequest(
-            landlord_id="l1", property_id="p1", question="What is the rent for unit D?"
+            property_id="p1", question="What is the rent for unit D?"
         )
         response = await service.ask_documind(payload, "l1")
 
@@ -960,7 +960,7 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("unused"))
 
         payload = AskRequest(
-            landlord_id="l1", property_id="p1", question="what is the rent for unit A?"
+            property_id="p1", question="what is the rent for unit A?"
         )
         response = await service.ask_documind(payload, "l1")
 
