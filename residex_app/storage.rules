@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// All client access to Storage is denied. The backend uses the Admin SDK,
+// which bypasses these rules; the app never touches Storage directly and
+// views documents through short-lived backend-signed URLs.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
