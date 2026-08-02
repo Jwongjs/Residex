@@ -49,9 +49,16 @@ makes that dependency explicit. Both `documind_service` and the auth module call
 it; whichever runs first wins.
 
 The existing call passes no credential argument, so it resolves Application
-Default Credentials. That behaviour is preserved exactly — it is also what makes
-dropping `serviceAccountKey.json` a pure environment change in Phase 2, with no
-code change.
+Default Credentials. That behaviour is preserved exactly.
+
+One caveat for Phase 2, recorded here so it is not discovered late: dropping
+`serviceAccountKey.json` in favour of an ambient runtime identity is *not* a pure
+environment change. `blob.generate_signed_url(...)` in
+`documents/document_lifecycle_service.py:352` needs a private key to sign, which
+ambient credentials do not have. On Cloud Run it requires passing
+`service_account_email` and using the IAM `signBlob` API, plus the
+`iam.serviceAccountTokenCreator` role. That is Phase 2 work, but it is a code
+change, not just configuration.
 
 #### `backend/api/auth.py` (new)
 
@@ -212,10 +219,32 @@ bypasses rules entirely, and the app never touches Storage directly —
 `firebase_storage` appears in `pubspec.yaml` but is unused in `lib/`. Uploads go
 through the backend and views return backend-generated signed URLs.
 
-No `storage.rules` exists in the repo today, so whatever is deployed on that
-bucket is unversioned and unreviewed. **This must be checked in the Firebase
-console**; if it is the common default (`allow read, write: if request.auth != null`),
-every landlord's PDFs are currently readable by any signed-in user.
+The deployed rules were retrieved from the console and are **not** in version
+control. They are permissive but, as it happens, not currently exploitable:
+
+```
+match /contracts/{leaseId}          { allow read, write: if isAuthenticated(); }
+match /maintenance/{ticketId}/{f}   { allow read, write: if isAuthenticated(); }
+match /bills/{billId}/{f}           { allow read, write: if isAuthenticated(); }
+match /documents/{documentId}/{f}   { allow read, write: if isAuthenticated(); }
+match /profiles/{userId}            { allow read: if isAuthenticated();
+                                      allow write: if isOwner(userId); }
+```
+
+Four of these grant read *and write* to any authenticated user. They are harmless
+today only because nothing writes to those paths — no Dart file imports
+`firebase_storage` — and because DocuMind's own documents live under
+`documind/{landlord_id}/{property_id}/{doc_id}` (`documents/ingestion_service.py:176`),
+which no `match` block covers. Firebase Storage denies unmatched paths by default,
+so those PDFs are already unreachable from clients; they are served exclusively
+through 10-minute signed URLs generated server-side
+(`documents/document_lifecycle_service.py:352`) using the Admin SDK, which bypasses
+rules.
+
+So this is wrong-by-default rather than currently-exploited: each of those four
+blocks becomes a real cross-tenant read/write hole the moment anything is stored
+under it. Replacing the whole file with `allow read, write: if false` is both
+correct and zero-risk given no client code touches Storage.
 
 ### Credential hygiene
 
@@ -228,11 +257,14 @@ never reached the remote — verified against `origin/main`, `origin/branch1`, a
 `origin/branch2` — but the local branch is **235 commits ahead of `origin/main`**,
 so pushing for production work would publish them.
 
+The folder was untracked in commit `9d5dc9f`, which stops it tracking forward but
+does **not** purge the keys from history — they remain in the 235 unpushed commits.
+
 **Action: revoke those three keys.** Preferred over rewriting history. The folder
-is a deleted reference example unrelated to Residex, so the keys are almost
-certainly disposable; revocation is a five-minute job with zero risk, while
-`filter-repo` across 235 unpushed commits is a genuine footgun. This is
-independent of the rest of this phase and should be done immediately.
+was reference material from an earlier project, unrelated to Residex, so the keys
+are almost certainly disposable; revocation is a five-minute job with zero risk,
+while `filter-repo` across 235 unpushed commits is a genuine footgun. This is
+independent of the rest of this phase and should be done before the first push.
 
 `.gitignore` self-ignores — its own first line is `.gitignore` — which is why none
 of its rules bind for anyone but the local checkout. Remove that line and commit
@@ -257,10 +289,11 @@ the file.
 
 ## Migration note
 
-`documind_provider.dart:54` currently falls back to `'guest'` when signed out.
-Any Firestore data written under `landlord_id = 'guest'` becomes permanently
-unreachable after this change. Almost certainly development junk, but those
-documents should be counted before shipping rather than discovered afterward.
+`documind_provider.dart:54` falls back to `'guest'` when signed out, so data
+written under `landlord_id = 'guest'` would become unreachable once identity comes
+from the token. **Checked: zero such documents exist**, so there is no migration
+to perform. The `'guest'` fallback is still replaced with an explicit signed-out
+state, to prevent the class of orphaned data rather than to clean any up.
 
 ## Success criteria
 
