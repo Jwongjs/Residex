@@ -19,7 +19,8 @@ service cloud.firestore {
     
     // ========== PROPERTIES (for property name lookup) ==========
     match /properties/{propertyId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null &&
+                     request.auth.uid == resource.data.landlordId;
       allow create: if request.auth != null &&
                        request.auth.uid == request.resource.data.landlordId;
       allow update, delete: if request.auth != null &&
@@ -40,8 +41,7 @@ service cloud.firestore {
     
     // ========== LEASES (Future) ==========
     match /leases/{leaseId} {
-      allow read: if request.auth != null;
-      allow write: if false; // Only backend can write
+      allow read, write: if false; // Backend (Admin SDK) only; app never queries leases
     }
   }
 }
