@@ -53,8 +53,9 @@ class AuthedClient extends http.BaseClient {
       final clone = _cloneRequest(request, fresh);
       final retry = await _inner.send(clone);
       if (retry.statusCode != 401) return retry;
+      final retryBytes = await retry.stream.toBytes();
       await _onAuthFailure?.call();
-      return _rebuild(response, bytes);
+      return _rebuild(retry, retryBytes);
     }
 
     if (code == 'token_expired') {

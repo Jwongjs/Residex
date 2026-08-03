@@ -88,6 +88,125 @@ void main() {
     expect(callCount, 2);
   });
 
+  test('401 token_expired on replayable GET, retry returns a DIFFERENT 401 reason: returns the retry response, not the stale original', () async {
+    bool authFailureCalled = false;
+    int callCount = 0;
+
+    final inner = MockClient((req) async {
+      callCount++;
+      if (callCount == 1) {
+        return http.Response(
+          jsonEncode({
+            'detail': {'code': 'token_expired'}
+          }),
+          401,
+        );
+      }
+      // Retry fails for a DIFFERENT reason (e.g. concurrent revocation).
+      return http.Response(
+        jsonEncode({
+          'detail': {'code': 'forbidden'}
+        }),
+        401,
+      );
+    });
+
+    final client = AuthedClient(
+      inner,
+      ({bool forceRefresh = false}) async => forceRefresh ? 'fresh-token' : 'stale-token',
+      onAuthFailure: () async {
+        authFailureCalled = true;
+      },
+    );
+
+    final response = await client.get(Uri.parse('http://x/y'));
+
+    expect(response.statusCode, 401);
+    expect(jsonDecode(response.body), {
+      'detail': {'code': 'forbidden'}
+    });
+    expect(authFailureCalled, isTrue);
+    expect(callCount, 2);
+  });
+
+  test('401 token_expired on replayable GET, force-refresh yields no token: onAuthFailure called, no retry send, returns 401', () async {
+    bool authFailureCalled = false;
+    int callCount = 0;
+    final forceRefreshFlagsSeen = <bool>[];
+
+    final inner = MockClient((req) async {
+      callCount++;
+      return http.Response(
+        jsonEncode({
+          'detail': {'code': 'token_expired'}
+        }),
+        401,
+      );
+    });
+
+    final client = AuthedClient(
+      inner,
+      ({bool forceRefresh = false}) async {
+        forceRefreshFlagsSeen.add(forceRefresh);
+        // Initial token is fine, but force-refresh comes back null — e.g.
+        // the user got signed out of Firebase concurrently with the refresh.
+        if (forceRefresh) return null;
+        return 'stale-token';
+      },
+      onAuthFailure: () async {
+        authFailureCalled = true;
+      },
+    );
+
+    final response = await client.get(Uri.parse('http://x/y'));
+
+    expect(response.statusCode, 401);
+    expect(authFailureCalled, isTrue);
+    expect(forceRefreshFlagsSeen, contains(true));
+    // Only one inner send: no fresh token means no retry attempt.
+    expect(callCount, 1);
+  });
+
+  test('401 token_expired on a StreamedRequest (non-replayable): not retried, onAuthFailure not called', () async {
+    final forceRefreshFlagsSeen = <bool>[];
+    bool authFailureCalled = false;
+    int callCount = 0;
+
+    final inner = MockClient((req) async {
+      callCount++;
+      return http.Response(
+        jsonEncode({
+          'detail': {'code': 'token_expired'}
+        }),
+        401,
+      );
+    });
+
+    final client = AuthedClient(
+      inner,
+      ({bool forceRefresh = false}) async {
+        forceRefreshFlagsSeen.add(forceRefresh);
+        return forceRefresh ? 'fresh-token' : 'stale-token';
+      },
+      onAuthFailure: () async {
+        authFailureCalled = true;
+      },
+    );
+
+    final bodyBytes = utf8.encode('some streamed body');
+    final request = http.StreamedRequest('POST', Uri.parse('http://x/y'));
+    request.sink.add(bodyBytes);
+    request.sink.close();
+
+    final streamedResponse = await client.send(request);
+
+    expect(streamedResponse.statusCode, 401);
+    expect(forceRefreshFlagsSeen, contains(true));
+    expect(authFailureCalled, isFalse);
+    // Only one inner call: body stream can't be replayed, so no retry attempt.
+    expect(callCount, 1);
+  });
+
   test('401 token_expired that stays 401 on retry calls onAuthFailure and returns 401', () async {
     bool authFailureCalled = false;
     int callCount = 0;
