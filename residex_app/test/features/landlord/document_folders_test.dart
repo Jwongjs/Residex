@@ -157,5 +157,17 @@ void main() {
       final doc = _docWithFacts('none', null);
       expect(documentPeriod(doc), (year: 2026, month: 6));
     });
+
+    test('typed maintenance statement uses its closing month, not the cumulative opening', () {
+      // Malaysian JMB/MC statements are cumulative: a statement issued in May
+      // still carries an opening balance from January (period_start). Its
+      // identity is the month it bills for (period_end) — grouping by
+      // period_start piles every monthly statement under January.
+      final doc = _docWithFacts('may-statement', {
+        'period_start': '2025-01-01',
+        'period_end': '2025-05-31',
+      });
+      expect(documentPeriod(doc), (year: 2025, month: 5));
+    });
   });
 }

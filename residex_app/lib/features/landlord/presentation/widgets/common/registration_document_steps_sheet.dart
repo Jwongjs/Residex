@@ -63,44 +63,51 @@ class _RegistrationStepSheet extends ConsumerStatefulWidget {
 }
 
 class _RegistrationStepSheetState extends ConsumerState<_RegistrationStepSheet> {
+  late int _step = widget.step;
+  late Property _property = widget.property;
   final Set<String> _uploaded = {};
   String? _uploading;
 
   Future<void> _upload(String category) async {
     setState(() => _uploading = category);
-    await uploadDocumentForCategory(context, ref, propertyId: widget.property.id, category: category);
+    final success = await uploadDocumentForCategory(
+        context, ref, propertyId: _property.id, category: category);
     if (mounted) {
       setState(() {
         _uploading = null;
-        _uploaded.add(category);
+        if (success) _uploaded.add(category);
       });
     }
   }
 
   Future<void> _advance() async {
     final controller = ref.read(propertyControllerProvider);
-    if (widget.step == 2) {
-      final updated = widget.property.copyWith(nextSetupStep: 3);
+    if (_step == 2) {
+      final updated = _property.copyWith(nextSetupStep: 3);
       await controller.updateProperty(updated);
       if (mounted) {
-        Navigator.of(context).pop();
-        await showRegistrationDocumentSteps(context, property: updated, startAtStep: 3);
+        setState(() {
+          _property = updated;
+          _step = 3;
+          _uploaded.clear();
+          _uploading = null;
+        });
       }
     } else {
-      await controller.updateProperty(widget.property.copyWith(nextSetupStep: 0));
+      await controller.updateProperty(_property.copyWith(nextSetupStep: 0));
       if (mounted) Navigator.of(context).pop();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = widget.step == 2
+    final items = _step == 2
         ? _step2Items
-        : _step3Items(widget.property.structureType, widget.property.hasMortgage);
-    final title = widget.step == 2 ? 'The two unlock documents' : 'Annual one-offs';
-    final subtitle = widget.step == 2
-        ? '${widget.property.name} — the tenancy agreement resolves rent; a management statement backfills strata maintenance in one upload. All optional.'
-        : "${widget.property.name} — this year's official bills. All optional; add them anytime.";
+        : _step3Items(_property.structureType, _property.hasMortgage);
+    final title = _step == 2 ? 'The two unlock documents' : 'Annual one-offs';
+    final subtitle = _step == 2
+        ? '${_property.name} — the tenancy agreement resolves rent; a management statement backfills strata maintenance in one upload. All optional.'
+        : "${_property.name} — this year's official bills. All optional; add them anytime.";
 
     return SafeArea(
       child: Padding(
@@ -112,7 +119,7 @@ class _RegistrationStepSheetState extends ConsumerState<_RegistrationStepSheet> 
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Step ${widget.step} of 3',
+            Text('Step $_step of 3',
                 style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted)),
             const SizedBox(height: 4),
             Text(title, style: AppTextStyles.headlineMedium),
@@ -159,7 +166,7 @@ class _RegistrationStepSheetState extends ConsumerState<_RegistrationStepSheet> 
               child: TextButton(
                 onPressed: _advance,
                 child: Text(
-                  widget.step == 2 ? "I'll do this later" : 'Done',
+                  _step == 2 ? "I'll do this later" : 'Done',
                   style: AppTextStyles.labelLarge.copyWith(color: AppColors.slate),
                 ),
               ),

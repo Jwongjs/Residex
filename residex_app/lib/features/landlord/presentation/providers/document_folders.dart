@@ -99,9 +99,14 @@ int _periodOrdinal(({int year, int? month}) p) => p.year * 12 + (p.month ?? 0);
       }
       if (latest != null) return latest;
     }
+    // period_end before period_start: Malaysian JMB/MC statements are
+    // cumulative (a May statement still shows a January opening balance), so a
+    // statement's identity is the month it closes on, not the month it opens.
+    // Keying off period_start piled every monthly statement under January.
     final direct = _parsePeriod(
       facts['period_month'] ?? facts['lease_start'] ?? facts['service_date'] ??
-          facts['period_start'] ?? facts['policy_start'] ?? facts['invoice_date'],
+          facts['period_end'] ?? facts['period_start'] ??
+          facts['policy_start'] ?? facts['invoice_date'],
       facts['period_year'],
     );
     if (direct != null) return direct;

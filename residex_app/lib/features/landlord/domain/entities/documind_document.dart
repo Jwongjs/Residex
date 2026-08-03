@@ -53,6 +53,13 @@ class DocuMindDocument {
     this.factsConfidence,
     this.tags = const [],
   });
+
+  /// True when ingest extraction captured nothing for this document — a
+  /// silent miss (weak local model / unreadable layout) the user should be
+  /// able to re-check, rather than mistaking it for a document that simply
+  /// has no facts. Mirrors the backend's derived facts_status.
+  bool get needsFactsReview =>
+      extractedFacts == null || extractedFacts!.isEmpty;
 }
 
 // ========== Q&A ENTITIES ==========

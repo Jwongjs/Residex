@@ -659,39 +659,49 @@ class _LandlordPortfolioScreenState
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.border,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.border,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.business_outlined,
+                      size: 64,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'No Properties Yet',
+                    style: AppTextStyles.headlineMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Add your first property to get started',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: Icon(
-              Icons.business_outlined,
-              size: 64,
-              color: AppColors.textMuted,
-            ),
           ),
-          const SizedBox(height: 24),
-          Text(
-            'No Properties Yet',
-            style: AppTextStyles.headlineMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Add your first property to get started',
-            style: AppTextStyles.bodyMedium.copyWith(
-              color: AppColors.textMuted,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

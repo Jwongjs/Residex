@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/legacy.dart'; // StateProvider is legacy in Riv
 import '../../domain/entities/finance_summary.dart';
 import 'documind_provider.dart';
 import 'finance_logic.dart';
+import 'property_providers.dart';
 
 /// Selected Finance-tab year (defaults to the current year).
 final financeYearProvider = StateProvider<int>((ref) => DateTime.now().year);
@@ -12,7 +13,15 @@ final financeYearProvider = StateProvider<int>((ref) => DateTime.now().year);
 final financeYearsProvider = FutureProvider<List<int>>((ref) async {
   final useCase = ref.watch(listDocumentsUseCaseProvider);
   final docs = await useCase();
-  return financeYearOptions(docs, DateTime.now().year);
+  final properties = await ref.watch(propertiesProvider.future);
+  final trackFromByProperty = {
+    for (final property in properties) property.id: property.trackFromYear,
+  };
+  return financeYearOptions(
+    docs,
+    DateTime.now().year,
+    trackFromByProperty: trackFromByProperty,
+  );
 });
 
 /// Finance summary for one calendar year. Compute-on-read: the backend
