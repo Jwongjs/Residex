@@ -243,30 +243,6 @@ class _UnitFinanceDetailScreenState
                       ..._buildGroupedExpenseLines(context, unit.expenseLines),
                       const SizedBox(height: 12),
                       const Divider(height: 1, color: AppColors.hairline),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text('Contributing statutory income',
-                                style: AppTextStyles.labelLarge),
-                          ),
-                          Text(
-                            formatRM(unit.statutoryContribution),
-                            style: GoogleFonts.ibmPlexMono(
-                              fontSize: 14, fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'LHDN-deductible expenses only (−${formatRM(statutoryTotal)})',
-                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted),
-                      ),
-                      ..._buildGroupedExpenseLines(
-                        context,
-                        unit.expenseLines.where((l) => l.deductible).toList(),
-                      ),
                     ] else
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -274,6 +250,36 @@ class _UnitFinanceDetailScreenState
                           'No direct expenses recorded for $year',
                           style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
                         ),
+                      ),
+                    // Statutory contribution is always shown — with no
+                    // deductible expenses it simply equals gross income, but
+                    // the landlord should still see the LHDN figure.
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('Contributing statutory income',
+                              style: AppTextStyles.labelLarge),
+                        ),
+                        Text(
+                          formatRM(unit.statutoryContribution),
+                          style: GoogleFonts.ibmPlexMono(
+                            fontSize: 14, fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasExpenses
+                          ? 'LHDN-deductible expenses only (−${formatRM(statutoryTotal)})'
+                          : 'No deductible expenses recorded — equals your gross income.',
+                      style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted),
+                    ),
+                    if (hasExpenses)
+                      ..._buildGroupedExpenseLines(
+                        context,
+                        unit.expenseLines.where((l) => l.deductible).toList(),
                       ),
                     const SizedBox(height: 10),
                     const Divider(height: 1, color: AppColors.hairline),

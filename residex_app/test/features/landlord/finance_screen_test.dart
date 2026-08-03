@@ -109,7 +109,9 @@ void main() {
     await _pumpScreen(tester, year, _summaryWithProperty(year, complete: true));
 
     expect(find.textContaining('Current Statutory Rental Income'), findsNothing);
-    expect(find.textContaining('Statutory Rental Income'), findsOneWidget);
+    // Exact match: the portfolio panel's label. The per-property block's
+    // "Statutory Rental Income/Loss" row is a distinct (longer) string.
+    expect(find.text('Statutory Rental Income'), findsOneWidget);
   });
 
   testWidgets('a property shows the NET P/L mini-stat sourced from block.netPl',

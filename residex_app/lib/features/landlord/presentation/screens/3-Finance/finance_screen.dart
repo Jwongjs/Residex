@@ -367,22 +367,35 @@ class FinanceScreen extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Rental Income/Loss', style: AppTextStyles.labelLarge),
+                child: Text('Statutory Rental Income/Loss',
+                    style: AppTextStyles.labelLarge),
               ),
-              Text(
-                formatRM(block.rentalIncomeOrLoss),
-                style: AppTextStyles.displayMedium.copyWith(
-                  color: block.rentalIncomeOrLoss < 0
-                      ? AppColors.sealRed
-                      : AppColors.deedGreen,
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    formatRM(block.statutoryContribution ?? block.rentalIncomeOrLoss),
+                    style: AppTextStyles.displayMedium.copyWith(
+                      color: (block.statutoryContribution ?? block.rentalIncomeOrLoss) < 0
+                          ? AppColors.sealRed
+                          : AppColors.deedGreen,
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Gross rent minus LHDN-deductible expenses — this property\'s '
+            'statutory rental income.',
+            style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+          ),
           if (!block.complete) ...[
             const SizedBox(height: 4),
             Text(
-              '${summary.year} records are incomplete — this total will change as documents arrive.',
+              '${summary.year} records are incomplete — this is a provisional figure and will change as documents arrive.',
               style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
             ),
           ],
