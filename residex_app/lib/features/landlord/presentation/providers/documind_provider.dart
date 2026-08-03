@@ -60,12 +60,6 @@ final getDocumentViewUrlUseCaseProvider = Provider<GetDocumentViewUrl>((ref) {
 
 // ========== STATE PROVIDERS ==========
 
-/// Current landlord ID (from auth)
-final currentLandlordIdProvider = Provider<String>((ref) {
-  final currentUser = ref.watch(firebaseAuthStateProvider).value;
-  return currentUser?.uid ?? 'guest';
-});
-
 /// Cross-tab navigation target: set a propertyId here before switching to
 /// the Documind tab and the chat opens on that property (expiry-tile
 /// tap-through). Consumed and cleared by DocuMindScreen.
