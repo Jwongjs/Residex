@@ -358,7 +358,6 @@ class FinanceScreen extends ConsumerWidget {
             children: [
               Expanded(child: _miniStat('RECEIVED', block.receivedRent)),
               Expanded(child: _miniStat('EXPENSES', block.directExpenses)),
-              Expanded(child: _miniStat('NET P/L', block.netPl)),
             ],
           ),
           const SizedBox(height: 12),
@@ -367,7 +366,7 @@ class FinanceScreen extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Statutory Rental Income/Loss',
+                child: Text('Net P/L · ${summary.year}',
                     style: AppTextStyles.labelLarge),
               ),
               Flexible(
@@ -375,22 +374,33 @@ class FinanceScreen extends ConsumerWidget {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerRight,
                   child: Text(
-                    formatRM(block.statutoryContribution ?? block.rentalIncomeOrLoss),
+                    formatRM(block.netPl),
                     style: AppTextStyles.displayMedium.copyWith(
-                      color: (block.statutoryContribution ?? block.rentalIncomeOrLoss) < 0
-                          ? AppColors.sealRed
-                          : AppColors.deedGreen,
+                      color: block.netPl < 0 ? AppColors.sealRed : AppColors.deedGreen,
                     ),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Gross rent minus LHDN-deductible expenses — this property\'s '
-            'statutory rental income.',
-            style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Statutory rental income/loss',
+                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                formatRM(block.statutoryContribution ?? block.rentalIncomeOrLoss),
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
           if (!block.complete) ...[
             const SizedBox(height: 4),
@@ -453,9 +463,7 @@ class FinanceScreen extends ConsumerWidget {
                           style: AppTextStyles.bodySmall
                               .copyWith(color: AppColors.textMuted),
                         ),
-                        const SizedBox(width: 10),
-                        Text(formatRM(unit.contribution),
-                            style: AppTextStyles.titleMedium),
+                        const SizedBox(width: 6),
                         const Icon(Icons.chevron_right,
                             size: 18, color: AppColors.textMuted),
                       ],

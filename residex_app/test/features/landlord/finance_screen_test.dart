@@ -114,14 +114,18 @@ void main() {
     expect(find.text('Statutory Rental Income'), findsOneWidget);
   });
 
-  testWidgets('a property shows the NET P/L mini-stat sourced from block.netPl',
+  testWidgets('a property shows the Net P/L headline sourced from block.netPl',
       (tester) async {
     final year = DateTime.now().year;
     await _pumpScreen(tester, year, _summaryWithProperty(year, complete: true));
 
-    expect(find.text('NET P/L'), findsOneWidget);
-    expect(find.text('STATUTORY'), findsNothing);
-    expect(find.text('RM 2,800.00'), findsOneWidget);
+    // NET P/L is now the big headline figure; statutory is a subtle line.
+    expect(find.text('Net P/L · $year'), findsOneWidget);
+    expect(find.text('RM 2,800.00'), findsOneWidget); // block.netPl
+    expect(find.text('Statutory rental income/loss'), findsOneWidget);
+    // RM 3,100.00 shows twice: the portfolio panel's total and this single
+    // property's statutory line (they coincide with one property).
+    expect(find.text('RM 3,100.00'), findsNWidgets(2));
   });
 
   testWidgets(
