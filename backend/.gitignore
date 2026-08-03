@@ -1,0 +1,6 @@
+.env
+serviceAccountKey.json
+
+# Python bytecode
+__pycache__/
+*.pyc

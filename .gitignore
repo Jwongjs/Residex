@@ -1,0 +1,11 @@
+.venv
+.env
+**/.env
+.worktrees
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Superpowers scratch (SDD ledgers, briefs, brainstorm, review packages)
+.superpowers/
