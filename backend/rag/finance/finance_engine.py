@@ -1136,11 +1136,17 @@ def compute_finance_summary(
 
         received = prop_actual + prop_derived + prop_recovered
         direct = sum(l["amount"] for l in expense_lines if l["deductible"])
-        if complete:
-            statutory_sum += share * (received - prorated_expenses)
-        else:
+        # A provisional running figure: every property feeds the statutory
+        # estimate from the data on file so far. Incomplete properties are
+        # still flagged (below) so the app labels the headline "Current" and
+        # nudges for the missing documents — the number will change as they
+        # arrive, but the landlord sees an estimate immediately rather than a
+        # bare RM 0.00.
+        statutory_sum += share * (received - prorated_expenses)
+        if not complete:
             incomplete_notes.append(
-                f"{name}: {year} records are incomplete — excluded from the statutory estimate."
+                f"{name}: {year} records are incomplete — this statutory figure is "
+                "provisional and will change as the remaining documents arrive."
             )
 
         contributing = {l["category"] for l in expense_lines if l["deductible"]}
@@ -1200,7 +1206,7 @@ def compute_finance_summary(
             "direct_expenses": _round2(direct),
             "rental_income_or_loss": _round2(received - direct),
             "net_pl": _round2(received - landlord_paid),
-            "statutory_contribution": (_round2(received - direct) if complete else None),
+            "statutory_contribution": _round2(received - direct),
             "units": unit_blocks,
             "expense_lines": expense_lines,
             "property_expense_lines": property_level_lines,

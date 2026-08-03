@@ -1100,14 +1100,18 @@ class IncompleteYearStatutoryTests(unittest.TestCase):
         self.assertTrue(block["complete"])
         self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0 - 750.0)
 
-    def test_incomplete_year_is_flagged_and_excluded_from_statutory(self):
+    def test_incomplete_year_reports_a_provisional_statutory_figure(self):
+        # An incomplete year no longer withholds statutory income entirely;
+        # it contributes a provisional running figure (received - deductible
+        # so far) and is flagged incomplete so the app labels it "Current".
         docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
                                      "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
         prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)
         result = _summary(docs, [prop])  # missing assessment, quit_rent, insurance
         block = result["properties"][0]
         self.assertFalse(block["complete"])
-        self.assertEqual(result["totals"]["statutory_rental_income"], 0.0)
+        self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0)
+        self.assertEqual(block["statutory_contribution"], 12000.0)
 
     def test_received_and_expenses_are_never_withheld_by_incompleteness(self):
         docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
@@ -1121,7 +1125,7 @@ class IncompleteYearStatutoryTests(unittest.TestCase):
                                      "lease_start": "2025-01-01", "lease_end": "2025-12-31"})]
         prop = dict(_prop("p1", "House"), property_type="landed", has_mortgage=False)
         result = _summary(docs, [prop])
-        self.assertTrue(any("excluded from the statutory estimate" in c for c in result["caveats"]))
+        self.assertTrue(any("provisional" in c for c in result["caveats"]))
 
     def test_one_incomplete_property_does_not_zero_out_a_complete_one(self):
         complete_docs = [
@@ -1141,7 +1145,9 @@ class IncompleteYearStatutoryTests(unittest.TestCase):
             dict(_prop("p2", "House 2"), property_type="landed", has_mortgage=False),
         ]
         result = _summary(incomplete_docs + complete_docs, props)
-        self.assertEqual(result["totals"]["statutory_rental_income"], 6000.0 - 210.0)
+        # Both properties now contribute: the incomplete p1 provisionally
+        # (12000, no deductibles yet) plus the complete p2 (6000 - 210).
+        self.assertEqual(result["totals"]["statutory_rental_income"], 12000.0 + (6000.0 - 210.0))
 
     def test_a_year_marked_unavailable_for_every_remaining_gap_is_complete(self):
         docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
