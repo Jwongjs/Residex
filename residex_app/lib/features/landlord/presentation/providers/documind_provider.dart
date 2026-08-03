@@ -21,7 +21,12 @@ import 'finance_providers.dart';
 final documindRemoteDataSourceProvider = Provider<DocuMindRemoteDataSource>((ref) {
   final http.Client client = AuthedClient(
     http.Client(),
-    () => FirebaseAuth.instance.currentUser?.getIdToken() ?? Future.value(null),
+    ({bool forceRefresh = false}) =>
+        FirebaseAuth.instance.currentUser?.getIdToken(forceRefresh) ??
+        Future<String?>.value(null),
+    onAuthFailure: () async {
+      await ref.read(signOutUseCaseProvider)();
+    },
   );
   return DocuMindRemoteDataSource(httpClient: client);
 });
