@@ -17,6 +17,7 @@ import '../../widgets/common/records_grid.dart';
 import '../../widgets/common/upload_progress_overlay.dart';
 import '../../widgets/common/upload_source_sheet.dart';
 import '../2-Documind/documind_upload_summary.dart';
+import '../2-Documind/document_viewer_screen.dart';
 import '../2-Documind/unit_label_resolver.dart';
 
 /// Documents tab — the property document store: property selector, the
@@ -48,6 +49,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   final List<String> _categories = [
     'lease',
     'rental_invoice',
+    'loan',
     'expenses',
   ];
 
@@ -124,6 +126,62 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     await propertyController.updateProperty(
       property.copyWith(folderNames: {...property.folderNames, folderKey: newName}),
     );
+  }
+
+  void _openDocument(DocuMindDocument doc) {
+    if (_selectedPropertyId == null) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => DocumentViewerScreen(
+        propertyId: _selectedPropertyId!,
+        docId: doc.docId,
+        filename: doc.filename,
+      ),
+    ));
+  }
+
+  Future<void> _renameDocument(DocuMindDocument doc) async {
+    final controller = TextEditingController(text: doc.filename);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Rename document', style: AppTextStyles.titleMedium),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 1,
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel',
+                style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: Text('Save',
+                style: AppTextStyles.labelLarge.copyWith(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (newName == null || newName.isEmpty || newName == doc.filename || !mounted) {
+      return;
+    }
+    if (_selectedPropertyId == null) return;
+    try {
+      final rename = ref.read(renameDocumentActionProvider);
+      await rename(
+        propertyId: _selectedPropertyId!,
+        docId: doc.docId,
+        filename: newName,
+      );
+      if (mounted) _showSnackBar('Document renamed');
+    } catch (e) {
+      if (mounted) _showSnackBar('Rename failed: ${e.toString()}', isError: true);
+    }
   }
 
   Widget _buildMainUI(List<Property> properties) {
@@ -834,13 +892,19 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
       ),
-      child: Row(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _openDocument(doc),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
@@ -868,46 +932,50 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                 ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 6,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: getCategoryColor(category).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: getCategoryColor(category).withOpacity(0.3),
+                    // Category is conveyed by the folder itself and the
+                    // leading colour swatch; a category chip here just repeats
+                    // it. The granular sub-type tags below (doc.tags) carry the
+                    // information that actually varies per document.
+                    if (doc.needsFactsReview)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppColors.warning.withOpacity(0.4),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 12,
+                              color: AppColors.warning,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'NEEDS REVIEW',
+                              style: AppTextStyles.labelSmall.copyWith(
+                                color: AppColors.warning,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 9,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            getCategoryIcon(category).icon,
-                            size: 12,
-                            color: getCategoryColor(category),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            category.toUpperCase(),
-                            style: AppTextStyles.labelSmall.copyWith(
-                              color: getCategoryColor(category),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                     if (displayUnitLabel != null)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -1027,6 +1095,11 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
               tooltip: 'Move to folder',
             ),
           IconButton(
+            onPressed: () => _renameDocument(doc),
+            icon: Icon(Icons.drive_file_rename_outline, color: AppColors.textMuted, size: 20),
+            tooltip: 'Rename document',
+          ),
+          IconButton(
             onPressed: () => _deleteDocument(doc),
             icon: Icon(
               Icons.delete_outline,
@@ -1041,7 +1114,10 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
               ),
             ),
           ),
-        ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

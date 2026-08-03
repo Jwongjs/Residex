@@ -62,12 +62,13 @@ void main() {
     expect(isAllowedUploadFilename('lease.pdf'), isTrue);
   });
 
-  test('stored categories collapse into three display folders', () {
+  test('stored categories collapse into their display folders', () {
     expect(displayCategoryFor('lease'), 'lease');
     expect(displayCategoryFor('rental_invoice'), 'rental_invoice');
     expect(displayCategoryFor('receipt'), 'rental_invoice'); // legacy alias
+    expect(displayCategoryFor('loan'), 'loan'); // own top-level card
     for (final stored in [
-      'insurance', 'loan', 'tax', 'upkeep', 'maintenance',
+      'insurance', 'tax', 'upkeep', 'maintenance',
       'utility', 'warranty', 'expenses',
     ]) {
       expect(displayCategoryFor(stored), 'expenses', reason: stored);

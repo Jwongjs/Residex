@@ -60,6 +60,8 @@ String displayCategoryFor(String category) {
   switch (category) {
     case 'lease':
       return 'lease';
+    case 'loan':
+      return 'loan';
     case 'rental_invoice':
     case 'receipt':
       return 'rental_invoice';

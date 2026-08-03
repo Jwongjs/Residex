@@ -66,12 +66,13 @@ void main() {
     );
   }
 
-  testWidgets('shows the three folders and no chat toggle', (tester) async {
+  testWidgets('shows the four folders and no chat toggle', (tester) async {
     await tester.pumpWidget(buildTestWidget(onOpenDocumind: () {}));
     await tester.pumpAndSettle();
 
     expect(find.text('Tenancy Agreements'), findsOneWidget);
     expect(find.text('Rent records'), findsOneWidget);
+    expect(find.text('Loans & Financing'), findsOneWidget);
     expect(find.text('Expenses'), findsOneWidget);
     expect(find.text('Optional · tap to view'), findsOneWidget);
     expect(find.text('Chat'), findsNothing);
@@ -320,6 +321,49 @@ void main() {
     // Verify both the new rename landed and the pre-existing entry survived (merge, not clobber).
     expect(fakeRepo.lastUpdated?.folderNames['maintenance'], 'Strata bills');
     expect(fakeRepo.lastUpdated?.folderNames['insurance_premium'], 'Fire policy');
+  });
+
+  testWidgets('renaming a document calls the rename action with the new name', (tester) async {
+    final doc = DocuMindDocument(
+      docId: 'doc-9', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'lease',
+      filename: '2023 Final Agreement Ayer 8 and a very long trailing name.pdf',
+      chunksIndexed: 1, uploadedAt: DateTime(2026, 1, 1),
+    );
+    String? capturedProperty;
+    String? capturedDoc;
+    String? capturedName;
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
+        documindDocumentsProvider.overrideWith((ref, propertyId) async => [doc]),
+        renameDocumentActionProvider.overrideWithValue(({
+          required String propertyId,
+          required String docId,
+          required String filename,
+        }) async {
+          capturedProperty = propertyId;
+          capturedDoc = docId;
+          capturedName = filename;
+          return filename;
+        }),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Tenancy Agreements'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.drive_file_rename_outline));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Ayer 8 lease 2023.pdf');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(capturedName, 'Ayer 8 lease 2023.pdf');
+    expect(capturedDoc, 'doc-9');
+    expect(capturedProperty, 'prop-1');
   });
 
   testWidgets('moving a document persists a sticky folderMoves override', (tester) async {
