@@ -137,7 +137,9 @@ class _UnitFinanceDetailScreenState
         children: [
           Text(widget.propertyName, style: AppTextStyles.bodyMedium),
           const SizedBox(height: 12),
-          _buildContributionAccordion(context, _displayedUnit, _displayedYear),
+          _buildNetContributionAccordion(context, _displayedUnit, _displayedYear),
+          const SizedBox(height: 12),
+          _buildStatutoryAccordion(context, _displayedUnit, _displayedYear),
           const SizedBox(height: 20),
           Text('Monthly income', style: AppTextStyles.titleMedium),
           const SizedBox(height: 8),
@@ -163,15 +165,68 @@ class _UnitFinanceDetailScreenState
     return total;
   }
 
-  Widget _buildContributionAccordion(
+  /// Net contribution and Contributing statutory income are two separate
+  /// dropdowns (user request). They differ in which lines count:
+  ///  - Net contribution subtracts everything the landlord actually paid
+  ///    (penalties, principal and first-letting costs included), so those are
+  ///    shown normally here and only tenant-paid lines are struck out.
+  ///  - Contributing statutory income subtracts only LHDN-deductible lines, so
+  ///    penalties/capital/first-letting costs are struck out here.
+  Widget _buildNetContributionAccordion(
       BuildContext context, UnitFinance unit, int year) {
-    final gross = _grossIncome(unit);
-    // Net P/L basis (user decision): all landlord-paid outflows reduce the
-    // headline. gross − expenseTotal == unit.contribution.
-    final expenseTotal = landlordPaidExpenseTotal(unit.expenseLines);
-    final statutoryTotal = deductibleExpenseTotal(unit.expenseLines);
-    final hasExpenses = unit.expenseLines.isNotEmpty;
+    return _breakdownAccordion(
+      context,
+      title: 'Net contribution',
+      total: unit.contribution,
+      gross: _grossIncome(unit),
+      expensesLabel: 'Direct expenses',
+      expensesTotal: landlordPaidExpenseTotal(unit.expenseLines),
+      lines: unit.expenseLines,
+      exclusionNote: _netExclusionNote,
+      emptyNote: 'No direct expenses recorded for $year',
+    );
+  }
 
+  Widget _buildStatutoryAccordion(
+      BuildContext context, UnitFinance unit, int year) {
+    return _breakdownAccordion(
+      context,
+      title: 'Contributing statutory income',
+      total: unit.statutoryContribution,
+      gross: _grossIncome(unit),
+      expensesLabel: 'Deductible expenses',
+      expensesTotal: deductibleExpenseTotal(unit.expenseLines),
+      lines: unit.expenseLines,
+      exclusionNote: expenseExclusionNote,
+      emptyNote: 'No deductible expenses recorded — equals your gross income.',
+      caption: 'Only LHDN-deductible expenses reduce this figure.',
+    );
+  }
+
+  /// A line is kept out of the Net contribution total only when the landlord
+  /// does not pay it (tenant-borne utilities). Penalties, principal and
+  /// first-letting costs are all real money out, so they are NOT excluded here.
+  String? _netExclusionNote(ExpenseLine line) {
+    if (line.paidByLandlord) return null;
+    return line.subtype == 'utilities'
+        ? 'Tenant pays — excluded'
+        : 'Not paid by you — excluded';
+  }
+
+  Widget _breakdownAccordion(
+    BuildContext context, {
+    required String title,
+    required double total,
+    required double gross,
+    required String expensesLabel,
+    required double expensesTotal,
+    required List<ExpenseLine> lines,
+    required String? Function(ExpenseLine) exclusionNote,
+    required String emptyNote,
+    String? caption,
+  }) {
+    final hasLines = lines.isNotEmpty;
+    final totalColor = total < 0 ? AppColors.sealRed : AppColors.deedGreen;
     return Container(
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -192,14 +247,13 @@ class _UnitFinanceDetailScreenState
             initiallyExpanded: false,
             title: Row(
               children: [
-                Expanded(
-                  child: Text('Net contribution', style: AppTextStyles.labelLarge),
-                ),
+                Expanded(child: Text(title, style: AppTextStyles.labelLarge)),
                 Flexible(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerRight,
-                    child: Text(formatRM(unit.contribution), style: AppTextStyles.displayMedium),
+                    child: Text(formatRM(total),
+                        style: AppTextStyles.displayMedium.copyWith(color: totalColor)),
                   ),
                 ),
               ],
@@ -228,59 +282,34 @@ class _UnitFinanceDetailScreenState
                       ],
                     ),
                     const SizedBox(height: 10),
-                    if (hasExpenses) ...[
+                    if (hasLines) ...[
                       Row(
                         children: [
                           Expanded(
-                            child: Text('Direct expenses', style: AppTextStyles.labelLarge),
+                            child: Text(expensesLabel, style: AppTextStyles.labelLarge),
                           ),
                           Text(
-                            '−${formatRM(expenseTotal)}',
+                            '−${formatRM(expensesTotal)}',
                             style: AppTextStyles.titleMedium.copyWith(color: AppColors.textMuted),
                           ),
                         ],
                       ),
-                      ..._buildGroupedExpenseLines(context, unit.expenseLines),
-                      const SizedBox(height: 12),
-                      const Divider(height: 1, color: AppColors.hairline),
+                      ..._buildGroupedExpenseLines(context, lines, exclusionNote: exclusionNote),
                     ] else
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Text(
-                          'No direct expenses recorded for $year',
+                          emptyNote,
                           style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
                         ),
                       ),
-                    // Statutory contribution is always shown — with no
-                    // deductible expenses it simply equals gross income, but
-                    // the landlord should still see the LHDN figure.
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text('Contributing statutory income',
-                              style: AppTextStyles.labelLarge),
-                        ),
-                        Text(
-                          formatRM(unit.statutoryContribution),
-                          style: GoogleFonts.ibmPlexMono(
-                            fontSize: 14, fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      hasExpenses
-                          ? 'LHDN-deductible expenses only (−${formatRM(statutoryTotal)})'
-                          : 'No deductible expenses recorded — equals your gross income.',
-                      style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted),
-                    ),
-                    if (hasExpenses)
-                      ..._buildGroupedExpenseLines(
-                        context,
-                        unit.expenseLines.where((l) => l.deductible).toList(),
+                    if (caption != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        caption,
+                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted),
                       ),
+                    ],
                     const SizedBox(height: 10),
                     const Divider(height: 1, color: AppColors.hairline),
                     const SizedBox(height: 10),
@@ -288,7 +317,7 @@ class _UnitFinanceDetailScreenState
                       children: [
                         Expanded(
                           child: Text(
-                            'Net contribution',
+                            title,
                             style: AppTextStyles.labelLarge.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ),
@@ -297,10 +326,8 @@ class _UnitFinanceDetailScreenState
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerRight,
                             child: Text(
-                              formatRM(unit.contribution),
-                              style: AppTextStyles.displayMedium.copyWith(
-                                color: unit.contribution < 0 ? AppColors.sealRed : AppColors.deedGreen,
-                              ),
+                              formatRM(total),
+                              style: AppTextStyles.displayMedium.copyWith(color: totalColor),
                             ),
                           ),
                         ),
@@ -321,7 +348,8 @@ class _UnitFinanceDetailScreenState
   /// charges each under their own section label. Duplicates are already
   /// collapsed by the backend fold, so this is pure display shaping.
   List<Widget> _buildGroupedExpenseLines(
-      BuildContext context, List<ExpenseLine> lines) {
+      BuildContext context, List<ExpenseLine> lines,
+      {required String? Function(ExpenseLine) exclusionNote}) {
     final grouped = groupDirectExpenses(lines);
     final widgets = <Widget>[];
 
@@ -329,20 +357,22 @@ class _UnitFinanceDetailScreenState
       widgets.add(_expenseSectionHeader(
         group.month != null ? monthAbbrev[group.month! - 1] : 'Undated',
       ));
-      widgets.addAll(group.lines.map((line) => _buildExpenseLineRow(context, line)));
+      widgets.addAll(group.lines
+          .map((line) => _buildExpenseLineRow(context, line, exclusionNote)));
     }
-    _addExpenseSection(context, widgets, 'Semi-annual', grouped.semiAnnual);
-    _addExpenseSection(context, widgets, 'Annual', grouped.annual);
-    _addExpenseSection(context, widgets, 'One-off', grouped.other);
+    _addExpenseSection(context, widgets, 'Semi-annual', grouped.semiAnnual, exclusionNote);
+    _addExpenseSection(context, widgets, 'Annual', grouped.annual, exclusionNote);
+    _addExpenseSection(context, widgets, 'One-off', grouped.other, exclusionNote);
 
     return widgets;
   }
 
   void _addExpenseSection(BuildContext context, List<Widget> widgets,
-      String label, List<ExpenseLine> lines) {
+      String label, List<ExpenseLine> lines,
+      String? Function(ExpenseLine) exclusionNote) {
     if (lines.isEmpty) return;
     widgets.add(_expenseSectionHeader(label));
-    widgets.addAll(lines.map((line) => _buildExpenseLineRow(context, line)));
+    widgets.addAll(lines.map((line) => _buildExpenseLineRow(context, line, exclusionNote)));
   }
 
   Widget _expenseSectionHeader(String text) {
@@ -365,9 +395,10 @@ class _UnitFinanceDetailScreenState
     );
   }
 
-  Widget _buildExpenseLineRow(BuildContext context, ExpenseLine line) {
+  Widget _buildExpenseLineRow(BuildContext context, ExpenseLine line,
+      String? Function(ExpenseLine) exclusionNoteFn) {
     final label = line.description ?? (financeCategoryLabels[line.category] ?? line.category);
-    final exclusionNote = expenseExclusionNote(line);
+    final exclusionNote = exclusionNoteFn(line);
     final excluded = exclusionNote != null;
     final primaryColor = excluded ? AppColors.textMuted : AppColors.textPrimary;
     return InkWell(

@@ -105,11 +105,10 @@ void main() {
     await tester.tap(find.text('Net contribution'));
     await tester.pumpAndSettle();
 
+    // Only the Net contribution dropdown is expanded; the statutory dropdown
+    // is a separate collapsed accordion, so the line shows once here.
     expect(find.text('Gross income'), findsOneWidget);
-    // Appears twice: once in the Net P/L direct-expenses list, once more in
-    // the statutory block below it (this line is both landlord-paid and
-    // LHDN-deductible, so it contributes to both totals).
-    expect(find.text('Plumbing repair'), findsNWidgets(2));
+    expect(find.text('Plumbing repair'), findsOneWidget);
   });
 
   testWidgets('a tenant-paid utility line is marked excluded and kept out of the direct-expenses total',
