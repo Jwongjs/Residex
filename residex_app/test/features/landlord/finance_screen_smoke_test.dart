@@ -98,7 +98,7 @@ void main() {
     expect(find.textContaining('backfilled'), findsNothing);
     expect(find.textContaining('Records missing for'), findsOneWidget);
     expect(find.text('Unit A'), findsOneWidget);
-    expect(find.textContaining('50%'), findsOneWidget); // ownership badge
+    expect(find.text('50% share'), findsOneWidget); // ownership badge (exact; the co-ownership caption also says "50%")
     expect(find.textContaining('1 document needed for'), findsOneWidget); // nudge banner
     expect(find.textContaining('1 missing'), findsOneWidget); // coverage chip for 2025
   });

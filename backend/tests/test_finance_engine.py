@@ -278,7 +278,7 @@ class StatutoryTests(unittest.TestCase):
         # and Unit A's income stands: 1000 - 600*0 = 1000
         self.assertEqual(result["totals"]["statutory_rental_income"], 1000.0)
 
-    def test_ownership_share_scales_statutory_not_net(self):
+    def test_ownership_share_scales_both_net_and_statutory(self):
         docs = [
             _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
             _doc("p1", "tax", {"subtype": "quit_rent", "amount": 120.0, "period_year": 2025}),
@@ -286,9 +286,15 @@ class StatutoryTests(unittest.TestCase):
         exceptions = [_doc_exception("p1", 2025, c) for c in ("loan", "upkeep", "maintenance", "insurance")]
         result = _summary(docs, [_prop("p1", "Shared", share=0.5)], year=2025, today=date(2026, 1, 1),
                            document_exceptions=exceptions)
-        self.assertEqual(result["totals"]["net_pl"], 880.0)
-        # statutory: 0.5 * (1000 - 120 * (1/12 rented fraction))
+        # Net P/L now also reflects the ownership share: 0.5 * (1000 - 120).
+        self.assertEqual(result["totals"]["net_pl"], 440.0)
+        # statutory: 0.5 * (1000 - 120 * (1/12 rented fraction)) = 495.
         self.assertEqual(result["totals"]["statutory_rental_income"], 495.0)
+        # The invariant the landlord expects: statutory (deducts less) is never
+        # below Net P/L once both are on the same ownership basis.
+        self.assertGreaterEqual(
+            result["totals"]["statutory_rental_income"], result["totals"]["net_pl"]
+        )
         self.assertTrue(any("Ownership share applied" in c for c in result["caveats"]))
 
     def test_loss_offsets_across_properties_then_floors_at_zero(self):

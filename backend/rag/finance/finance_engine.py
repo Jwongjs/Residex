@@ -967,6 +967,7 @@ def compute_finance_summary(
     total_expenses = 0.0
     total_landlord_expenses = 0.0
     statutory_sum = 0.0
+    net_pl_sum = 0.0
     derived_notes: List[str] = []
     vacant_notes: List[str] = []
     unpaid_notes: List[str] = []
@@ -1143,6 +1144,13 @@ def compute_finance_summary(
         # arrive, but the landlord sees an estimate immediately rather than a
         # bare RM 0.00.
         statutory_sum += share * (received - prorated_expenses)
+        # Net P/L and statutory both reflect the landlord's ownership share, so a
+        # co-owned property never shows a statutory figure below its Net P/L
+        # (statutory deducts a smaller set of expenses than Net P/L, so once both
+        # are on the same share basis statutory >= Net P/L always). Received and
+        # Direct Expenses stay at the property's full amount — the share note and
+        # the per-block caption explain the basis.
+        net_pl_sum += share * (received - landlord_paid)
         if not complete:
             incomplete_notes.append(
                 f"{name}: {year} records are incomplete — this statutory figure is "
@@ -1205,8 +1213,8 @@ def compute_finance_summary(
             "outstanding_rent": _round2(prop_outstanding),
             "direct_expenses": _round2(direct),
             "rental_income_or_loss": _round2(received - direct),
-            "net_pl": _round2(received - landlord_paid),
-            "statutory_contribution": _round2(received - direct),
+            "net_pl": _round2(share * (received - landlord_paid)),
+            "statutory_contribution": _round2(share * (received - direct)),
             "units": unit_blocks,
             "expense_lines": expense_lines,
             "property_expense_lines": property_level_lines,
@@ -1241,7 +1249,7 @@ def compute_finance_summary(
             "outstanding_rent": _round2(total_outstanding),
             "direct_expenses": _round2(total_expenses),
             "landlord_expenses": _round2(total_landlord_expenses),
-            "net_pl": _round2(total_received - total_landlord_expenses),
+            "net_pl": _round2(net_pl_sum),
             "statutory_rental_income": statutory,
             "statutory_note": statutory_note,
         },
