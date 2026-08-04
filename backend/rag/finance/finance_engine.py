@@ -1068,10 +1068,26 @@ def compute_finance_summary(
             unit_deductible_total = sum(
                 l["amount"] for l in unit_lines if l["deductible"]
             )
-            unit_landlord_total = sum(
-                l["amount"] for l in unit_lines if l["paid_by_landlord"]
-            )
+            # Proration keeps using the real-unit lines only. The property-level
+            # lines are prorated once, below, by avg_fraction — feeding them in
+            # here as well would double-count them in the statutory total.
             prorated_expenses += unit_deductible_total * fraction
+            # Display lines: the synthetic whole-property scope shows the
+            # property-level lines (a building-wide loan, quit rent) that belong
+            # to no unit. For a single-let house that scope IS the property, so
+            # showing an empty breakdown there hid the landlord's loan entirely.
+            # Unit blocks are display-only — every total sums from `expense_lines`
+            # — so widening what they show cannot move a total.
+            display_lines = (
+                unit_lines if scope["unit_id"] is not None
+                else lines_by_unit.get(None, [])
+            )
+            display_deductible_total = sum(
+                l["amount"] for l in display_lines if l["deductible"]
+            )
+            display_landlord_total = sum(
+                l["amount"] for l in display_lines if l["paid_by_landlord"]
+            )
             prop_actual += actual_sum
             prop_derived += derived_sum
             # Suppress the synthetic whole-property scope from the rendered rows
@@ -1087,14 +1103,14 @@ def compute_finance_summary(
                 "label": scope["label"],
                 "rented_months": rented,
                 "contribution": _round2(
-                    share * (actual_sum + derived_sum - unit_landlord_total)
+                    share * (actual_sum + derived_sum - display_landlord_total)
                 ),
                 "statutory_contribution": _round2(
-                    share * (actual_sum + derived_sum - unit_deductible_total)
+                    share * (actual_sum + derived_sum - display_deductible_total)
                 ),
                 "months": month_rows,
                 "missing_invoice_months": vacant,
-                "expense_lines": _scaled_lines(unit_lines, share),
+                "expense_lines": _scaled_lines(display_lines, share),
                 "loan_status": loan_status_by_unit.get(scope["unit_id"]),
             })
             if derived:

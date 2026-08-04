@@ -1955,3 +1955,43 @@ class LoanCompletenessTests(unittest.TestCase):
         block = summary["properties"][0]
         self.assertFalse(block["manual_loan_incomplete"])
         self.assertIsNone(block["units"][0]["loan_status"])
+
+
+class WholePropertyScopeExpenseLineTests(unittest.TestCase):
+    def test_whole_property_scope_carries_property_level_expense_lines(self):
+        """A single-let house with no units: the whole-property block IS the
+        property, so a property-scope loan must appear in its breakdown."""
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 200.0}),
+        ]
+        exceptions = [_doc_exception("p1", 2025, c)
+                      for c in ("tax", "upkeep", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "House")], year=2025,
+                          today=date(2026, 1, 1), document_exceptions=exceptions)
+        unit = result["properties"][0]["units"][0]
+        self.assertIsNone(unit["unit_id"])
+        self.assertEqual(len(unit["expense_lines"]), 1)
+        self.assertEqual(unit["expense_lines"][0]["category"], "loan")
+        # And the block's own figures account for the line it now shows.
+        self.assertEqual(unit["contribution"], 800.0)
+        self.assertEqual(unit["statutory_contribution"], 800.0)
+
+    def test_whole_property_scope_lines_do_not_double_count_in_statutory(self):
+        """Regression guard on the trap: property-level lines are prorated once,
+        via avg_fraction, not again through the scope loop."""
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 200.0}),
+        ]
+        exceptions = [_doc_exception("p1", 2025, c)
+                      for c in ("tax", "upkeep", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "House")], year=2025,
+                          today=date(2026, 1, 1), document_exceptions=exceptions)
+        # 1 of 12 months rented -> 1000 - 200*(1/12) = 983.33. If the lines were
+        # counted twice this would read 966.67.
+        self.assertEqual(result["totals"]["statutory_rental_income"], 983.33)
+        self.assertEqual(result["totals"]["net_pl"], 800.0)
+        self.assertEqual(result["totals"]["direct_expenses"], 200.0)
