@@ -381,7 +381,8 @@ class FinanceScreen extends ConsumerWidget {
                   builder: (_) => ManualLoanEntrySheet(
                     propertyId: block.propertyId,
                     year: summary.year,
-                    cadence: property?.loanInputCadence ?? 'annual',
+                    cadence: property?.loanInputCadence,
+                    structureType: property?.structureType,
                     units: block.units
                         .where((u) => u.unitId != null)
                         .toList(),

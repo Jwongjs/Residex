@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/finance_summary.dart';
+import '../../../domain/entities/property.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart' show formatRM, monthAbbrev;
 import '../../providers/finance_providers.dart';
+import '../../providers/property_providers.dart';
+import 'app_choice_chip.dart';
 
 /// Add/edit form + list for a property whose loan figures are keyed in by
 /// hand rather than uploaded (`loanInputMethod == 'manual'`). Opened as a
@@ -17,7 +20,17 @@ import '../../providers/finance_providers.dart';
 class ManualLoanEntrySheet extends ConsumerStatefulWidget {
   final String propertyId;
   final int year;
-  final String cadence;
+
+  /// Null until the landlord has chosen one — the sheet then asks and persists
+  /// it to the property, so the question is posed when it is meaningful rather
+  /// than during registration.
+  final String? cadence;
+
+  /// Decides the loan's real-world scope: a landed title carries one loan
+  /// however many rooms are let, while each strata unit is separately titled
+  /// and separately mortgaged. Null (some commercial) leaves both open.
+  final PropertyStructureType? structureType;
+
   final List<UnitFinance> units;
 
   const ManualLoanEntrySheet({
@@ -25,6 +38,7 @@ class ManualLoanEntrySheet extends ConsumerStatefulWidget {
     required this.propertyId,
     required this.year,
     required this.cadence,
+    required this.structureType,
     required this.units,
   });
 
@@ -39,6 +53,17 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   int _month = 1;
   bool _saving = false;
   String? _selectedUnitId;
+  String? _cadence;
+
+  @override
+  void initState() {
+    super.initState();
+    _cadence = widget.cadence;
+    if (widget.structureType == PropertyStructureType.strata &&
+        widget.units.isNotEmpty) {
+      _selectedUnitId = widget.units.first.unitId;
+    }
+  }
 
   @override
   void dispose() {
@@ -55,10 +80,10 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
       await ref.read(recordManualLoanEntryActionProvider)(
         propertyId: widget.propertyId,
         year: widget.year,
-        cadence: widget.cadence,
+        cadence: _cadence ?? 'annual',
         interestPaid: interest,
         principalPaid: principal,
-        month: widget.cadence == 'monthly' ? _month : null,
+        month: _cadence == 'monthly' ? _month : null,
         unitId: _selectedUnitId,
       );
       if (mounted) Navigator.of(context).pop();
@@ -71,6 +96,18 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// Persists the landlord's cadence choice to the property so the question
+  /// is asked once and not re-asked on later visits to this sheet.
+  Future<void> _chooseCadence(String cadence) async {
+    setState(() => _cadence = cadence);
+    final property =
+        await ref.read(propertyByIdProvider(widget.propertyId).future);
+    if (property == null) return;
+    await ref
+        .read(propertyControllerProvider)
+        .updateProperty(property.copyWith(loanInputCadence: cadence));
   }
 
   Future<void> _remove(int? month) async {
@@ -130,7 +167,7 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
       manualLoanEntriesProvider(
           (propertyId: widget.propertyId, year: widget.year)),
     );
-    final isMonthly = widget.cadence == 'monthly';
+    final isMonthly = _cadence == 'monthly';
 
     final summaryAsync = ref.watch(financeSummaryProvider(widget.year));
     final units = summaryAsync.maybeWhen(
@@ -155,6 +192,13 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
       }
     }
 
+    // Landed = one title, one loan, whatever the room count. Strata = one loan
+    // per separately-titled unit. Only an unknown structure keeps both open.
+    final perUnitLoans =
+        widget.structureType == PropertyStructureType.strata && units.isNotEmpty;
+    final unknownStructure = widget.structureType == null && units.isNotEmpty;
+    final showScope = perUnitLoans || unknownStructure;
+
     return Material(
       type: MaterialType.transparency,
       child: Padding(
@@ -172,8 +216,30 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
               children: [
                 Text('Add loan figures — ${widget.year}',
                     style: AppTextStyles.titleLarge),
+                if (_cadence == null) ...[
+                  const SizedBox(height: 16),
+                  Text('One annual figure, or monthly instalments?',
+                      style: AppTextStyles.labelLarge
+                          .copyWith(color: AppColors.textMuted)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      AppChoiceChip(
+                        label: 'One annual figure',
+                        selected: false,
+                        onSelected: (_) => _chooseCadence('annual'),
+                      ),
+                      AppChoiceChip(
+                        label: 'Monthly instalments',
+                        selected: false,
+                        onSelected: (_) => _chooseCadence('monthly'),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
-                if (units.isNotEmpty) ...[
+                if (showScope) ...[
                   Text('SCOPE',
                       style: AppTextStyles.labelSmall.copyWith(
                         fontWeight: FontWeight.w700,
@@ -185,10 +251,11 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                     value: _selectedUnitId,
                     isExpanded: true,
                     items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('Whole property'),
-                      ),
+                      if (!perUnitLoans)
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Whole property'),
+                        ),
                       for (final u in units)
                         DropdownMenuItem<String?>(
                           value: u.unitId,
@@ -220,31 +287,33 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                TextFormField(
-                  key: const Key('manual-loan-interest'),
-                  controller: _interestController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration:
-                      const InputDecoration(labelText: 'Interest paid (RM)'),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  key: const Key('manual-loan-principal'),
-                  controller: _principalController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration:
-                      const InputDecoration(labelText: 'Principal paid (RM)'),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: const Text('Save'),
+                if (_cadence != null) ...[
+                  TextFormField(
+                    key: const Key('manual-loan-interest'),
+                    controller: _interestController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration:
+                        const InputDecoration(labelText: 'Interest paid (RM)'),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    key: const Key('manual-loan-principal'),
+                    controller: _principalController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                        labelText: 'Principal paid (RM)'),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _saving ? null : _save,
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
                 if (selectedUnit != null) ...[
                   const SizedBox(height: 12),
                   if (selectedUnit.loanStatus == 'no_loan')
