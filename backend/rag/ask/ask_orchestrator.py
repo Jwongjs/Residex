@@ -1,5 +1,8 @@
+import traceback
 from datetime import datetime
 from typing import List, Optional
+
+from google.api_core.exceptions import FailedPrecondition, ServiceUnavailable
 
 from models.documind_models import AskRequest, AskResponse, Citation, UnitOption
 from rag.categories import ALLOWED_CATEGORIES, expand_categories_for_query, normalize_category
@@ -460,9 +463,25 @@ Rules:
             )
             print(f"✅ Retrieved {len(retrieved_chunks)} chunks (hybrid dense+rerank)")
         except Exception as e:
-            print(f"❌ Hybrid retrieval failed: {e}")
+            # One catch-all used to report every failure as a vector-index
+            # problem, which sent landlords to check an index that was usually
+            # fine and hid the real cause in stdout. Each class now says
+            # something true and actionable, and the traceback is always logged.
+            print(f"❌ Hybrid retrieval failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            if isinstance(e, FailedPrecondition):
+                answer = ("Your document search index is still building. "
+                          "Try again in a minute.")
+                reason = "Vector index unavailable"
+            elif isinstance(e, (ServiceUnavailable, ConnectionError, TimeoutError)):
+                answer = ("Document search is temporarily unavailable. "
+                          "Please try again shortly.")
+                reason = "Retrieval backend unavailable"
+            else:
+                answer = "Something went wrong searching your documents."
+                reason = "Retrieval failure"
             return AskResponse(
-                answer="I couldn't search your documents. Please check your Firestore vector index.",
+                answer=answer,
                 confidence=0.0,
                 citations=[],
                 property_name=property_name,
@@ -472,7 +491,7 @@ Rules:
                 conversation_turn=turn_number,
                 user_action_required=False,
                 predicted_categories=predicted_categories,
-                action_reason="Vector search failure",
+                action_reason=reason,
             )
 
         if not retrieved_chunks:

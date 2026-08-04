@@ -781,6 +781,60 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("— Unit A]", fake_llm.last_prompt)
         self.assertIn("— Property-wide]", fake_llm.last_prompt)
 
+    def _ask_with_retriever_error(self, exc):
+        """Helper to test retrieval error handling.
+
+        Builds the orchestrator with a _hybrid_retriever that raises exc
+        on retrieve, runs one ask_documind, and returns the AskResponse.
+        """
+        fake_db = _FakeDB(
+            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}],
+        )
+        fake_store = _FakeConversationStore()
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": ["lease"],
+            "prediction_reason": "lease question",
+            "intent": "document_question",
+        })
+
+        # Build service and immediately replace the retriever with one that raises
+        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
+
+        class _ErrorRaisingRetriever:
+            async def retrieve(self, **kwargs):
+                raise exc
+
+        service._hybrid_retriever = _ErrorRaisingRetriever()
+        service._ask_orchestrator._hybrid_retriever = _ErrorRaisingRetriever()
+
+        # Run the question
+        import asyncio
+        payload = AskRequest(property_id="p1", question="test question")
+        response = asyncio.run(service.ask_documind(payload, "l1"))
+        return response
+
+    def test_index_error_tells_the_landlord_the_index_is_building(self):
+        from google.api_core.exceptions import FailedPrecondition
+        response = self._ask_with_retriever_error(
+            FailedPrecondition("The query requires a vector index.")
+        )
+        self.assertIn("still building", response.answer)
+        self.assertEqual(response.action_reason, "Vector index unavailable")
+
+    def test_provider_error_reads_as_temporary(self):
+        response = self._ask_with_retriever_error(
+            ConnectionError("connection refused: localhost:11434")
+        )
+        self.assertIn("temporarily unavailable", response.answer)
+        self.assertEqual(response.action_reason, "Retrieval backend unavailable")
+
+    def test_unexpected_error_does_not_blame_the_index(self):
+        response = self._ask_with_retriever_error(KeyError("doc_id"))
+        self.assertIn("Something went wrong", response.answer)
+        self.assertNotIn("index", response.answer.lower())
+        self.assertEqual(response.action_reason, "Retrieval failure")
+
 
 class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
     def _multi_unit_db(self):
