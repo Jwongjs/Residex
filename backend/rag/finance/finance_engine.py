@@ -1255,7 +1255,7 @@ def compute_finance_summary(
             "landlord_expenses": _round2(s_landlord_paid),
             "rental_income_or_loss": _round2(s_received - s_direct),
             "net_pl": _round2(s_received - s_landlord_paid),
-            "statutory_contribution": _round2(s_received - s_direct),
+            "statutory_contribution": _round2(s_received - s_prorated),
             "units": unit_blocks,
             "expense_lines": _scaled_lines(expense_lines, share),
             "property_expense_lines": _scaled_lines(property_level_lines, share),

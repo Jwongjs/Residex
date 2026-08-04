@@ -402,6 +402,20 @@ class StatutoryTests(unittest.TestCase):
             block["received_rent"] - block["landlord_expenses"], block["net_pl"]
         )
 
+    def test_property_blocks_sum_to_the_statutory_headline(self):
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
+            _doc("p1", "tax", {"subtype": "quit_rent", "amount": 120.0, "period_year": 2025}),
+        ]
+        exceptions = [_doc_exception("p1", 2025, c)
+                      for c in ("loan", "upkeep", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "House")], year=2025,
+                          today=date(2026, 1, 1), document_exceptions=exceptions)
+        block_sum = sum(p["statutory_contribution"] for p in result["properties"])
+        self.assertEqual(block_sum, result["totals"]["statutory_rental_income"])
+        # 1 of 12 months rented: 1000 - 120*(1/12) = 990.0, not 880.0.
+        self.assertEqual(result["properties"][0]["statutory_contribution"], 990.0)
+
 
 class CompletenessTests(unittest.TestCase):
     def test_missing_categories_and_vacant_month_caveats(self):
