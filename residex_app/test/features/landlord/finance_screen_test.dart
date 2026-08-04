@@ -230,4 +230,27 @@ void main() {
     // The bottom panel still asks for the same documents.
     expect(find.textContaining('documents needed for 2026'), findsOneWidget);
   });
+
+  testWidgets('co-owned property states the share basis plainly', (tester) async {
+    final summary = FinanceSummary(
+      year: 2026,
+      totals: FinanceTotals(
+        receivedRent: 1600.0, derivedRent: 0.0, directExpenses: 100.0,
+        netPl: 1400.0, landlordExpenses: 200.0,
+        statutoryRentalIncome: 1500.0, statutoryNote: '',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8', ownershipShare: 0.5,
+          receivedRent: 1600.0, derivedRent: 0.0,
+          directExpenses: 100.0, landlordExpenses: 200.0,
+          rentalIncomeOrLoss: 1500.0, netPl: 1400.0,
+          statutoryContribution: 1500.0,
+        ),
+      ],
+    );
+    await _pumpScreen(tester, 2026, summary);
+    expect(find.text('Shown at your 50% share'), findsOneWidget);
+    expect(find.textContaining("property's full figures"), findsNothing);
+  });
 }

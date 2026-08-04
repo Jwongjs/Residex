@@ -443,13 +443,27 @@ class _UnitFinanceDetailScreenState
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              formatRM(line.amount),
-              style: GoogleFonts.ibmPlexMono(
-                fontSize: 12,
-                color: primaryColor,
-                decoration: excluded ? TextDecoration.lineThrough : null,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  formatRM(line.amount),
+                  style: GoogleFonts.ibmPlexMono(
+                    fontSize: 12,
+                    color: primaryColor,
+                    decoration: excluded ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                if (line.fullAmount != null && line.fullAmount! > 0) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'your ${((line.amount / line.fullAmount!) * 100).toStringAsFixed(0)}% '
+                    'of ${formatRM(line.fullAmount!)}',
+                    style: AppTextStyles.labelSmall
+                        .copyWith(color: AppColors.textMuted),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

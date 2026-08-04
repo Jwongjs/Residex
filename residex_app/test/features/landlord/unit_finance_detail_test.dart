@@ -421,4 +421,36 @@ void main() {
     expect(find.textContaining("Couldn't load $nextYear"), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
+
+  testWidgets('a scaled expense line shows the document face value',
+      (tester) async {
+    await _pumpScreen(tester, 2026, UnitFinance(
+      unitId: 'u1', label: 'Unit 1', rentedMonths: 12,
+      contribution: 600.0, statutoryContribution: 600.0,
+      expenseLines: [
+        ExpenseLine(
+          docId: 'd1', category: 'tax', description: 'Quit rent',
+          amount: 600.0, fullAmount: 1200.0,
+        ),
+      ],
+    ));
+    await tester.tap(find.text('Rental income'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('your 50% of'), findsOneWidget);
+  });
+
+  testWidgets('an unscaled expense line shows no provenance', (tester) async {
+    await _pumpScreen(tester, 2026, UnitFinance(
+      unitId: 'u1', label: 'Unit 1', rentedMonths: 12,
+      contribution: 1200.0, statutoryContribution: 1200.0,
+      expenseLines: [
+        ExpenseLine(
+          docId: 'd1', category: 'tax', description: 'Quit rent', amount: 1200.0,
+        ),
+      ],
+    ));
+    await tester.tap(find.text('Rental income'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('your'), findsNothing);
+  });
 }

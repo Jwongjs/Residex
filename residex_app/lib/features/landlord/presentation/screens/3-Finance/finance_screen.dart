@@ -355,8 +355,7 @@ class FinanceScreen extends ConsumerWidget {
           if (block.ownershipShare < 1.0) ...[
             const SizedBox(height: 4),
             Text(
-              'Net P/L and statutory shown at your ${(block.ownershipShare * 100).toStringAsFixed(0)}% share; '
-              'Received and Expenses are the property\'s full figures.',
+              'Shown at your ${(block.ownershipShare * 100).toStringAsFixed(0)}% share',
               style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
             ),
           ],
