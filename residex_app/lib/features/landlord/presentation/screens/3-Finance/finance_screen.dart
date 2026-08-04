@@ -356,8 +356,8 @@ class FinanceScreen extends ConsumerWidget {
           ],
           Row(
             children: [
-              Expanded(child: _miniStat('RECEIVED', block.receivedRent)),
-              Expanded(child: _miniStat('EXPENSES', block.directExpenses)),
+              Expanded(child: _miniStat('RENTAL INCOME', block.receivedRent)),
+              Expanded(child: _miniStat('EXPENSES', block.landlordExpenses)),
             ],
           ),
           const SizedBox(height: 12),
@@ -366,7 +366,7 @@ class FinanceScreen extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Net P/L · ${summary.year}',
+                child: Text('Net Profit/Loss · ${summary.year}',
                     style: AppTextStyles.labelLarge),
               ),
               Flexible(
@@ -388,7 +388,7 @@ class FinanceScreen extends ConsumerWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Statutory rental income/loss',
+                  'Statutory Income',
                   style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
                 ),
               ),

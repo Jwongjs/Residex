@@ -120,9 +120,9 @@ void main() {
     await _pumpScreen(tester, year, _summaryWithProperty(year, complete: true));
 
     // NET P/L is now the big headline figure; statutory is a subtle line.
-    expect(find.text('Net P/L · $year'), findsOneWidget);
+    expect(find.text('Net Profit/Loss · $year'), findsOneWidget);
     expect(find.text('RM 2,800.00'), findsOneWidget); // block.netPl
-    expect(find.text('Statutory rental income/loss'), findsOneWidget);
+    expect(find.text('Statutory Income'), findsOneWidget);
     // RM 3,100.00 shows twice: the portfolio panel's total and this single
     // property's statutory line (they coincide with one property).
     expect(find.text('RM 3,100.00'), findsNWidgets(2));
@@ -168,5 +168,35 @@ void main() {
     );
 
     expect(find.text('Add loan figures'), findsOneWidget);
+  });
+
+  testWidgets('property panel uses the bare glossary and shows cash out', (tester) async {
+    final summary = FinanceSummary(
+      year: 2026,
+      totals: FinanceTotals(
+        receivedRent: 3200.0, derivedRent: 0.0, directExpenses: 200.0,
+        netPl: 2800.0, landlordExpenses: 400.0,
+        statutoryRentalIncome: 3000.0, statutoryNote: '',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8',
+          receivedRent: 3200.0, derivedRent: 0.0,
+          directExpenses: 200.0, landlordExpenses: 400.0,
+          rentalIncomeOrLoss: 3000.0, netPl: 2800.0,
+          statutoryContribution: 3000.0,
+        ),
+      ],
+    );
+    await _pumpScreen(tester, 2026, summary);
+    expect(find.text('RENTAL INCOME'), findsOneWidget);
+    expect(find.text('EXPENSES'), findsOneWidget);
+    expect(find.text('Net Profit/Loss · 2026'), findsOneWidget);
+    expect(find.text('Statutory Income'), findsOneWidget);
+    expect(find.text('RECEIVED'), findsNothing);
+    expect(find.text('Net P/L · 2026'), findsNothing);
+    // EXPENSES renders landlordExpenses (400), not directExpenses (200).
+    // RM 400.00 appears twice: portfolio panel's overall + property panel's property-level.
+    expect(find.text('RM 400.00'), findsNWidgets(2));
   });
 }
