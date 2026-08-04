@@ -297,6 +297,63 @@ class StatutoryTests(unittest.TestCase):
         )
         self.assertTrue(any("Ownership share applied" in c for c in result["caveats"]))
 
+    def test_ownership_share_scales_every_total_not_just_net_and_statutory(self):
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
+            _doc("p1", "tax", {"subtype": "quit_rent", "amount": 120.0, "period_year": 2025}),
+        ]
+        exceptions = [_doc_exception("p1", 2025, c)
+                      for c in ("loan", "upkeep", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "Shared", share=0.5)], year=2025,
+                          today=date(2026, 1, 1), document_exceptions=exceptions)
+        totals = result["totals"]
+        # Every money total is now the landlord's half, not the property's whole.
+        self.assertEqual(totals["received_rent"], 500.0)
+        self.assertEqual(totals["direct_expenses"], 60.0)
+        self.assertEqual(totals["landlord_expenses"], 60.0)
+        # Unchanged by this task — proves share was not applied twice.
+        self.assertEqual(totals["net_pl"], 440.0)
+        self.assertEqual(totals["statutory_rental_income"], 495.0)
+
+    def test_ownership_share_scales_property_block_and_expense_lines(self):
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
+            _doc("p1", "tax", {"subtype": "quit_rent", "amount": 120.0, "period_year": 2025}),
+        ]
+        exceptions = [_doc_exception("p1", 2025, c)
+                      for c in ("loan", "upkeep", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "Shared", share=0.5)], year=2025,
+                          today=date(2026, 1, 1), document_exceptions=exceptions)
+        block = result["properties"][0]
+        self.assertEqual(block["received_rent"], 500.0)
+        self.assertEqual(block["direct_expenses"], 60.0)
+        self.assertEqual(block["rental_income_or_loss"], 440.0)
+        # Each line is scaled, and carries the document's face value so the app
+        # can show "your 50% of RM 120.00".
+        line = block["expense_lines"][0]
+        self.assertEqual(line["amount"], 60.0)
+        self.assertEqual(line["full_amount"], 120.0)
+        # The category breakdown is scaled too.
+        self.assertEqual(result["expense_breakdown"]["tax"], 60.0)
+
+    def test_full_ownership_leaves_every_figure_and_line_untouched(self):
+        """Regression guard on the choke point: at share 1.0 nothing changes,
+        and no full_amount provenance is emitted."""
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
+            _doc("p1", "tax", {"subtype": "quit_rent", "amount": 120.0, "period_year": 2025}),
+        ]
+        exceptions = [_doc_exception("p1", 2025, c)
+                      for c in ("loan", "upkeep", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "Whole", share=1.0)], year=2025,
+                          today=date(2026, 1, 1), document_exceptions=exceptions)
+        self.assertEqual(result["totals"]["received_rent"], 1000.0)
+        self.assertEqual(result["totals"]["direct_expenses"], 120.0)
+        self.assertEqual(result["totals"]["net_pl"], 880.0)
+        block = result["properties"][0]
+        self.assertEqual(block["received_rent"], 1000.0)
+        self.assertIsNone(block["expense_lines"][0].get("full_amount"))
+
     def test_loss_offsets_across_properties_then_floors_at_zero(self):
         docs = [
             _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),

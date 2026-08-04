@@ -424,6 +424,26 @@ def _dedup_expense_lines(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return deduped
 
 
+def _scaled_lines(lines: List[Dict[str, Any]], share: float) -> List[Dict[str, Any]]:
+    """Copy expense lines with amounts at the landlord's ownership share.
+
+    Never mutates the input. The unscaled lines stay the basis for every
+    property-level sum, so scaling is applied exactly once and no sum can be
+    scaled twice. At share 1.0 the lines are returned unchanged (no
+    `full_amount`), so the overwhelmingly common case is byte-identical to
+    before. Below 1.0 each line also carries `full_amount`, the source
+    document's face value, so the app can show "your 50% of RM 1,200.00"
+    beside the scaled figure."""
+    if share == 1.0:
+        return list(lines)
+    return [
+        {**line,
+         "amount": _round2(share * line["amount"]),
+         "full_amount": _round2(line["amount"])}
+        for line in lines
+    ]
+
+
 def _document_years(doc: Dict[str, Any]) -> List[int]:
     """All years a document's facts reference, for the coverage window
     fallback and per-year completeness. Mirrors _expense_lines' allocation
@@ -1066,13 +1086,15 @@ def compute_finance_summary(
                 "unit_id": scope["unit_id"],
                 "label": scope["label"],
                 "rented_months": rented,
-                "contribution": _round2(actual_sum + derived_sum - unit_landlord_total),
+                "contribution": _round2(
+                    share * (actual_sum + derived_sum - unit_landlord_total)
+                ),
                 "statutory_contribution": _round2(
-                    actual_sum + derived_sum - unit_deductible_total
+                    share * (actual_sum + derived_sum - unit_deductible_total)
                 ),
                 "months": month_rows,
                 "missing_invoice_months": vacant,
-                "expense_lines": unit_lines,
+                "expense_lines": _scaled_lines(unit_lines, share),
                 "loan_status": loan_status_by_unit.get(scope["unit_id"]),
             })
             if derived:
@@ -1137,20 +1159,22 @@ def compute_finance_summary(
 
         received = prop_actual + prop_derived + prop_recovered
         direct = sum(l["amount"] for l in expense_lines if l["deductible"])
-        # A provisional running figure: every property feeds the statutory
-        # estimate from the data on file so far. Incomplete properties are
-        # still flagged (below) so the app labels the headline "Current" and
-        # nudges for the missing documents — the number will change as they
-        # arrive, but the landlord sees an estimate immediately rather than a
-        # bare RM 0.00.
-        statutory_sum += share * (received - prorated_expenses)
-        # Net P/L and statutory both reflect the landlord's ownership share, so a
-        # co-owned property never shows a statutory figure below its Net P/L
-        # (statutory deducts a smaller set of expenses than Net P/L, so once both
-        # are on the same share basis statutory >= Net P/L always). Received and
-        # Direct Expenses stay at the property's full amount — the share note and
-        # the per-block caption explain the basis.
-        net_pl_sum += share * (received - landlord_paid)
+
+        # Ownership share is applied once, here, to every figure this property
+        # contributes; the already-scaled values then feed the cross-property
+        # totals. Each property carries its own share, so a total can never be
+        # correctly scaled after the fact — the choke point must be per property
+        # and must sit before accumulation. (Superseded the earlier design where
+        # Received and Direct Expenses stayed at the property's full amount.)
+        s_received = share * received
+        s_derived = share * prop_derived
+        s_outstanding = share * prop_outstanding
+        s_direct = share * direct
+        s_landlord_paid = share * landlord_paid
+        s_prorated = share * prorated_expenses
+
+        statutory_sum += s_received - s_prorated
+        net_pl_sum += s_received - s_landlord_paid
         if not complete:
             incomplete_notes.append(
                 f"{name}: {year} records are incomplete — this statutory figure is "
@@ -1176,7 +1200,7 @@ def compute_finance_summary(
             if not line["deductible"]:
                 continue
             expense_breakdown[line["category"]] = _round2(
-                expense_breakdown.get(line["category"], 0.0) + line["amount"]
+                expense_breakdown.get(line["category"], 0.0) + share * line["amount"]
             )
 
         excluded = _round2(sum(
@@ -1198,26 +1222,26 @@ def compute_finance_summary(
                 "— upload the renewal tenancy agreement if this was a renewal."
             )
 
-        total_received += received
-        total_derived += prop_derived
-        total_outstanding += prop_outstanding
-        total_expenses += direct
-        total_landlord_expenses += landlord_paid
+        total_received += s_received
+        total_derived += s_derived
+        total_outstanding += s_outstanding
+        total_expenses += s_direct
+        total_landlord_expenses += s_landlord_paid
 
         property_blocks.append({
             "property_id": pid,
             "name": name,
             "ownership_share": share,
-            "received_rent": _round2(received),
-            "derived_rent": _round2(prop_derived),
-            "outstanding_rent": _round2(prop_outstanding),
-            "direct_expenses": _round2(direct),
-            "rental_income_or_loss": _round2(received - direct),
-            "net_pl": _round2(share * (received - landlord_paid)),
-            "statutory_contribution": _round2(share * (received - direct)),
+            "received_rent": _round2(s_received),
+            "derived_rent": _round2(s_derived),
+            "outstanding_rent": _round2(s_outstanding),
+            "direct_expenses": _round2(s_direct),
+            "rental_income_or_loss": _round2(s_received - s_direct),
+            "net_pl": _round2(s_received - s_landlord_paid),
+            "statutory_contribution": _round2(s_received - s_direct),
             "units": unit_blocks,
-            "expense_lines": expense_lines,
-            "property_expense_lines": property_level_lines,
+            "expense_lines": _scaled_lines(expense_lines, share),
+            "property_expense_lines": _scaled_lines(property_level_lines, share),
             "recovered_rent": recovered_lines,
             "complete": complete,
             "coverage": coverage_rows,

@@ -183,6 +183,7 @@ class ExpenseLine(BaseModel):
     subtype: Optional[str] = None
     description: Optional[str] = None
     amount: float
+    full_amount: Optional[float] = None  # document face value when a share < 1.0 scaled `amount`
     date: Optional[str] = None
     unit_id: Optional[str] = None  # None = property-level expense
     deductible: bool = True

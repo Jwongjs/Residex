@@ -1751,9 +1751,9 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         block = summary.properties[0]
         self.assertEqual(block.name, "Kiara Court")
         self.assertEqual(block.ownership_share, 0.5)
-        self.assertEqual(block.received_rent, 2000.0)
-        self.assertEqual(block.direct_expenses, 300.0)
-        self.assertEqual(block.rental_income_or_loss, 1700.0)
+        self.assertEqual(block.received_rent, 1000.0)
+        self.assertEqual(block.direct_expenses, 150.0)
+        self.assertEqual(block.rental_income_or_loss, 850.0)
         self.assertEqual(block.expense_lines[0].category, "upkeep")
         # statutory: 0.5 * (2000 - 300 * (1 rented month / 12)) = 987.50
         self.assertEqual(summary.totals.statutory_rental_income, 987.5)
