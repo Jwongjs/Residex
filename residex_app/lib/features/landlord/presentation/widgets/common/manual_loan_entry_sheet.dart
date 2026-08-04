@@ -59,10 +59,10 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   void initState() {
     super.initState();
     _cadence = widget.cadence;
-    if (widget.structureType == PropertyStructureType.strata &&
-        widget.units.isNotEmpty) {
-      _selectedUnitId = widget.units.first.unitId;
-    }
+    // The strata per-unit default selection is derived in build() from the
+    // *live* units list (financeSummaryProvider), not from widget.units —
+    // widget.units can be a frozen/stale snapshot from a caller (see
+    // build()'s `units` local and the comment above it).
   }
 
   @override
@@ -182,6 +182,24 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
       orElse: () => widget.units,
     );
 
+    // Landed = one title, one loan, whatever the room count. Strata = one loan
+    // per separately-titled unit. Only an unknown structure keeps both open.
+    final perUnitLoans =
+        widget.structureType == PropertyStructureType.strata && units.isNotEmpty;
+    final unknownStructure = widget.structureType == null && units.isNotEmpty;
+    final showScope = perUnitLoans || unknownStructure;
+
+    // Strata properties never allow "Whole property" — default (and, if the
+    // live list changed under us, re-anchor) the selection to a real unit
+    // from the *live* list, not the frozen widget.units a caller passed in.
+    // This also guards DropdownButton's own assertion, which throws if
+    // `value` has no matching item.
+    if (perUnitLoans &&
+        (_selectedUnitId == null ||
+            !units.any((u) => u.unitId == _selectedUnitId))) {
+      _selectedUnitId = units.first.unitId;
+    }
+
     UnitFinance? selectedUnit;
     if (_selectedUnitId != null) {
       for (final u in units) {
@@ -191,13 +209,6 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
         }
       }
     }
-
-    // Landed = one title, one loan, whatever the room count. Strata = one loan
-    // per separately-titled unit. Only an unknown structure keeps both open.
-    final perUnitLoans =
-        widget.structureType == PropertyStructureType.strata && units.isNotEmpty;
-    final unknownStructure = widget.structureType == null && units.isNotEmpty;
-    final showScope = perUnitLoans || unknownStructure;
 
     return Material(
       type: MaterialType.transparency,
@@ -379,7 +390,7 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    _entryLabel(entry),
+                                    _entryLabel(entry, units),
                                     style: AppTextStyles.bodyMedium,
                                   ),
                                 ),
@@ -424,13 +435,17 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
     );
   }
 
-  String _entryLabel(Map<String, dynamic> entry) {
+  /// [units] must be the *live* list from build() (financeSummaryProvider),
+  /// not widget.units — a caller's frozen snapshot can omit or rename units
+  /// relative to what's actually current, per the same staleness hazard the
+  /// selection default above guards against.
+  String _entryLabel(Map<String, dynamic> entry, List<UnitFinance> units) {
     final period = entry['month'] != null
         ? monthAbbrev[(entry['month'] as int) - 1]
         : '${widget.year}';
     final unitId = entry['unit_id'] as String?;
     if (unitId == null) return 'Whole property · $period';
-    for (final u in widget.units) {
+    for (final u in units) {
       if (u.unitId == unitId) return '${u.label} · $period';
     }
     return period;
