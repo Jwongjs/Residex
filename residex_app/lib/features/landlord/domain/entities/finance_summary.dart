@@ -50,6 +50,7 @@ class PropertyFinance {
   final double derivedRent;
   final double outstandingRent;
   final double directExpenses;
+  final double landlordExpenses;
   final double rentalIncomeOrLoss;
   final double netPl;
   final double? statutoryContribution;
@@ -70,6 +71,7 @@ class PropertyFinance {
     required this.derivedRent,
     this.outstandingRent = 0.0,
     required this.directExpenses,
+    this.landlordExpenses = 0.0,
     required this.rentalIncomeOrLoss,
     this.netPl = 0.0,
     this.statutoryContribution,
@@ -178,6 +180,9 @@ class ExpenseLine {
   final String? subtype;
   final String? description;
   final double amount;
+  /// The source document's face value, present only when an ownership share
+  /// below 1.0 scaled [amount]. Null means [amount] is the full figure.
+  final double? fullAmount;
   final String? date;
   final String? unitId; // null = property-level expense
   final bool deductible;
@@ -189,6 +194,7 @@ class ExpenseLine {
     this.subtype,
     this.description,
     required this.amount,
+    this.fullAmount,
     this.date,
     this.unitId,
     this.deductible = true,

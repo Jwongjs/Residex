@@ -341,4 +341,68 @@ void main() {
     expect(block.manualLoanIncomplete, isFalse);
     expect(block.units.single.loanStatus, isNull);
   });
+
+  test('parses landlord_expenses and expense-line full_amount', () {
+    final summary = FinanceSummaryModel.fromJson({
+      'year': 2026,
+      'totals': {
+        'received_rent': 500.0,
+        'derived_rent': 0.0,
+        'direct_expenses': 60.0,
+        'net_pl': 440.0,
+        'statutory_rental_income': 495.0,
+        'statutory_note': '',
+      },
+      'properties': [
+        {
+          'property_id': 'p1',
+          'name': 'Shared',
+          'ownership_share': 0.5,
+          'received_rent': 500.0,
+          'derived_rent': 0.0,
+          'direct_expenses': 60.0,
+          'landlord_expenses': 60.0,
+          'rental_income_or_loss': 440.0,
+          'net_pl': 440.0,
+          'expense_lines': [
+            {'doc_id': 'd1', 'category': 'tax', 'amount': 60.0, 'full_amount': 120.0},
+          ],
+        },
+      ],
+    });
+    final property = summary.properties.single;
+    expect(property.landlordExpenses, 60.0);
+    expect(property.expenseLines.single.fullAmount, 120.0);
+  });
+
+  test('full_amount is null when the landlord owns the whole property', () {
+    final summary = FinanceSummaryModel.fromJson({
+      'year': 2026,
+      'totals': {
+        'received_rent': 1000.0,
+        'derived_rent': 0.0,
+        'direct_expenses': 120.0,
+        'net_pl': 880.0,
+        'statutory_rental_income': 990.0,
+        'statutory_note': '',
+      },
+      'properties': [
+        {
+          'property_id': 'p1',
+          'name': 'Whole',
+          'received_rent': 1000.0,
+          'derived_rent': 0.0,
+          'direct_expenses': 120.0,
+          'rental_income_or_loss': 880.0,
+          'net_pl': 880.0,
+          'expense_lines': [
+            {'doc_id': 'd1', 'category': 'tax', 'amount': 120.0},
+          ],
+        },
+      ],
+    });
+    expect(summary.properties.single.expenseLines.single.fullAmount, isNull);
+    // Absent landlord_expenses must default, never crash the Finance tab.
+    expect(summary.properties.single.landlordExpenses, 0.0);
+  });
 }

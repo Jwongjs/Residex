@@ -46,6 +46,7 @@ class FinanceSummaryModel {
       derivedRent: _d(json['derived_rent']),
       outstandingRent: _d(json['outstanding_rent']),
       directExpenses: _d(json['direct_expenses']),
+      landlordExpenses: _d(json['landlord_expenses']),
       rentalIncomeOrLoss: _d(json['rental_income_or_loss']),
       netPl: _d(json['net_pl']),
       statutoryContribution:
@@ -134,6 +135,7 @@ class FinanceSummaryModel {
               subtype: l['subtype'] as String?,
               description: l['description'] as String?,
               amount: _d(l['amount']),
+              fullAmount: l['full_amount'] == null ? null : _d(l['full_amount']),
               date: l['date'] as String?,
               unitId: l['unit_id'] as String?,
               deductible: l['deductible'] as bool? ?? true,
