@@ -253,4 +253,34 @@ void main() {
     expect(find.text('Shown at your 50% share'), findsOneWidget);
     expect(find.textContaining("property's full figures"), findsNothing);
   });
+
+  testWidgets('property-level expenses are listed on the property panel',
+      (tester) async {
+    final summary = FinanceSummary(
+      year: 2026,
+      totals: FinanceTotals(
+        receivedRent: 3200.0, derivedRent: 0.0, directExpenses: 200.0,
+        netPl: 2800.0, landlordExpenses: 400.0,
+        statutoryRentalIncome: 3000.0, statutoryNote: '',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8',
+          receivedRent: 3200.0, derivedRent: 0.0,
+          directExpenses: 200.0, landlordExpenses: 400.0,
+          rentalIncomeOrLoss: 3000.0, netPl: 2800.0,
+          statutoryContribution: 3000.0,
+          propertyExpenseLines: [
+            ExpenseLine(
+              docId: 'd1', category: 'tax', description: 'Quit rent',
+              amount: 120.0, date: '2026',
+            ),
+          ],
+        ),
+      ],
+    );
+    await _pumpScreen(tester, 2026, summary);
+    expect(find.text('Property-level expenses'), findsOneWidget);
+    expect(find.text('Quit rent'), findsOneWidget);
+  });
 }
