@@ -20,21 +20,23 @@ Property _property({bool? hasMortgage}) => Property(
     );
 
 void main() {
-  testWidgets('loan-input selectors appear when mortgage = Yes', (tester) async {
+  testWidgets('mortgage question stays', (tester) async {
     await tester.pumpWidget(ProviderScope(
       child: MaterialApp(home: AddPropertyDialog(property: _property(hasMortgage: true))),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('How do you record loan figures?'), findsOneWidget);
-    expect(find.text('Upload statements'), findsOneWidget);
-    expect(find.text('Enter manually'), findsOneWidget);
+    expect(find.text('Do you have a mortgage on this property?'), findsOneWidget);
   });
 
-  testWidgets('loan-input selectors hidden when mortgage != Yes', (tester) async {
+  testWidgets('loan method and cadence questions are gone', (tester) async {
     await tester.pumpWidget(ProviderScope(
-      child: MaterialApp(home: AddPropertyDialog(property: _property(hasMortgage: false))),
+      child: MaterialApp(home: AddPropertyDialog(property: _property(hasMortgage: true))),
     ));
     await tester.pumpAndSettle();
     expect(find.text('How do you record loan figures?'), findsNothing);
+    expect(find.text('Upload statements'), findsNothing);
+    expect(find.text('Enter manually'), findsNothing);
+    expect(find.text('Annually'), findsNothing);
+    expect(find.text('Monthly'), findsNothing);
   });
 }
