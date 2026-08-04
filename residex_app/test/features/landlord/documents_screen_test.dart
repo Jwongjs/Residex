@@ -417,6 +417,66 @@ void main() {
     expect(find.byType(ManualLoanEntrySheet), findsOneWidget);
   });
 
+  testWidgets(
+      'a populated Loans & Financing folder still offers the manual entry path',
+      (tester) async {
+    // The empty-state affordance disappears once a loan document exists —
+    // e.g. after the landlord has uploaded one statement, or after a first
+    // round of manual entry that later needs correcting. The populated view
+    // (peer of "Add More Loans & Financing") must keep offering the path
+    // back in, or there is no way to revisit figures once the folder is
+    // no longer empty.
+    final year = DateTime.now().year;
+    final loanDoc = DocuMindDocument(
+      docId: 'loan-1', landlordId: 'landlord-1', propertyId: 'prop-1',
+      category: 'loan', filename: 'loan_statement.pdf', chunksIndexed: 1,
+      uploadedAt: DateTime(2026, 1, 1),
+    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
+        documindDocumentsProvider.overrideWith(
+          (ref, propertyId) async => [loanDoc],
+        ),
+        propertyByIdProvider.overrideWith((ref, id) async => testProperty),
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0, derivedRent: 0, directExpenses: 0,
+                netPl: 0, statutoryRentalIncome: 0, statutoryNote: '',
+              ),
+              properties: [
+                PropertyFinance(
+                  propertyId: 'prop-1', name: 'Maple Residency',
+                  receivedRent: 0, derivedRent: 0, directExpenses: 0,
+                  rentalIncomeOrLoss: 0,
+                ),
+              ],
+            )),
+        manualLoanEntriesProvider((propertyId: 'prop-1', year: year))
+            .overrideWith((ref) async => <Map<String, dynamic>>[]),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Loans & Financing'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    // Populated view: the uploaded document is listed, not the empty state.
+    expect(find.text('loan_statement.pdf'), findsOneWidget);
+    expect(find.text('Add More Loans & Financing'), findsOneWidget);
+    expect(find.text('Enter figures manually'), findsOneWidget);
+
+    await tester.tap(find.text('Enter figures manually'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ManualLoanEntrySheet), findsOneWidget);
+  });
+
   testWidgets('moving a document persists a sticky folderMoves override', (tester) async {
     final feb = DocuMindDocument(
       docId: 'feb', landlordId: 'landlord-1', propertyId: 'prop-1',

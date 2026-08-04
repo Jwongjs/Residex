@@ -1138,30 +1138,46 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
-      child: OutlinedButton.icon(
-        onPressed: () => _uploadDocument(category),
-        icon: Icon(
-          categoryIcon.icon,
-          color: categoryColor,
-        ),
-        label: Text(
-          'Add More ${getCategoryLabel(category)}',
-          style: TextStyle(
-            color: categoryColor,
-            fontWeight: FontWeight.w600,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          OutlinedButton.icon(
+            onPressed: () => _uploadDocument(category),
+            icon: Icon(
+              categoryIcon.icon,
+              color: categoryColor,
+            ),
+            label: Text(
+              'Add More ${getCategoryLabel(category)}',
+              style: TextStyle(
+                color: categoryColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              side: BorderSide(
+                color: categoryColor.withOpacity(0.5),
+                width: 2,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              backgroundColor: categoryColor.withOpacity(0.1),
+            ),
           ),
-        ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          side: BorderSide(
-            color: categoryColor.withOpacity(0.5),
-            width: 2,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          backgroundColor: categoryColor.withOpacity(0.1),
-        ),
+          // Persistent path back to manual loan figures once the folder is no
+          // longer empty — the finance-tab nudge clears once figures exist,
+          // so this is the only way back in to correct a typo.
+          if (category == 'loan') ...[
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () => _openManualLoanEntry(),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Enter figures manually'),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1251,30 +1267,36 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   Future<void> _openManualLoanEntry() async {
     final propertyId = _selectedPropertyId;
     if (propertyId == null) return;
-    final property = await ref.read(propertyByIdProvider(propertyId).future);
-    final year = ref.read(financeYearProvider);
-    final summary = await ref.read(financeSummaryProvider(year).future);
-    final matches =
-        summary.properties.where((p) => p.propertyId == propertyId).toList();
-    final block = matches.isEmpty ? null : matches.first;
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.paper,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => ManualLoanEntrySheet(
-        propertyId: propertyId,
-        year: year,
-        cadence: property?.loanInputCadence,
-        structureType: property?.structureType,
-        units: (block?.units ?? const [])
-            .where((u) => u.unitId != null)
-            .toList(),
-      ),
-    );
+    try {
+      final property = await ref.read(propertyByIdProvider(propertyId).future);
+      final year = ref.read(financeYearProvider);
+      final summary = await ref.read(financeSummaryProvider(year).future);
+      final matches =
+          summary.properties.where((p) => p.propertyId == propertyId).toList();
+      final block = matches.isEmpty ? null : matches.first;
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AppColors.paper,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => ManualLoanEntrySheet(
+          propertyId: propertyId,
+          year: year,
+          cadence: property?.loanInputCadence,
+          structureType: property?.structureType,
+          units: (block?.units ?? const [])
+              .where((u) => u.unitId != null)
+              .toList(),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Could not open loan entry: ${e.toString()}', isError: true);
+      }
+    }
   }
 
   Future<void> _uploadDocument(String category) async {
