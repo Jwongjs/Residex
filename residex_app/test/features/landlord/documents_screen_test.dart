@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/documind_document.dart';
+import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
 import 'package:residex_app/features/landlord/data/models/property_model.dart';
 import 'package:residex_app/features/landlord/domain/entities/property.dart';
 import 'package:residex_app/features/landlord/domain/repositories/property_repository.dart';
 import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
+import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/5-Documents/documents_screen.dart';
 import 'package:residex_app/features/landlord/presentation/widgets/common/document_categories.dart';
+import 'package:residex_app/features/landlord/presentation/widgets/common/manual_loan_entry_sheet.dart';
 
 class _FakePropertyRepository implements PropertyRepository {
   final Property property;
@@ -364,6 +367,54 @@ void main() {
     expect(capturedName, 'Ayer 8 lease 2023.pdf');
     expect(capturedDoc, 'doc-9');
     expect(capturedProperty, 'prop-1');
+  });
+
+  testWidgets(
+      'Loans & Financing folder offers a persistent manual entry path',
+      (tester) async {
+    final year = DateTime.now().year;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
+        documindDocumentsProvider.overrideWith(
+          (ref, propertyId) async => const <DocuMindDocument>[],
+        ),
+        propertyByIdProvider.overrideWith((ref, id) async => testProperty),
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0, derivedRent: 0, directExpenses: 0,
+                netPl: 0, statutoryRentalIncome: 0, statutoryNote: '',
+              ),
+              properties: [
+                PropertyFinance(
+                  propertyId: 'prop-1', name: 'Maple Residency',
+                  receivedRent: 0, derivedRent: 0, directExpenses: 0,
+                  rentalIncomeOrLoss: 0,
+                ),
+              ],
+            )),
+        manualLoanEntriesProvider((propertyId: 'prop-1', year: year))
+            .overrideWith((ref) async => <Map<String, dynamic>>[]),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    await tester.pumpAndSettle();
+
+    // Scroll down to find the Loans & Financing card (same as the
+    // Expenses-folder tests above — both are second-row grid tiles).
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Loans & Financing'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter figures manually'), findsOneWidget);
+
+    await tester.tap(find.text('Enter figures manually'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ManualLoanEntrySheet), findsOneWidget);
   });
 
   testWidgets('moving a document persists a sticky folderMoves override', (tester) async {

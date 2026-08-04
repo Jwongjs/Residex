@@ -10,12 +10,17 @@ class DocumentNudgeBanner extends StatelessWidget {
   final VoidCallback onUpload;
   final VoidCallback onMarkUnavailable;
 
+  /// Non-null only when a loan document is among the missing ones — loan
+  /// figures can be keyed in by hand, unlike every other category.
+  final VoidCallback? onEnterManually;
+
   const DocumentNudgeBanner({
     super.key,
     required this.count,
     required this.year,
     required this.onUpload,
     required this.onMarkUnavailable,
+    this.onEnterManually,
   });
 
   @override
@@ -60,6 +65,42 @@ class DocumentNudgeBanner extends StatelessWidget {
             onPressed: onMarkUnavailable,
             child: const Text('Mark unavailable'),
           );
+          final enterManuallyButton = onEnterManually == null
+              ? null
+              : TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.registry,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: onEnterManually,
+                  child: const Text('Enter figures manually'),
+                );
+
+          // With three buttons, no fixed pixel breakpoint reliably avoids an
+          // overflow — a Row's non-flex children get unbounded width, so a
+          // long third label can overflow even a "wide" viewport. A Wrap
+          // sizes to the bounded width it's given and wraps onto a second
+          // line instead of overflowing, so the three-button case always
+          // uses the stacked layout with a Wrap for the actions.
+          if (enterManuallyButton != null) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [icon, const SizedBox(width: 8), text]),
+                const SizedBox(height: 8),
+                Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    uploadButton,
+                    enterManuallyButton,
+                    markUnavailableButton,
+                  ],
+                ),
+              ],
+            );
+          }
 
           if (constraints.maxWidth >= 340) {
             return Row(

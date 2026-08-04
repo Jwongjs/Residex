@@ -170,6 +170,45 @@ void main() {
     expect(find.text('Add loan figures'), findsOneWidget);
   });
 
+  testWidgets('nudge offers manual entry when a loan document is missing',
+      (tester) async {
+    final summary = _summaryWithProperty(2026, complete: false);
+    await _pumpScreenWithProperty(
+      tester, 2026,
+      FinanceSummary(
+        year: summary.year, totals: summary.totals,
+        properties: summary.properties,
+        missingCategories: const {'p1': ['loan']},
+      ),
+      _fakeProperty(hasMortgage: true, loanInputMethod: null),
+    );
+    expect(find.text('Enter figures manually'), findsOneWidget);
+  });
+
+  testWidgets('nudge omits manual entry when no loan document is missing',
+      (tester) async {
+    final summary = _summaryWithProperty(2026, complete: false);
+    await _pumpScreenWithProperty(
+      tester, 2026,
+      FinanceSummary(
+        year: summary.year, totals: summary.totals,
+        properties: summary.properties,
+        missingCategories: const {'p1': ['insurance']},
+      ),
+      _fakeProperty(hasMortgage: true, loanInputMethod: null),
+    );
+    expect(find.text('Enter figures manually'), findsNothing);
+  });
+
+  testWidgets('loan button no longer depends on loanInputMethod', (tester) async {
+    await _pumpScreenWithProperty(
+      tester, 2026,
+      _summaryWithProperty(2026, complete: true, manualLoanIncomplete: true),
+      _fakeProperty(hasMortgage: true, loanInputMethod: null),
+    );
+    expect(find.text('Add loan figures'), findsOneWidget);
+  });
+
   testWidgets('property panel uses the bare glossary and shows cash out', (tester) async {
     final summary = FinanceSummary(
       year: 2026,

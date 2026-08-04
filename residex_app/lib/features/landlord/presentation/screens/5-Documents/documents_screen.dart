@@ -5,6 +5,7 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../providers/document_folders.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart' show monthAbbrev;
+import '../../providers/finance_providers.dart';
 import '../../providers/property_providers.dart';
 import '../../providers/unit_providers.dart';
 import '../../../domain/entities/documind_document.dart';
@@ -12,6 +13,7 @@ import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
 import '../../widgets/common/document_categories.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
+import '../../widgets/common/manual_loan_entry_sheet.dart';
 import '../../widgets/common/utilities_liability_confirm_sheet.dart';
 import '../../widgets/common/records_grid.dart';
 import '../../widgets/common/upload_progress_overlay.dart';
@@ -763,6 +765,14 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                           elevation: 0,
                         ),
                       ),
+                      if (category == 'loan') ...[
+                        const SizedBox(height: 12),
+                        TextButton.icon(
+                          onPressed: () => _openManualLoanEntry(),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: const Text('Enter figures manually'),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1231,6 +1241,38 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                 ),
               ),
         ],
+      ),
+    );
+  }
+
+  /// The persistent path to manual loan figures. The finance-tab nudge clears
+  /// once figures exist, so without this there is no way back in to correct a
+  /// typo.
+  Future<void> _openManualLoanEntry() async {
+    final propertyId = _selectedPropertyId;
+    if (propertyId == null) return;
+    final property = await ref.read(propertyByIdProvider(propertyId).future);
+    final year = ref.read(financeYearProvider);
+    final summary = await ref.read(financeSummaryProvider(year).future);
+    final matches =
+        summary.properties.where((p) => p.propertyId == propertyId).toList();
+    final block = matches.isEmpty ? null : matches.first;
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => ManualLoanEntrySheet(
+        propertyId: propertyId,
+        year: year,
+        cadence: property?.loanInputCadence,
+        structureType: property?.structureType,
+        units: (block?.units ?? const [])
+            .where((u) => u.unitId != null)
+            .toList(),
       ),
     );
   }

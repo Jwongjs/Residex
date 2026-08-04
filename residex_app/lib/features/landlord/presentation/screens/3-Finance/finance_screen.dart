@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/finance_summary.dart';
+import '../../../domain/entities/property.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
@@ -266,12 +267,35 @@ class FinanceScreen extends ConsumerWidget {
     );
   }
 
+  void _openManualLoanSheet(
+    BuildContext context,
+    PropertyFinance block,
+    Property? property,
+    int year,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => ManualLoanEntrySheet(
+        propertyId: block.propertyId,
+        year: year,
+        cadence: property?.loanInputCadence,
+        structureType: property?.structureType,
+        units: block.units.where((u) => u.unitId != null).toList(),
+      ),
+    );
+  }
+
   Widget _buildPropertyBlock(BuildContext context, WidgetRef ref,
       FinanceSummary summary, PropertyFinance block) {
     final missing = summary.missingCategories[block.propertyId] ?? const [];
     final property = ref.watch(propertyByIdProvider(block.propertyId)).value;
-    final showManualLoan = block.manualLoanIncomplete &&
-        property?.loanInputMethod == 'manual';
+    final showManualLoan =
+        block.manualLoanIncomplete && property?.hasMortgage == true;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -371,23 +395,8 @@ class FinanceScreen extends ConsumerWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: () => showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: AppColors.paper,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  builder: (_) => ManualLoanEntrySheet(
-                    propertyId: block.propertyId,
-                    year: summary.year,
-                    cadence: property?.loanInputCadence,
-                    structureType: property?.structureType,
-                    units: block.units
-                        .where((u) => u.unitId != null)
-                        .toList(),
-                  ),
-                ),
+                onPressed: () =>
+                    _openManualLoanSheet(context, block, property, summary.year),
                 icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
                 label: Text('Add loan figures', style: AppTextStyles.labelLarge),
               ),
@@ -450,6 +459,10 @@ class FinanceScreen extends ConsumerWidget {
                 missing: missing,
                 mode: MissingDocsMode.markUnavailable,
               ),
+              onEnterManually: missing.contains('loan')
+                  ? () => _openManualLoanSheet(
+                      context, block, property, summary.year)
+                  : null,
             ),
           ],
           if ((yearCoverageFor(block.coverage, summary.year)?.unavailable ?? const []).isNotEmpty) ...[
