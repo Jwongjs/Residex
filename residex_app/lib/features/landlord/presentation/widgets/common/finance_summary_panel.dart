@@ -40,12 +40,12 @@ class FinanceSummaryPanel extends StatelessWidget {
               headerStyle: _cardHeaderStyle,
             );
             final receivedCard = _SecondaryCard(
-              label: 'TOTAL RECEIVED',
+              label: 'OVERALL RENTAL INCOME',
               value: totals.receivedRent,
               headerStyle: _cardHeaderStyle,
             );
             final expensesCard = _SecondaryCard(
-              label: 'TOTAL EXPENSES',
+              label: 'OVERALL EXPENSES',
               value: totals.landlordExpenses,
               headerStyle: _cardHeaderStyle,
             );
@@ -120,7 +120,7 @@ class _HeroCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('TOTAL NET P/L · ${summary.year}', style: headerStyle),
+                      Text('OVERALL NET PROFIT/LOSS · ${summary.year}', style: headerStyle),
                       const SizedBox(height: 4),
                       FittedBox(
                         fit: BoxFit.scaleDown,
@@ -243,8 +243,8 @@ class _StatutoryRow extends StatelessWidget {
     final totals = summary.totals;
     final provisional = summary.properties.any((p) => !p.complete);
     final statutoryLabel = provisional
-        ? 'Current Statutory Rental Income'
-        : 'Statutory Rental Income';
+        ? 'Current Overall Statutory Income'
+        : 'Overall Statutory Income';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

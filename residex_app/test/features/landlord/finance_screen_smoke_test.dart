@@ -89,12 +89,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Statutory Rental Income'), findsOneWidget);
+    expect(find.text('Overall Statutory Income'), findsOneWidget);
     expect(find.text('RM 24,483.13'), findsWidgets); // statutory + P/L rows
     expect(find.text('Ayer 8'), findsOneWidget);
-    expect(find.textContaining('TOTAL NET P/L'), findsOneWidget);
-    expect(find.text('TOTAL RECEIVED'), findsOneWidget);
-    expect(find.text('TOTAL EXPENSES'), findsOneWidget);
+    expect(find.textContaining('OVERALL NET PROFIT/LOSS'), findsOneWidget);
+    expect(find.text('OVERALL RENTAL INCOME'), findsOneWidget);
+    expect(find.text('OVERALL EXPENSES'), findsOneWidget);
     expect(find.textContaining('backfilled'), findsNothing);
     expect(find.textContaining('Records missing for'), findsOneWidget);
     expect(find.text('Unit A'), findsOneWidget);
@@ -217,5 +217,25 @@ void main() {
     await tester.pumpAndSettle();
     manageOpened = find.textContaining('is marked outstanding').evaluate().isNotEmpty;
     expect(manageOpened, isTrue);
+  });
+
+  testWidgets('finance tab headline uses the Overall glossary', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2026]),
+          financeSummaryProvider.overrideWith((ref, year) async => _fakeSummary(year)),
+        ],
+        child: const MaterialApp(home: FinanceScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('OVERALL NET PROFIT/LOSS · 2026'), findsOneWidget);
+    expect(find.text('OVERALL RENTAL INCOME'), findsOneWidget);
+    expect(find.text('OVERALL EXPENSES'), findsOneWidget);
+    expect(find.textContaining('Overall Statutory Income'), findsOneWidget);
+    expect(find.text('TOTAL NET P/L · 2026'), findsNothing);
+    expect(find.text('TOTAL RECEIVED'), findsNothing);
+    expect(find.text('TOTAL EXPENSES'), findsNothing);
   });
 }
