@@ -52,6 +52,30 @@ Future<void> _pumpScreen(WidgetTester tester, int year, UnitFinance unit) async 
 }
 
 void main() {
+  testWidgets('unit dropdowns use the bare glossary and name their roll-up',
+      (tester) async {
+    await _pumpScreen(tester, 2026, UnitFinance(
+      unitId: 'u1', label: 'Unit 1', rentedMonths: 12,
+      contribution: 3200.0, statutoryContribution: 3200.0,
+    ));
+    expect(find.text('Rental income'), findsOneWidget);
+    expect(find.text('Statutory income'), findsOneWidget);
+    expect(find.text('Net contribution'), findsNothing);
+    expect(find.text('Contributing statutory income'), findsNothing);
+
+    // Expand the Rental income accordion to see its caption.
+    await tester.tap(find.text('Rental income').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining("Contributes to this property's Rental Income"),
+        findsOneWidget);
+
+    // Expand the Statutory income accordion to see its caption.
+    await tester.tap(find.text('Statutory income'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining("Contributes to this property's Statutory Income"),
+        findsOneWidget);
+  });
+
   testWidgets('a month cell renders the full currency string without an ellipsis',
       (tester) async {
     tester.view.physicalSize = const Size(360, 800);
@@ -102,10 +126,10 @@ void main() {
     expect(find.text('Gross income'), findsNothing);
     expect(find.text('Plumbing repair'), findsNothing);
 
-    await tester.tap(find.text('Net contribution'));
+    await tester.tap(find.text('Rental income'));
     await tester.pumpAndSettle();
 
-    // Only the Net contribution dropdown is expanded; the statutory dropdown
+    // Only the Rental income dropdown is expanded; the statutory dropdown
     // is a separate collapsed accordion, so the line shows once here.
     expect(find.text('Gross income'), findsOneWidget);
     expect(find.text('Plumbing repair'), findsOneWidget);
@@ -136,7 +160,7 @@ void main() {
       ],
     );
     await _pumpScreen(tester, year, unit);
-    await tester.tap(find.text('Net contribution'));
+    await tester.tap(find.text('Rental income'));
     await tester.pumpAndSettle();
 
     // Total reflects only the deductible RM 300, not RM 380.
@@ -164,13 +188,13 @@ void main() {
       ],
     );
     await _pumpScreen(tester, year, unit);
-    await tester.tap(find.text('Net contribution'));
+    await tester.tap(find.text('Rental income'));
     await tester.pumpAndSettle();
 
     // Net P/L direct expenses = 3200 (both landlord-paid lines).
     expect(find.text('−RM 3,200.00'), findsOneWidget);
     // Statutory contribution block present with its figure.
-    expect(find.textContaining('Contributing statutory income'), findsOneWidget);
+    expect(find.textContaining('Statutory income'), findsOneWidget);
     expect(find.text('RM 9,000.00'), findsOneWidget);
   });
 
@@ -188,7 +212,7 @@ void main() {
     );
     await _pumpScreen(tester, year, unit);
 
-    await tester.tap(find.text('Net contribution'));
+    await tester.tap(find.text('Rental income'));
     await tester.pumpAndSettle();
 
     expect(find.text('No direct expenses recorded for $year'), findsOneWidget);
