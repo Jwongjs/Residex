@@ -245,6 +245,7 @@ class PropertyFinance(BaseModel):
     derived_rent: float
     outstanding_rent: float = 0.0
     direct_expenses: float
+    landlord_expenses: float = 0.0  # landlord cash out; pairs with net_pl
     rental_income_or_loss: float
     net_pl: float
     statutory_contribution: Optional[float] = None

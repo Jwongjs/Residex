@@ -1236,6 +1236,7 @@ def compute_finance_summary(
             "derived_rent": _round2(s_derived),
             "outstanding_rent": _round2(s_outstanding),
             "direct_expenses": _round2(s_direct),
+            "landlord_expenses": _round2(s_landlord_paid),
             "rental_income_or_loss": _round2(s_received - s_direct),
             "net_pl": _round2(s_received - s_landlord_paid),
             "statutory_contribution": _round2(s_received - s_direct),

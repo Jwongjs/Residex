@@ -380,6 +380,28 @@ class StatutoryTests(unittest.TestCase):
         self.assertIn(LOSS_FLOOR_NOTE, floored["totals"]["statutory_note"])
         self.assertIn(STATUTORY_NOTE, floored["totals"]["statutory_note"])
 
+    def test_property_block_exposes_landlord_expenses_so_net_pl_reconciles(self):
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
+            # Loan principal is landlord cash out but never LHDN-deductible,
+            # so it separates the two expense bases.
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 100.0, "principal_paid": 300.0}),
+        ]
+        exceptions = [_doc_exception("p1", 2025, c)
+                      for c in ("tax", "upkeep", "maintenance", "insurance")]
+        result = _summary(docs, [_prop("p1", "Whole")], year=2025,
+                          today=date(2026, 1, 1), document_exceptions=exceptions)
+        block = result["properties"][0]
+        # Deductible-only: interest alone.
+        self.assertEqual(block["direct_expenses"], 100.0)
+        # Cash out: interest + principal.
+        self.assertEqual(block["landlord_expenses"], 400.0)
+        # The point of the field — the property panel's arithmetic now closes.
+        self.assertEqual(
+            block["received_rent"] - block["landlord_expenses"], block["net_pl"]
+        )
+
 
 class CompletenessTests(unittest.TestCase):
     def test_missing_categories_and_vacant_month_caveats(self):
