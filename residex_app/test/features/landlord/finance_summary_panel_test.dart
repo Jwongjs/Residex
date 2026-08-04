@@ -63,14 +63,14 @@ void main() {
       (tester) async {
     await _pumpAtWidth(tester, 700);
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('TOTAL NET P/L'), findsOneWidget);
+    expect(find.textContaining('OVERALL NET PROFIT/LOSS'), findsOneWidget);
   });
 
   testWidgets('renders without layout errors in the NARROW breakpoint (<560)',
       (tester) async {
     await _pumpAtWidth(tester, 375);
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('TOTAL NET P/L'), findsOneWidget);
+    expect(find.textContaining('OVERALL NET PROFIT/LOSS'), findsOneWidget);
   });
 
   testWidgets(

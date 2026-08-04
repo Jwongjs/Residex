@@ -100,7 +100,7 @@ void main() {
     final year = DateTime.now().year;
     await _pumpScreen(tester, year, _summaryWithProperty(year, complete: false));
 
-    expect(find.textContaining('Current Statutory Rental Income'), findsOneWidget);
+    expect(find.textContaining('Current Overall Statutory Income'), findsOneWidget);
   });
 
   testWidgets('a fully complete year shows the settled statutory label',
@@ -108,10 +108,10 @@ void main() {
     final year = DateTime.now().year;
     await _pumpScreen(tester, year, _summaryWithProperty(year, complete: true));
 
-    expect(find.textContaining('Current Statutory Rental Income'), findsNothing);
+    expect(find.textContaining('Current Overall Statutory Income'), findsNothing);
     // Exact match: the portfolio panel's label. The per-property block's
     // "Statutory Rental Income/Loss" row is a distinct (longer) string.
-    expect(find.text('Statutory Rental Income'), findsOneWidget);
+    expect(find.text('Overall Statutory Income'), findsOneWidget);
   });
 
   testWidgets('a property shows the Net P/L headline sourced from block.netPl',
