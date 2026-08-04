@@ -100,7 +100,6 @@ void main() {
     expect(find.text('Unit A'), findsOneWidget);
     expect(find.text('50% share'), findsOneWidget); // ownership badge (exact; the co-ownership caption also says "50%")
     expect(find.textContaining('1 document needed for'), findsOneWidget); // nudge banner
-    expect(find.textContaining('1 missing'), findsOneWidget); // coverage chip for 2025
   });
 
   testWidgets('incomplete year shows the incomplete-records note and an unavailable gap offers Undo', (tester) async {

@@ -199,4 +199,35 @@ void main() {
     // RM 400.00 appears twice: portfolio panel's overall + property panel's property-level.
     expect(find.text('RM 400.00'), findsNWidgets(2));
   });
+
+  testWidgets('coverage bubble is gone but the document nudge remains',
+      (tester) async {
+    final summary = FinanceSummary(
+      year: 2026,
+      totals: FinanceTotals(
+        receivedRent: 3200.0, derivedRent: 0.0, directExpenses: 200.0,
+        netPl: 2800.0, landlordExpenses: 400.0,
+        statutoryRentalIncome: 3000.0, statutoryNote: '',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8',
+          receivedRent: 3200.0, derivedRent: 0.0,
+          directExpenses: 200.0, landlordExpenses: 400.0,
+          rentalIncomeOrLoss: 3000.0, netPl: 2800.0,
+          statutoryContribution: 3000.0,
+          coverage: [
+            YearCoverage(year: 2025, missing: ['tax', 'insurance']),
+            YearCoverage(year: 2026, missing: const []),
+          ],
+        ),
+      ],
+      missingCategories: {'p1': ['tax', 'insurance']},
+    );
+    await _pumpScreen(tester, 2026, summary);
+    expect(find.text('2025 · 2 missing'), findsNothing);
+    expect(find.text('2025'), findsNothing);
+    // The bottom panel still asks for the same documents.
+    expect(find.textContaining('documents needed for 2026'), findsOneWidget);
+  });
 }
