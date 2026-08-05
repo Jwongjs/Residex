@@ -72,6 +72,18 @@ Future<void> _pumpScreenWithProperty(
   await tester.pumpAndSettle();
 }
 
+/// A 2026 summary whose single property is missing [categories]. The nudge
+/// renders a count, not category names, so the count is what these tests read.
+FinanceSummary _summaryMissing(List<String> categories) {
+  final base = _summaryWithProperty(2026, complete: false);
+  return FinanceSummary(
+    year: base.year,
+    totals: base.totals,
+    properties: base.properties,
+    missingCategories: {'p1': categories},
+  );
+}
+
 Property _fakeProperty({required bool hasMortgage, required String? loanInputMethod}) {
   return Property(
     id: 'p1',
@@ -170,19 +182,58 @@ void main() {
     expect(find.text('Add loan figures'), findsOneWidget);
   });
 
-  testWidgets('nudge offers manual entry when a loan document is missing',
+  testWidgets('the nudge no longer offers manual entry, even for a null method',
       (tester) async {
-    final summary = _summaryWithProperty(2026, complete: false);
+    // The fork moved to the property dialog. Offering "enter figures manually"
+    // here re-asked a question the landlord already answered at registration,
+    // which is the duplication this workstream exists to remove.
     await _pumpScreenWithProperty(
       tester, 2026,
-      FinanceSummary(
-        year: summary.year, totals: summary.totals,
-        properties: summary.properties,
-        missingCategories: const {'p1': ['loan']},
-      ),
+      _summaryMissing(const ['loan']),
       _fakeProperty(hasMortgage: true, loanInputMethod: null),
     );
-    expect(find.text('Enter figures manually'), findsOneWidget);
+    expect(find.text('Enter figures manually'), findsNothing);
+    // ...but a null-method property is still nudged to upload the document.
+    expect(find.text('1 document needed for 2026'), findsOneWidget);
+  });
+
+  testWidgets('a manual property drops loans from the missing-docs nudge',
+      (tester) async {
+    // The panel row owns loan entry in manual mode. A nudge about a loan
+    // document the landlord will never upload is simply wrong.
+    await _pumpScreenWithProperty(
+      tester, 2026,
+      _summaryMissing(const ['loan']),
+      _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+    );
+    // Loans was the only missing category, so the nudge vanishes entirely
+    // rather than counting down to a document that is never coming.
+    expect(find.text('Enter figures manually'), findsNothing);
+    expect(find.textContaining('needed for 2026'), findsNothing);
+  });
+
+  testWidgets('an upload property still nudges about the loan document',
+      (tester) async {
+    await _pumpScreenWithProperty(
+      tester, 2026,
+      _summaryMissing(const ['loan']),
+      _fakeProperty(hasMortgage: true, loanInputMethod: 'upload'),
+    );
+    expect(find.text('1 document needed for 2026'), findsOneWidget);
+    expect(find.text('Enter figures manually'), findsNothing);
+  });
+
+  testWidgets('a manual property still nudges for its other missing categories',
+      (tester) async {
+    await _pumpScreenWithProperty(
+      tester, 2026,
+      _summaryMissing(const ['loan', 'insurance']),
+      _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+    );
+    // Two missing, one filtered out: the count must drop to 1, not stay at 2.
+    // Asserting on the count is what pins the filtering — the banner never
+    // renders category names, so asserting on those would prove nothing.
+    expect(find.text('1 document needed for 2026'), findsOneWidget);
   });
 
   testWidgets('nudge omits manual entry when no loan document is missing',

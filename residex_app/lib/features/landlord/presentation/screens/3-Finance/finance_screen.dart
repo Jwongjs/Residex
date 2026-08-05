@@ -292,8 +292,13 @@ class FinanceScreen extends ConsumerWidget {
 
   Widget _buildPropertyBlock(BuildContext context, WidgetRef ref,
       FinanceSummary summary, PropertyFinance block) {
-    final missing = summary.missingCategories[block.propertyId] ?? const [];
     final property = ref.watch(propertyByIdProvider(block.propertyId)).value;
+    final rawMissing = summary.missingCategories[block.propertyId] ?? const [];
+    // A manual-mode landlord has no loan document to upload and a permanent
+    // figures row below, so nudging about loans is either wrong or duplicate.
+    final missing = property?.loanInputMethod == 'manual'
+        ? rawMissing.where((c) => c != 'loan').toList()
+        : rawMissing;
     final showManualLoan =
         block.manualLoanIncomplete && property?.hasMortgage == true;
     return Container(
@@ -458,10 +463,9 @@ class FinanceScreen extends ConsumerWidget {
                 missing: missing,
                 mode: MissingDocsMode.markUnavailable,
               ),
-              onEnterManually: missing.contains('loan')
-                  ? () => _openManualLoanSheet(
-                      context, block, property, summary.year)
-                  : null,
+              // No onEnterManually: the upload-or-type fork is answered once,
+              // at registration. Re-asking it here is what made the same
+              // question read three different ways across the app.
             ),
           ],
           if ((yearCoverageFor(block.coverage, summary.year)?.unavailable ?? const []).isNotEmpty) ...[
