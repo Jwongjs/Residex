@@ -516,26 +516,39 @@ class FinanceScreen extends ConsumerWidget {
     // Presence of a booked entry is what matters, not whether its amounts
     // happen to be nonzero: interest>0||principal>0 also read "errored" and
     // "booked as 0/0" (the sheet allows a 0/0 save) as "nothing booked",
-    // which is wrong for the booked-zero case. An error still degrades to
-    // the Add affordance below, since asData is null and entries is empty —
-    // but see isUnusable just below: that affordance must not be tappable
-    // in this case, since the sheet it opens can never save.
-    final entries = entriesAsync.asData?.value ?? const <Map<String, dynamic>>[];
+    // which is wrong for the booked-zero case. Sourced from
+    // entriesAsync.value (riverpod's safe nullable getter, non-null exactly
+    // when hasValue is true) rather than asData?.value, which is null
+    // during a refresh — in-flight or failed — even when a prior value is
+    // still known: reading asData here made a failed *refresh* look
+    // identical to "nothing ever booked", collapsing the whole figures
+    // block to the disabled Add affordance below and hiding figures the app
+    // still knows, even though the sheet's own Save (see
+    // manual_loan_entry_sheet.dart) would still accept a save in that state.
+    final entries = entriesAsync.value ?? const <Map<String, dynamic>>[];
     double sum(String key) => entries.fold<double>(
         0, (total, e) => total + ((e[key] as num?)?.toDouble() ?? 0));
     final interest = sum('interest_paid');
     final principal = sum('principal_paid');
     final hasFigures = entries.isNotEmpty;
 
-    // An error is treated the same as still-loading: the sheet's own Save
-    // button is gated on manualLoanEntriesProvider having resolved at least
-    // once (see manual_loan_entry_sheet.dart), and a fetch that has never
-    // succeeded never will resolve on its own — Riverpod's automatic retries
-    // exhaust within roughly a minute, after which pull-to-refresh here is
-    // the only way forward. Opening the sheet at that point would walk the
-    // landlord into a form they cannot submit, so the control stays visible
-    // but disabled rather than inviting the tap.
-    final isUnusable = isInitialLoading || entriesAsync.hasError;
+    // A load that has *never* resolved is treated the same as still-loading:
+    // the sheet's own Save button is gated on manualLoanEntriesProvider
+    // having resolved at least once, and a fetch that has never succeeded
+    // never will resolve on its own — Riverpod's automatic retries exhaust
+    // within roughly a minute, after which pull-to-refresh here is the only
+    // way forward. Opening the sheet at that point would walk the landlord
+    // into a form they cannot submit, so the control stays visible but
+    // disabled rather than inviting the tap.
+    //
+    // Narrowed to !hasValue: an error on a *refresh* that carried a prior
+    // value must not land here, since hasFigures (above) is still true in
+    // that case and the sheet's Save is still usable (matching hasValue) —
+    // disabling the control there would block a working save over a
+    // transient refetch failure the landlord doesn't need to do anything
+    // about.
+    final isUnusable =
+        isInitialLoading || (entriesAsync.hasError && !entriesAsync.hasValue);
 
     if (!hasFigures) {
       return Align(

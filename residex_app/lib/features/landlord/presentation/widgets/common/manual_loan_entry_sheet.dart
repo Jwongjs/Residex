@@ -55,13 +55,19 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   String? _selectedUnitId;
   String? _cadence;
 
-  /// The (unitId, month) scope whose booked figures are currently loaded into
-  /// the fields. Guards `_prefillFor` so it only overwrites the controllers
-  /// when the scope actually changes — this runs from `build`, and the sheet
-  /// rebuilds on provider changes it does not control (e.g. after a save
-  /// invalidates `manualLoanEntriesProvider`), so an unconditional write
-  /// would fight the landlord's in-progress typing.
-  ({String? unitId, int? month})? _prefilledScope;
+  /// The (unitId, month, hasEntry) key whose booked figures are currently
+  /// loaded into the fields. Guards `_prefillFor` so it only overwrites the
+  /// controllers when this key actually changes — this runs from `build`,
+  /// and the sheet rebuilds on provider changes it does not control (e.g.
+  /// after a save invalidates `manualLoanEntriesProvider`), so an
+  /// unconditional write would fight the landlord's in-progress typing.
+  ///
+  /// `hasEntry` (whether a booked entry existed for the scope, not just the
+  /// scope itself) is part of the key so a delete that leaves the scope
+  /// unchanged but removes its entry still clears the fields: without it,
+  /// the guard would see an unchanged scope after the delete's refetch and
+  /// skip the write, leaving the deleted figures on screen.
+  ({String? unitId, int? month, bool hasEntry})? _prefilledScope;
 
   /// The (unitId, month) scope the sheet is currently working in — the exact
   /// key an entry is booked under, and the exact key `_save` writes to.
@@ -143,16 +149,17 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
 
   /// Load the booked figures into the fields so Modify opens ready to correct.
   /// Without this, _save's `?? 0` writes zero over whichever field the
-  /// landlord did not retype. Only writes when the (unitId, month) scope
-  /// differs from the last one prefilled, so it neither fights the
+  /// landlord did not retype. Only writes when the (unitId, month, hasEntry)
+  /// key differs from the last one prefilled, so it neither fights the
   /// landlord's typing on an unrelated rebuild nor gets stuck showing stale
-  /// figures once a save invalidates the entries provider.
+  /// figures once a save (or a delete) invalidates the entries provider.
   void _prefillFor(List<Map<String, dynamic>> entries) {
     final scope = _currentScope;
-    if (_prefilledScope == scope) return;
-    _prefilledScope = scope;
-
     final entry = _entryForCurrentScope(entries);
+    final key = (unitId: scope.unitId, month: scope.month, hasEntry: entry != null);
+    if (_prefilledScope == key) return;
+    _prefilledScope = key;
+
     final interest = (entry?['interest_paid'] as num?)?.toDouble();
     final principal = (entry?['principal_paid'] as num?)?.toDouble();
     final nextInterest = interest == null ? '' : '$interest';
@@ -261,12 +268,24 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
     // scope for a strata property (whose selection is re-anchored to the
     // first live unit right above) and open Modify blank.
     //
-    // Only once entries have actually loaded: entriesAsync starts in a
-    // loading state on first build (asData is null then), and calling
-    // _prefillFor with a placeholder empty list at that point would record
-    // the current scope as "already prefilled" — permanently blocking the
-    // real write once the future resolves with the booked figures.
-    final entriesData = entriesAsync.asData?.value;
+    // Sourced from entriesAsync.value (riverpod's safe nullable getter,
+    // `_value?.$1` — non-null exactly when hasValue is true), the same
+    // signal Save's onPressed below is gated on — not from
+    // asData/asData?.value, which is null during a refresh (in-flight or
+    // failed) even though hasValue (and .value) still carry the last
+    // resolved value in that state. Using different signals for the two
+    // gates previously let them disagree: after a failed refresh that
+    // carried a prior value, Save was live (hasValue true) but prefill was
+    // skipped (asData null), so switching the scope left the *previous*
+    // scope's stale figures in the fields with Save enabled to write them
+    // onto the new scope.
+    //
+    // Only once entries have actually resolved at least once: entriesAsync
+    // starts in a loading state on first build (.value is null then), and
+    // calling _prefillFor with a placeholder empty list at that point would
+    // record the current key as "already prefilled" — permanently blocking
+    // the real write once the future resolves with the booked figures.
+    final entriesData = entriesAsync.value;
     if (entriesData != null) {
       _prefillFor(entriesData);
     }

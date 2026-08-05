@@ -1093,4 +1093,197 @@ void main() {
     expect(capturedInterest, 9100);
     expect(capturedPrincipal, 14000.0);
   });
+
+  // --- Round 3: Save's onPressed and _prefillFor's data source must read
+  // the same signal (hasValue / .value), not asData, which is null during a
+  // refresh even when a prior value is still known. Divergence between them
+  // is exactly what let a stale scope's figures ride along onto a newly
+  // selected scope while Save stayed enabled. ---
+
+  testWidgets(
+      "a failed refresh doesn't leave the previous unit's figures live for a newly selected unit",
+      (tester) async {
+    // Reproduces the reviewer's probe: two units, each with its own booked
+    // entry. A refresh fails but — per Riverpod's documented behaviour —
+    // carries the prior value forward, so hasValue (and Save) stay true.
+    // Switching units while in that state must re-derive from the
+    // *current* scope's entry, not leave the previously-selected unit's
+    // figures sitting in the fields with Save ready to write them onto the
+    // new unit.
+    const year = 2025;
+    final units = [
+      UnitFinance(unitId: 'u1', label: 'Unit 1', rentedMonths: 12, contribution: 0),
+      UnitFinance(unitId: 'u2', label: 'Unit 2', rentedMonths: 12, contribution: 0),
+    ];
+    var shouldFail = false;
+    String? capturedUnitId;
+    double? capturedInterest;
+    double? capturedPrincipal;
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+              properties: [
+                PropertyFinance(
+                  propertyId: 'p1',
+                  name: 'Test Property',
+                  receivedRent: 0,
+                  derivedRent: 0,
+                  directExpenses: 0,
+                  rentalIncomeOrLoss: 0,
+                  units: units,
+                ),
+              ],
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async {
+          if (shouldFail) throw Exception('network down');
+          return <Map<String, dynamic>>[
+            {
+              'interest_paid': 1000.0,
+              'principal_paid': 2000.0,
+              'month': null,
+              'unit_id': 'u1',
+              'cadence': 'annual',
+            },
+            {
+              'interest_paid': 3000.0,
+              'principal_paid': 4000.0,
+              'month': null,
+              'unit_id': 'u2',
+              'cadence': 'annual',
+            },
+          ];
+        }),
+        recordManualLoanEntryActionProvider.overrideWithValue(({
+          required String propertyId,
+          required int year,
+          required String cadence,
+          required double interestPaid,
+          required double principalPaid,
+          int? month,
+          String? unitId,
+        }) async {
+          capturedUnitId = unitId;
+          capturedInterest = interestPaid;
+          capturedPrincipal = principalPaid;
+        }),
+      ],
+      child: MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: PropertyStructureType.strata,
+          units: units,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Default selection is unit 1.
+    expect(interestText(tester), '1000.0');
+
+    // Trigger a refresh that fails but carries the prior value forward.
+    shouldFail = true;
+    final container = ProviderScope.containerOf(
+        tester.element(find.byType(ManualLoanEntrySheet)));
+    container
+        .invalidate(manualLoanEntriesProvider((propertyId: 'p1', year: year)));
+    await tester.pumpAndSettle();
+
+    // A value is still known, so Save must stay usable.
+    expect(saveEnabled(tester), isTrue);
+
+    await tester.tap(find.byType(DropdownButton<String?>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Unit 2').last);
+    await tester.pumpAndSettle();
+
+    // Unit 2's own figures, not unit 1's carried over.
+    expect(interestText(tester), '3000.0');
+    expect(principalText(tester), '4000.0');
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(capturedUnitId, 'u2');
+    expect(capturedInterest, 3000.0);
+    expect(capturedPrincipal, 4000.0);
+  });
+
+  testWidgets(
+      'a successful delete clears the fields even though the scope is unchanged',
+      (tester) async {
+    const year = 2025;
+    var deleted = false;
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => deleted
+                ? <Map<String, dynamic>>[]
+                : <Map<String, dynamic>>[
+                    {
+                      'interest_paid': 8200.0,
+                      'principal_paid': 14000.0,
+                      'month': null,
+                      'unit_id': null,
+                      'cadence': 'annual',
+                    },
+                  ]),
+        deleteManualLoanEntryActionProvider.overrideWith((ref) => ({
+              required String propertyId,
+              required int year,
+              int? month,
+              String? unitId,
+            }) async {
+          deleted = true;
+          ref.invalidate(manualLoanEntriesProvider);
+        }),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(interestText(tester), '8200.0');
+    expect(principalText(tester), '14000.0');
+
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+
+    // Scope (whole-property, annual) is unchanged before and after the
+    // delete — only the entry's presence changed. The fields must clear,
+    // not keep showing the now-deleted figures.
+    expect(interestText(tester), '');
+    expect(principalText(tester), '');
+  });
 }
