@@ -5,7 +5,6 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../providers/document_folders.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart' show monthAbbrev;
-import '../../providers/finance_providers.dart';
 import '../../providers/property_providers.dart';
 import '../../providers/unit_providers.dart';
 import '../../../domain/entities/documind_document.dart';
@@ -13,7 +12,6 @@ import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
 import '../../widgets/common/document_categories.dart';
 import '../../widgets/common/expense_lines_review_sheet.dart';
-import '../../widgets/common/manual_loan_entry_sheet.dart';
 import '../../widgets/common/utilities_liability_confirm_sheet.dart';
 import '../../widgets/common/records_grid.dart';
 import '../../widgets/common/upload_progress_overlay.dart';
@@ -48,12 +46,17 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   // Display folders (stored categories collapse via displayCategoryFor;
   // uploads from the Expenses folder send category 'expenses' so the
   // backend runs line-item extraction).
-  final List<String> _categories = [
-    'lease',
-    'rental_invoice',
-    'loan',
-    'expenses',
-  ];
+  //
+  // Loans is dropped only for 'manual': those landlords type figures on the
+  // finance tab and have no loan documents to file. 'upload', null and a
+  // property that failed to load all keep it.
+  List<String> _categoriesFor(Property? property) {
+    final base = ['lease', 'rental_invoice', 'loan', 'expenses'];
+    if (property?.loanInputMethod == 'manual') {
+      base.remove('loan');
+    }
+    return base;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +85,16 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
       loading: () => _buildLoadingState(),
       error: (error, stack) => _buildErrorState(error.toString()),
     );
+  }
+
+  /// Null-safe lookup of the currently selected property. Null while
+  /// loading/unavailable — callers treat that the same as 'upload' (keeps
+  /// the Loans folder), per `_categoriesFor`.
+  Property? _selectedProperty(List<Property> properties) {
+    for (final p in properties) {
+      if (p.id == _selectedPropertyId) return p;
+    }
+    return null;
   }
 
   void _switchToProperty(String propertyId) {
@@ -187,6 +200,8 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   }
 
   Widget _buildMainUI(List<Property> properties) {
+    final property = _selectedProperty(properties);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -232,13 +247,25 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
           _buildTopControlRow(properties),
           if (_selectedCategory != null) _buildBackToCategoriesRow(),
           Expanded(
-            child: _selectedCategory == null
-                ? _buildCategoryGrid()
-                : _buildCategoryDocuments(properties),
+            child: _buildBody(property, properties),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildBody(Property? property, List<Property> properties) {
+    // The landlord can switch to manual from property settings while this
+    // screen is open on the Loans folder; fall back rather than stranding
+    // them in a folder the grid no longer offers.
+    if (_selectedCategory != null &&
+        !_categoriesFor(property).contains(_selectedCategory)) {
+      return _buildCategoryGrid(property);
+    }
+
+    return _selectedCategory == null
+        ? _buildCategoryGrid(property)
+        : _buildCategoryDocuments(properties);
   }
 
   Widget _buildTopControlRow(List<Property> properties) {
@@ -372,7 +399,8 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   }
 
   /// Category grid (NO backend call)
-  Widget _buildCategoryGrid() {
+  Widget _buildCategoryGrid(Property? property) {
+    final categories = _categoriesFor(property);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: GridView.builder(
@@ -382,9 +410,9 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
           mainAxisSpacing: 12,
           childAspectRatio: 1.0,
         ),
-        itemCount: _categories.length,
+        itemCount: categories.length,
         itemBuilder: (context, index) {
-          final category = _categories[index];
+          final category = categories[index];
           return _buildCategoryCard(category);
         },
       ),
@@ -765,14 +793,6 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                           elevation: 0,
                         ),
                       ),
-                      if (category == 'loan') ...[
-                        const SizedBox(height: 12),
-                        TextButton.icon(
-                          onPressed: () => _openManualLoanEntry(),
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: const Text('Enter figures manually'),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -1166,17 +1186,6 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
               backgroundColor: categoryColor.withOpacity(0.1),
             ),
           ),
-          // Persistent path back to manual loan figures once the folder is no
-          // longer empty — the finance-tab nudge clears once figures exist,
-          // so this is the only way back in to correct a typo.
-          if (category == 'loan') ...[
-            const SizedBox(height: 12),
-            TextButton.icon(
-              onPressed: () => _openManualLoanEntry(),
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Enter figures manually'),
-            ),
-          ],
         ],
       ),
     );
@@ -1259,44 +1268,6 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
         ],
       ),
     );
-  }
-
-  /// The persistent path to manual loan figures. The finance-tab nudge clears
-  /// once figures exist, so without this there is no way back in to correct a
-  /// typo.
-  Future<void> _openManualLoanEntry() async {
-    final propertyId = _selectedPropertyId;
-    if (propertyId == null) return;
-    try {
-      final property = await ref.read(propertyByIdProvider(propertyId).future);
-      final year = ref.read(financeYearProvider);
-      final summary = await ref.read(financeSummaryProvider(year).future);
-      final matches =
-          summary.properties.where((p) => p.propertyId == propertyId).toList();
-      final block = matches.isEmpty ? null : matches.first;
-      if (!mounted) return;
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: AppColors.paper,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        builder: (_) => ManualLoanEntrySheet(
-          propertyId: propertyId,
-          year: year,
-          cadence: property?.loanInputCadence,
-          structureType: property?.structureType,
-          units: (block?.units ?? const [])
-              .where((u) => u.unitId != null)
-              .toList(),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        _showSnackBar('Could not open loan entry: ${e.toString()}', isError: true);
-      }
-    }
   }
 
   Future<void> _uploadDocument(String category) async {

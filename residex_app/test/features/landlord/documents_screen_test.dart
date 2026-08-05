@@ -2,16 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/documind_document.dart';
-import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
 import 'package:residex_app/features/landlord/data/models/property_model.dart';
 import 'package:residex_app/features/landlord/domain/entities/property.dart';
 import 'package:residex_app/features/landlord/domain/repositories/property_repository.dart';
 import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
-import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/5-Documents/documents_screen.dart';
 import 'package:residex_app/features/landlord/presentation/widgets/common/document_categories.dart';
-import 'package:residex_app/features/landlord/presentation/widgets/common/manual_loan_entry_sheet.dart';
 
 class _FakePropertyRepository implements PropertyRepository {
   final Property property;
@@ -370,32 +367,16 @@ void main() {
   });
 
   testWidgets(
-      'Loans & Financing folder offers a persistent manual entry path',
+      'an empty Loans & Financing folder no longer offers manual entry',
       (tester) async {
-    final year = DateTime.now().year;
+    // The manual entry path used to live here; it moved to a permanent row
+    // on the finance tab, so this folder should only ever offer upload now.
     await tester.pumpWidget(ProviderScope(
       overrides: [
         propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
         documindDocumentsProvider.overrideWith(
           (ref, propertyId) async => const <DocuMindDocument>[],
         ),
-        propertyByIdProvider.overrideWith((ref, id) async => testProperty),
-        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
-              year: y,
-              totals: FinanceTotals(
-                receivedRent: 0, derivedRent: 0, directExpenses: 0,
-                netPl: 0, statutoryRentalIncome: 0, statutoryNote: '',
-              ),
-              properties: [
-                PropertyFinance(
-                  propertyId: 'prop-1', name: 'Maple Residency',
-                  receivedRent: 0, derivedRent: 0, directExpenses: 0,
-                  rentalIncomeOrLoss: 0,
-                ),
-              ],
-            )),
-        manualLoanEntriesProvider((propertyId: 'prop-1', year: year))
-            .overrideWith((ref) async => <Map<String, dynamic>>[]),
       ],
       child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
     ));
@@ -409,24 +390,14 @@ void main() {
     await tester.tap(find.text('Loans & Financing'), warnIfMissed: false);
     await tester.pumpAndSettle();
 
-    expect(find.text('Enter figures manually'), findsOneWidget);
-
-    await tester.tap(find.text('Enter figures manually'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(ManualLoanEntrySheet), findsOneWidget);
+    expect(find.text('Enter figures manually'), findsNothing);
   });
 
   testWidgets(
-      'a populated Loans & Financing folder still offers the manual entry path',
+      'a populated Loans & Financing folder no longer offers manual entry',
       (tester) async {
-    // The empty-state affordance disappears once a loan document exists —
-    // e.g. after the landlord has uploaded one statement, or after a first
-    // round of manual entry that later needs correcting. The populated view
-    // (peer of "Add More Loans & Financing") must keep offering the path
-    // back in, or there is no way to revisit figures once the folder is
-    // no longer empty.
-    final year = DateTime.now().year;
+    // The manual entry path used to live here too (the "peer of Add More"
+    // affordance); it moved to a permanent row on the finance tab.
     final loanDoc = DocuMindDocument(
       docId: 'loan-1', landlordId: 'landlord-1', propertyId: 'prop-1',
       category: 'loan', filename: 'loan_statement.pdf', chunksIndexed: 1,
@@ -438,23 +409,6 @@ void main() {
         documindDocumentsProvider.overrideWith(
           (ref, propertyId) async => [loanDoc],
         ),
-        propertyByIdProvider.overrideWith((ref, id) async => testProperty),
-        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
-              year: y,
-              totals: FinanceTotals(
-                receivedRent: 0, derivedRent: 0, directExpenses: 0,
-                netPl: 0, statutoryRentalIncome: 0, statutoryNote: '',
-              ),
-              properties: [
-                PropertyFinance(
-                  propertyId: 'prop-1', name: 'Maple Residency',
-                  receivedRent: 0, derivedRent: 0, directExpenses: 0,
-                  rentalIncomeOrLoss: 0,
-                ),
-              ],
-            )),
-        manualLoanEntriesProvider((propertyId: 'prop-1', year: year))
-            .overrideWith((ref) async => <Map<String, dynamic>>[]),
       ],
       child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
     ));
@@ -469,12 +423,7 @@ void main() {
     // Populated view: the uploaded document is listed, not the empty state.
     expect(find.text('loan_statement.pdf'), findsOneWidget);
     expect(find.text('Add More Loans & Financing'), findsOneWidget);
-    expect(find.text('Enter figures manually'), findsOneWidget);
-
-    await tester.tap(find.text('Enter figures manually'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(ManualLoanEntrySheet), findsOneWidget);
+    expect(find.text('Enter figures manually'), findsNothing);
   });
 
   testWidgets('moving a document persists a sticky folderMoves override', (tester) async {
