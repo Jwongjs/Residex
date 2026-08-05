@@ -206,6 +206,30 @@ class DocuMindService:
             return groq_extractor
         return self._fact_extractor
 
+    def _get_document_facts(self, doc_ids):
+        """(filename, unit_label, facts) for each doc_id that has facts.
+
+        Scoped to the documents retrieval actually hit, so no data leaves for a
+        document the query never touched. Best-effort by contract: any Firestore
+        failure skips that document and is logged, because a missing facts block
+        must degrade the answer to chunks-only rather than fail the request.
+        """
+        rows = []
+        for doc_id in dict.fromkeys(doc_ids):  # de-dupe, preserve order
+            try:
+                snap = self.db.collection('documind_docs').document(doc_id).get()
+            except Exception as e:
+                print(f"WARNING: could not load facts for doc {doc_id}: {e}")
+                continue
+            if not snap.exists:
+                continue
+            data = snap.to_dict() or {}
+            facts = data.get('extracted_facts') or {}
+            if not facts:
+                continue
+            rows.append((data.get('filename') or doc_id, data.get('unit_label'), facts))
+        return rows
+
     def _list_available_categories(self, landlord_id: str, property_id: str) -> List[str]:
         """List categories that have uploaded docs for this landlord/property."""
         try:
