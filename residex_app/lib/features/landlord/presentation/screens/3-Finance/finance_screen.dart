@@ -502,12 +502,24 @@ class FinanceScreen extends ConsumerWidget {
     final entriesAsync = ref.watch(manualLoanEntriesProvider(
         (propertyId: block.propertyId, year: year)));
 
+    // Still resolving and nothing cached yet: render nothing rather than
+    // flashing the "Add loan figures" affordance for a frame before the real
+    // entries land.
+    if (entriesAsync.isLoading && !entriesAsync.hasValue) {
+      return const SizedBox.shrink();
+    }
+
+    // Presence of a booked entry is what matters, not whether its amounts
+    // happen to be nonzero: interest>0||principal>0 also read "errored" and
+    // "booked as 0/0" (the sheet allows a 0/0 save) as "nothing booked",
+    // which is wrong for the booked-zero case. An error still degrades to
+    // the Add affordance below, since asData is null and entries is empty.
     final entries = entriesAsync.asData?.value ?? const <Map<String, dynamic>>[];
     double sum(String key) => entries.fold<double>(
         0, (total, e) => total + ((e[key] as num?)?.toDouble() ?? 0));
     final interest = sum('interest_paid');
     final principal = sum('principal_paid');
-    final hasFigures = interest > 0 || principal > 0;
+    final hasFigures = entries.isNotEmpty;
 
     if (!hasFigures) {
       return Align(

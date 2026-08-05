@@ -7,6 +7,7 @@ import 'package:residex_app/features/landlord/presentation/providers/documind_pr
 import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/3-Finance/finance_screen.dart';
+import 'package:residex_app/features/landlord/presentation/widgets/common/manual_loan_entry_sheet.dart';
 
 FinanceSummary _summaryWithProperty(int year,
     {required bool complete, bool manualLoanIncomplete = false}) {
@@ -183,29 +184,37 @@ void main() {
     // flips false the instant figures are booked — vanishing the only route
     // back in exactly when a typo needed correcting. It is now gated on
     // loanInputMethod alone, so it must stay put here.
+    //
+    // Uses _pumpScreenWithLoanEntries (not _pumpScreenWithProperty) so
+    // manualLoanEntriesProvider resolves deterministically to "no entries
+    // yet": the row's loading branch now returns nothing while the provider
+    // is unresolved, so an un-overridden provider would hang forever inside
+    // the fake-async test zone rather than degrading to the Add affordance.
     final year = DateTime.now().year;
-    await _pumpScreenWithProperty(
+    await _pumpScreenWithLoanEntries(
       tester,
       year,
       _summaryWithProperty(year, complete: true, manualLoanIncomplete: false),
       _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+      const [],
     );
 
-    // manualLoanEntriesProvider isn't overridden here, so it degrades to "no
-    // figures" — the row renders as the Add affordance rather than throwing.
     expect(find.text('Add loan figures'), findsOneWidget);
   });
 
   testWidgets(
-      '"Add loan figures" shows when hasMortgage is true and loanInputMethod is manual',
+      '"Add loan figures" shows when hasMortgage is true, loanInputMethod is manual, and manualLoanIncomplete is true',
       (tester) async {
-    // manualLoanIncomplete no longer drives this control at all.
+    // Brackets the previous test: together the pair pins that the control
+    // shows regardless of manualLoanIncomplete's value, rather than the two
+    // tests duplicating each other at the same (false) value.
     final year = DateTime.now().year;
-    await _pumpScreenWithProperty(
+    await _pumpScreenWithLoanEntries(
       tester,
       year,
-      _summaryWithProperty(year, complete: true),
+      _summaryWithProperty(year, complete: true, manualLoanIncomplete: true),
       _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+      const [],
     );
 
     expect(find.text('Add loan figures'), findsOneWidget);
@@ -458,5 +467,43 @@ void main() {
 
     expect(find.textContaining('1,000'), findsOneWidget);
     expect(find.textContaining('2,500'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a booked entry of 0/0 still renders the figures block with Modify, not Add',
+      (tester) async {
+    // interest>0||principal>0 would have read this as "nothing booked" —
+    // wrong, since the entry sheet has no min-value guard and a 0/0 save is
+    // reachable. Presence of a booked entry is what should decide this, not
+    // whether its amounts happen to be nonzero.
+    await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
+        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), [
+      {'interest_paid': 0.0, 'principal_paid': 0.0,
+       'month': null, 'unit_id': null, 'cadence': 'annual'},
+    ]);
+
+    expect(find.text('Loan figures · 2026'), findsOneWidget);
+    expect(find.text('Modify'), findsOneWidget);
+    expect(find.text('Add loan figures'), findsNothing);
+  });
+
+  testWidgets('only the Modify control opens the loan entry sheet, not the row itself',
+      (tester) async {
+    // The spec is explicit that only Modify opens the sheet: an invisible
+    // full-width target beside real figures invites accidental opens while
+    // scrolling.
+    await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
+        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), [
+      {'interest_paid': 8200.0, 'principal_paid': 14000.0,
+       'month': null, 'unit_id': null, 'cadence': 'annual'},
+    ]);
+
+    await tester.tap(find.text('Loan figures · 2026'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ManualLoanEntrySheet), findsNothing);
+
+    await tester.tap(find.text('Modify'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ManualLoanEntrySheet), findsOneWidget);
   });
 }
