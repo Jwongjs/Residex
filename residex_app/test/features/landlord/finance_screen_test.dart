@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:residex_app/features/landlord/data/datasources/documind_remote_datasource.dart';
 import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
 import 'package:residex_app/features/landlord/domain/entities/property.dart';
 import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
@@ -8,6 +11,45 @@ import 'package:residex_app/features/landlord/presentation/providers/finance_pro
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/3-Finance/finance_screen.dart';
 import 'package:residex_app/features/landlord/presentation/widgets/common/manual_loan_entry_sheet.dart';
+
+/// A minimal fake datasource that keeps manual loan entries in memory,
+/// letting a test drive the real `recordManualLoanEntryActionProvider` /
+/// `manualLoanEntriesProvider` wiring (including their `ref.invalidate`
+/// calls) end-to-end, without touching Firebase or the network. Every other
+/// method is inherited unused — this fake exists solely to prove a save
+/// actually refreshes what the loan-figures row displays.
+class _FakeLoanDataSource extends DocuMindRemoteDataSource {
+  _FakeLoanDataSource(this._entries);
+
+  List<Map<String, dynamic>> _entries;
+
+  @override
+  Future<List<Map<String, dynamic>>> listManualLoanEntries({
+    required String propertyId,
+    required int year,
+  }) async => _entries;
+
+  @override
+  Future<void> recordManualLoanEntry({
+    required String propertyId,
+    required int year,
+    required String cadence,
+    required double interestPaid,
+    required double principalPaid,
+    int? month,
+    String? unitId,
+  }) async {
+    _entries = [
+      {
+        'interest_paid': interestPaid,
+        'principal_paid': principalPaid,
+        'month': month,
+        'unit_id': unitId,
+        'cadence': cadence,
+      },
+    ];
+  }
+}
 
 FinanceSummary _summaryWithProperty(int year,
     {required bool complete, bool manualLoanIncomplete = false}) {
@@ -88,6 +130,33 @@ Future<void> _pumpScreenWithLoanEntries(
         financeSummaryProvider.overrideWith((ref, y) async => summary),
         propertyByIdProvider.overrideWith((ref, id) async => property),
         manualLoanEntriesProvider.overrideWith((ref, args) async => entries),
+      ],
+      child: const MaterialApp(home: FinanceScreen()),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Like [_pumpScreenWithLoanEntries], but wires `manualLoanEntriesProvider`
+/// and `recordManualLoanEntryActionProvider` to their *real* implementations
+/// backed by [dataSource] instead of overriding either provider directly —
+/// so a save routed through the sheet exercises the actual
+/// `ref.invalidate(manualLoanEntriesProvider)` call in
+/// documind_provider.dart, not a test double standing in for it.
+Future<void> _pumpScreenWithFakeDataSource(
+  WidgetTester tester,
+  int year,
+  FinanceSummary summary,
+  Property property,
+  DocuMindRemoteDataSource dataSource,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        financeYearsProvider.overrideWith((ref) async => [year]),
+        financeSummaryProvider.overrideWith((ref, y) async => summary),
+        propertyByIdProvider.overrideWith((ref, id) async => property),
+        documindRemoteDataSourceProvider.overrideWithValue(dataSource),
       ],
       child: const MaterialApp(home: FinanceScreen()),
     ),
@@ -505,5 +574,75 @@ void main() {
     await tester.tap(find.text('Modify'));
     await tester.pumpAndSettle();
     expect(find.byType(ManualLoanEntrySheet), findsOneWidget);
+  });
+
+  testWidgets(
+      'the row shows a disabled Add affordance while entries are still loading, not a blank gap',
+      (tester) async {
+    // listManualLoanEntries has no client-side timeout and this provider
+    // isn't autoDispose, so a stalled request must not leave the landlord's
+    // only route to their loan figures blank for the rest of the session —
+    // and it must not be tappable against not-yet-known state either.
+    final neverResolves = Completer<List<Map<String, dynamic>>>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2026]),
+          financeSummaryProvider.overrideWith(
+              (ref, y) async => _summaryWithProperty(2026, complete: true)),
+          propertyByIdProvider.overrideWith((ref, id) async =>
+              _fakeProperty(hasMortgage: true, loanInputMethod: 'manual')),
+          manualLoanEntriesProvider.overrideWith((ref, args) => neverResolves.future),
+        ],
+        child: const MaterialApp(home: FinanceScreen()),
+      ),
+    );
+    // Can't pumpAndSettle — the entries future deliberately never resolves.
+    // A couple of explicit pumps let the other (immediately-resolving)
+    // providers settle and the row build once against the still-pending one.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Add loan figures'), findsOneWidget);
+
+    final button = tester.widget<TextButton>(find.ancestor(
+      of: find.text('Add loan figures'),
+      matching: find.byType(TextButton),
+    ));
+    expect(button.onPressed, isNull);
+
+    await tester.tap(find.text('Add loan figures'), warnIfMissed: false);
+    await tester.pump();
+    expect(find.byType(ManualLoanEntrySheet), findsNothing);
+  });
+
+  testWidgets('saving through Modify updates the amounts the row displays',
+      (tester) async {
+    // Exercises the real recordManualLoanEntryActionProvider ->
+    // manualLoanEntriesProvider invalidation wiring end-to-end (the fix for
+    // the pre-existing bug where a save left the row showing stale figures
+    // for the rest of the session), rather than stubbing either provider out.
+    final dataSource = _FakeLoanDataSource([
+      {'interest_paid': 8200.0, 'principal_paid': 14000.0,
+       'month': null, 'unit_id': null, 'cadence': 'annual'},
+    ]);
+    await _pumpScreenWithFakeDataSource(tester, 2026, _summaryWithProperty(2026, complete: true),
+        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), dataSource);
+
+    expect(find.textContaining('8,200'), findsOneWidget);
+
+    await tester.tap(find.text('Modify'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('manual-loan-interest')), '9500');
+    await tester.enterText(find.byKey(const Key('manual-loan-principal')), '15200');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ManualLoanEntrySheet), findsNothing);
+    expect(find.textContaining('9,500'), findsOneWidget);
+    expect(find.textContaining('15,200'), findsOneWidget);
+    expect(find.textContaining('8,200'), findsNothing);
+    expect(find.textContaining('14,000'), findsNothing);
   });
 }

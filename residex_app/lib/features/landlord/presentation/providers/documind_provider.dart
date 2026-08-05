@@ -423,6 +423,10 @@ final recordManualLoanEntryActionProvider = Provider<Future<void> Function({
       interestPaid: interestPaid, principalPaid: principalPaid, month: month, unitId: unitId,
     );
     ref.invalidate(financeSummaryProvider);
+    // Without this, the finance tab's permanent loan-figures row — whose
+    // entire job is showing the landlord what they just typed — keeps
+    // showing the pre-save amount for the rest of the session.
+    ref.invalidate(manualLoanEntriesProvider);
   };
 });
 
@@ -444,6 +448,7 @@ final deleteManualLoanEntryActionProvider = Provider<Future<void> Function({
       propertyId: propertyId, year: year, month: month, unitId: unitId,
     );
     ref.invalidate(financeSummaryProvider);
+    ref.invalidate(manualLoanEntriesProvider);
   };
 });
 

@@ -121,6 +121,10 @@ class FinanceScreen extends ConsumerWidget {
         onRefresh: () async {
           ref.invalidate(financeSummaryProvider(year));
           ref.invalidate(financeYearsProvider);
+          // Bare invalidate on the family (no args), same pattern the action
+          // providers below already use on financeSummaryProvider: retries
+          // every property/year combination currently mounted, not just one.
+          ref.invalidate(manualLoanEntriesProvider);
           await ref.read(financeSummaryProvider(year).future);
         },
         child: ListView(
@@ -502,12 +506,12 @@ class FinanceScreen extends ConsumerWidget {
     final entriesAsync = ref.watch(manualLoanEntriesProvider(
         (propertyId: block.propertyId, year: year)));
 
-    // Still resolving and nothing cached yet: render nothing rather than
-    // flashing the "Add loan figures" affordance for a frame before the real
-    // entries land.
-    if (entriesAsync.isLoading && !entriesAsync.hasValue) {
-      return const SizedBox.shrink();
-    }
+    // Still resolving and nothing cached yet. The control's presence must
+    // not depend on a network call completing — this request has no timeout
+    // and pull-to-refresh is the only retry path — so it stays on screen,
+    // just disabled, rather than disappearing into a blank gap for the rest
+    // of the session if the request stalls.
+    final isInitialLoading = entriesAsync.isLoading && !entriesAsync.hasValue;
 
     // Presence of a booked entry is what matters, not whether its amounts
     // happen to be nonzero: interest>0||principal>0 also read "errored" and
@@ -524,11 +528,15 @@ class FinanceScreen extends ConsumerWidget {
     if (!hasFigures) {
       return Align(
         alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: () =>
-              _openManualLoanSheet(context, block, property, year),
-          icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
-          label: Text('Add loan figures', style: AppTextStyles.labelLarge),
+        child: Opacity(
+          opacity: isInitialLoading ? 0.5 : 1.0,
+          child: TextButton.icon(
+            onPressed: isInitialLoading
+                ? null
+                : () => _openManualLoanSheet(context, block, property, year),
+            icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
+            label: Text('Add loan figures', style: AppTextStyles.labelLarge),
+          ),
         ),
       );
     }
