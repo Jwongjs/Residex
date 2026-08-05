@@ -57,6 +57,8 @@ existing value on edit. The field is a decision the app never lets anyone make.
   client as expense lines (see "Where the figures come from").
 - Not revisiting `loanInputCadence`, which the manual-entry sheet asks for and
   keeps.
+- Not redesigning the manual-entry sheet. §5a adds prefill because a Modify
+  button without it destroys data; nothing else about the sheet changes.
 - Not touching upload behaviour for any other category.
 
 ---
@@ -165,12 +167,65 @@ final showManualLoan =
     property?.loanInputMethod == 'manual' && property?.hasMortgage == true;
 ```
 
-- **No figures booked yet** — reads "Add loan figures", as today.
-- **Figures booked** — a persistent row showing the year's booked interest and
-  principal, tapping anywhere on it reopens the same entry sheet.
+- **No figures booked yet** — a single "Add loan figures" button, as today.
+- **Figures booked** — a titled block showing the year's booked interest and
+  principal, with an explicit **Modify** control on the title row:
 
-Both states open `_openManualLoanSheet(context, block, property, summary.year)`,
-unchanged.
+```
+──────────────────────────────────────────────
+ Loan figures · 2026              [pencil] Modify
+     Interest                        RM 8,200
+     Principal                      RM 14,000
+──────────────────────────────────────────────
+```
+
+The Modify control is the **only** way in — the block itself is not a tap
+target. A whole-row tap with no visible affordance is the same "you're supposed
+to just know" problem this spec exists to remove, and an invisible full-width
+target next to real figures invites accidental opens while scrolling.
+
+Placement is the title row, trailing edge: it sits beside the "Loan figures"
+label so the control is read together with what it modifies, stays clear of the
+amounts themselves, and matches where the panel already puts row-level actions
+(`Undo` on the acknowledged-unavailable rows, `finance_screen.dart:482`).
+
+Label it **Modify** with a leading pencil icon — icons, not emoji, per project
+convention. "Modify" rather than "Edit" because the figures were typed by hand,
+not extracted; the landlord is correcting their own entry.
+
+Both states open `_openManualLoanSheet(context, block, property, summary.year)`.
+
+### 5a. The sheet must prefill — it does not today
+
+`manual_loan_entry_sheet.dart:51-61` creates `_interestController` and
+`_principalController` empty and `initState` sets only `_cadence`. The sheet
+always opens blank.
+
+That is fine for "Add", and unacceptable for "Modify". `_save` reads:
+
+```dart
+final interest = double.tryParse(_interestController.text.trim()) ?? 0;
+final principal = double.tryParse(_principalController.text.trim()) ?? 0;
+```
+
+So a landlord who opens Modify to correct one figure, edits it, and saves would
+write **0** over the other one without warning. A Modify button on a
+non-prefilling sheet destroys data.
+
+Required: when booked figures exist for the scope the sheet is opened on, both
+fields open populated with them, so saving unchanged is a no-op and correcting
+one figure leaves the other intact.
+
+Scope matters because loan entry is scoped by structure type:
+
+- Property-wide entry → prefill from the property-level booked figures
+- Per-unit entries → prefill from the selected unit's booked figures, and
+  re-prefill when the unit selection changes
+- No booked figures for the current scope → fields stay empty, as today
+
+The caller already computes these totals for the panel row, but it computes them
+**summed**. Prefill needs the per-scope values, not the sum — the plan must
+source them per scope rather than reuse the row's total.
 
 ### Where the figures come from
 
@@ -234,10 +289,19 @@ is inert until a landlord chooses manual.
 **Panel row**
 - Shown only for `manual` + `hasMortgage`
 - With no booked figures: reads "Add loan figures"
-- With booked figures: shows summed interest and principal, and stays visible
-  once complete — the regression that motivated this section
+- With booked figures: shows interest and principal plus a Modify control, and
+  stays visible once complete — the regression that motivated this section
 - Sums loan lines from property level and unit level together
-- Tapping opens the entry sheet in both states
+- The Modify control opens the sheet; the block itself is not a tap target
+- Both states reach the same sheet
+
+**Sheet prefill (§5a)**
+- Opening on a scope with booked figures populates both fields with them
+- Saving without editing anything leaves both figures unchanged — the
+  data-loss guard, since a blank field currently saves as 0
+- Editing only interest leaves principal at its booked value
+- Changing the selected unit re-prefills from that unit's figures
+- A scope with no booked figures still opens empty
 
 **Regression:** full Flutter suite green, with `test/widget_test.dart`'s
 pre-existing boilerplate failure the only failure.
@@ -249,6 +313,8 @@ pre-existing boilerplate failure the only failure.
 2. Choosing manual hides the Loans & Financing folder; choosing upload keeps it.
 3. Neither Loans-folder state offers manual entry.
 4. A manual-mode landlord can always reach and correct booked figures from the
-   finance tab, including after they are complete.
-5. Every existing property behaves exactly as it does today until its method is
+   finance tab, including after they are complete, via a visible Modify control
+   placed beside the figures.
+5. Correcting one figure never silently zeroes the other.
+6. Every existing property behaves exactly as it does today until its method is
    set.
