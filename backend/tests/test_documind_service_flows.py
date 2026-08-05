@@ -574,6 +574,7 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
         get_property_name=service._get_property_name,
         list_property_units=service._list_property_units,
         get_finance_summary=service.get_finance_summary,
+        get_document_facts=service._get_document_facts,
     )
     return service
 
@@ -2594,6 +2595,97 @@ class UnitLoanExemptionServiceTests(unittest.IsolatedAsyncioTestCase):
         result = await service.clear_unit_loan_exemption(landlord_id="l1", property_id="p1", unit_id="u1")
         self.assertEqual(result, {"property_id": "p1", "unit_id": "u1"})
         self.assertEqual(fake_db.unit_loan_exemptions, [])
+
+
+class FactContextInjectionTests(unittest.IsolatedAsyncioTestCase):
+    """The Ayer 8 regression.
+
+    Retrieval returns real lease chunks that discuss termination in the
+    abstract but never state the date — exactly what the live Schedule-table
+    miss looks like. The document's extracted_facts carry the date. The
+    assembled prompt must contain it.
+    """
+
+    def _fixtures(self):
+        fake_db = _FakeDB(
+            docs=[{
+                "doc_id": "d-lease", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "ayer8-lease.pdf",
+                "unit_label": "Unit B2-1-2",
+                "extracted_facts": {"lease_end": "2026-10-31", "monthly_rent": 8000.0},
+            }],
+            chunks=[{
+                "doc_id": "d-lease", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "ayer8-lease.pdf",
+                "unit_label": "Unit B2-1-2", "page": 5,
+                "text": ("the term of the tenancy has expired or has been sooner "
+                         "determined, less any sums then due to the Landlord"),
+            }],
+        )
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": ["lease"],
+            "prediction_confidence": 0.95,
+            "prediction_reason": "asks about tenancy end date",
+            "assistant_message": "",
+            "intent": "document_question",
+        })
+        return fake_db, fake_graph
+
+    async def test_extracted_facts_reach_the_prompt(self):
+        fake_db, fake_graph = self._fixtures()
+        fake_llm = _FakeLLM("The tenancy ends on 31 October 2026.")
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, fake_llm)
+
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        await service.ask_documind(payload, "l1")
+
+        # The chunk never states the date; only the facts block can supply it.
+        self.assertNotIn("2026-10-31", fake_llm.last_prompt.split("Extracted Document Facts")[0])
+        self.assertIn("2026-10-31", fake_llm.last_prompt)
+        self.assertIn("Lease end", fake_llm.last_prompt)
+        self.assertIn("Unit B2-1-2", fake_llm.last_prompt)
+
+    async def test_answer_still_produced_when_facts_lookup_fails(self):
+        fake_db, fake_graph = self._fixtures()
+        fake_llm = _FakeLLM("Answered from excerpts alone.")
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, fake_llm)
+
+        def _explode(_doc_ids):
+            raise RuntimeError("firestore down")
+
+        service._ask_orchestrator._get_document_facts = _explode
+
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        response = await service.ask_documind(payload, "l1")
+
+        self.assertEqual(response.answer, "Answered from excerpts alone.")
+        self.assertNotIn("Extracted Document Facts", fake_llm.last_prompt)
+
+    async def test_no_facts_block_when_documents_have_no_facts(self):
+        fake_db, fake_graph = self._fixtures()
+        fake_db.docs[0]["extracted_facts"] = {}
+        fake_llm = _FakeLLM("No facts available.")
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, fake_llm)
+
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        await service.ask_documind(payload, "l1")
+
+        self.assertNotIn("Extracted Document Facts", fake_llm.last_prompt)
+
+    async def test_facts_block_is_pii_scrubbed(self):
+        fake_db, fake_graph = self._fixtures()
+        fake_db.docs[0]["extracted_facts"] = {
+            "lease_end": "2026-10-31", "landlord_nric": "661214055049",
+        }
+        fake_llm = _FakeLLM("ok")
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, fake_llm)
+
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        await service.ask_documind(payload, "l1")
+
+        self.assertIn("[NRIC]", fake_llm.last_prompt)
+        self.assertNotIn("661214055049", fake_llm.last_prompt)
 
 
 if __name__ == "__main__":

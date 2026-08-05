@@ -1,12 +1,14 @@
 """Redact regex-reliable PII before any text is sent to a hosted LLM.
 
-Hard requirement (user): sensitive information from document chunks must not
-reach the hosted API. Names and addresses are NOT regex-catchable — those are
-kept off the hosted path structurally, by running OCR / embeddings /
-fact-extraction locally (EMBEDDINGS_PROVIDER / OCR_PROVIDER). This scrubber is
-the last-line net for the identifiers that ARE pattern-matchable: Malaysian
-NRIC, phone, email. Apply it at every boundary where text leaves to a hosted
-API (chat context assembly in ask_documind).
+Scope, stated honestly: this catches the identifiers that are pattern-matchable
+— Malaysian NRIC, phone, email — at every boundary where text leaves for a
+hosted API (chat context assembly and the extracted-facts block in
+ask_documind). Names and addresses are NOT regex-catchable and DO reach the
+configured chat provider inside chunk text and extracted facts; keeping the
+provider trusted (Groq under ZDR, via CHAT_PROVIDER) is what bounds that, not
+this scrubber. Running OCR, embeddings and fact-extraction locally keeps raw
+document bytes and full leading text off the hosted path — a separate control
+from this one.
 
 Known tradeoff: a bare 12-digit number is treated as an NRIC, so a 12-digit
 invoice/account number is redacted too — acceptable for a privacy net.

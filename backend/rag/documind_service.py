@@ -110,6 +110,7 @@ class DocuMindService:
             get_property_name=self._get_property_name,
             list_property_units=self._list_property_units,
             get_finance_summary=self.get_finance_summary,
+            get_document_facts=self._get_document_facts,
         )
         print("DocuMindService initializing...")
         

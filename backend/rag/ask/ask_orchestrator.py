@@ -5,6 +5,7 @@ from typing import List, Optional
 from google.api_core.exceptions import FailedPrecondition, ServiceUnavailable
 
 from models.documind_models import AskRequest, AskResponse, Citation, UnitOption
+from rag.ask.fact_context import build_facts_block
 from rag.categories import ALLOWED_CATEGORIES, expand_categories_for_query, normalize_category
 from rag.pii_scrub import scrub_for_hosted
 from rag.unit_resolution import resolve_unit_mention
@@ -17,6 +18,7 @@ class AskOrchestrator:
     def __init__(
         self, *, conversation_store, graph_orchestrator, hybrid_retriever, llm_getter,
         list_available_categories, get_property_name, list_property_units, get_finance_summary,
+        get_document_facts=None,
     ):
         self._conversation_store = conversation_store
         self._graph_orchestrator = graph_orchestrator
@@ -26,6 +28,10 @@ class AskOrchestrator:
         self._get_property_name = get_property_name
         self._list_property_units = list_property_units
         self._get_finance_summary = get_finance_summary
+        # Optional on purpose: a None getter yields no facts block, so every
+        # existing construction site stays valid and the feature can never be
+        # the reason an answer fails.
+        self._get_document_facts = get_document_facts
 
     def _narrate_finance_summary(self, question: str, property_name: str, summary) -> str:
         """Turn the engine's computed JSON into a chat answer. The LLM narrates
@@ -560,6 +566,20 @@ Rules:
             safe_chunk_text = scrub_for_hosted(chunk['text'])
             context_text += f"\n\n[Document {i+1}: {chunk['filename']}, Page {display_page if display_page is not None else 'N/A'} — {unit_context}]\n{safe_chunk_text}"
 
+        # Retrieval ranks prose about a value above the table that states it —
+        # a lease Schedule loses to the clauses that cross-reference it. These
+        # facts were parsed at upload, so hand them to the model directly
+        # rather than hoping the right chunk won. Scoped to the documents this
+        # query actually hit.
+        facts_block = ""
+        if self._get_document_facts is not None:
+            try:
+                doc_ids = list(dict.fromkeys(c['doc_id'] for c in retrieved_chunks))
+                facts_block = scrub_for_hosted(build_facts_block(self._get_document_facts(doc_ids)))
+            except Exception as e:
+                print(f"WARNING: facts block unavailable, answering from excerpts only: {e}")
+                facts_block = ""
+
         citations = [
             Citation(
                 doc_id=c['doc_id'],
@@ -596,6 +616,7 @@ Rules:
     **Categories Searched:**
     {searched_categories_text}
 
+    {("**Extracted Document Facts:**" + chr(10) + facts_block + chr(10)) if facts_block else ""}
     **Relevant Document Excerpts:**
     {context_text}
 
@@ -617,7 +638,9 @@ Rules:
 
     4. **DO NOT** make up information - only use what's provided in the context.
 
-    5. **Unit attribution:** Each excerpt header names the unit it belongs to (or "Property-wide"). Never blend values from different units — attribute every figure to its unit. If the excerpts span multiple units, break the answer down per unit (e.g. "Unit A-12-03: ...", "Unit B-08-11: ..."). For totals across units, show each unit's value and then the combined total. Property-wide documents apply to the whole property.
+    5. **Extracted facts take precedence for values.** When a section labelled with the parsed-facts heading appears above, it holds values already parsed from these same documents at upload — use it to answer the question. The excerpts often only cross-reference a Schedule whose table is not among them. Never contradict that section with a guess, and never claim a value is unavailable when it states it.
+
+    6. **Unit attribution:** Each excerpt header names the unit it belongs to (or "Property-wide"). Never blend values from different units — attribute every figure to its unit. If the excerpts span multiple units, break the answer down per unit (e.g. "Unit A-12-03: ...", "Unit B-08-11: ..."). For totals across units, show each unit's value and then the combined total. Property-wide documents apply to the whole property.
 
     **Your Answer:**"""
 
