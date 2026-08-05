@@ -260,6 +260,18 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     // them in a folder the grid no longer offers.
     if (_selectedCategory != null &&
         !_categoriesFor(property).contains(_selectedCategory)) {
+      // Clear the stale selection post-frame rather than during build, so
+      // _buildMainUI's "Back to Categories" breadcrumb (keyed off
+      // _selectedCategory) doesn't keep floating above the grid we're
+      // falling back to.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectedCategory = null;
+            _selectedFolderKey = null;
+          });
+        }
+      });
       return _buildCategoryGrid(property);
     }
 

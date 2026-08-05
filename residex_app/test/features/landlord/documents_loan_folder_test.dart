@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -86,6 +88,10 @@ void main() {
     await tester.tap(find.text('Loans & Financing'), warnIfMissed: false);
     await tester.pumpAndSettle();
 
+    // Prove the tap actually landed in the folder (the empty-state CTA)
+    // before asserting the manual-entry button is absent — otherwise a
+    // missed tap would leave us on the grid and this would pass vacuously.
+    expect(find.text('Upload Loans & Financing'), findsOneWidget);
     expect(find.text('Enter figures manually'), findsNothing);
 
     // Populated state. Tear down first — pumping a structurally identical
@@ -111,5 +117,45 @@ void main() {
 
     expect(find.text('loan_statement.pdf'), findsOneWidget);
     expect(find.text('Enter figures manually'), findsNothing);
+  });
+
+  testWidgets(
+      'switching to manual while inside the Loans folder falls back to the grid',
+      (tester) async {
+    // Drive propertiesStreamProvider through a controller we keep open for
+    // the whole test, so we can push a live update — the landlord changing
+    // loanInputMethod from property settings while this screen is still
+    // open on the Loans folder — without re-pumping the widget tree (which
+    // would just reuse the existing State rather than exercising a real
+    // provider-driven rebuild).
+    final controller = StreamController<List<Property>>();
+    addTearDown(controller.close);
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        propertiesStreamProvider.overrideWith((ref) => controller.stream),
+        documindDocumentsProvider.overrideWith(
+          (ref, propertyId) async => const <DocuMindDocument>[],
+        ),
+      ],
+      child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
+    ));
+    controller.add([propertyWith('upload')]);
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(GridView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Loans & Financing'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Upload Loans & Financing'), findsOneWidget);
+
+    controller.add([propertyWith('manual')]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Upload Loans & Financing'), findsNothing);
+    expect(find.byType(GridView), findsOneWidget);
+    expect(find.text('Back to Categories'), findsNothing);
   });
 }

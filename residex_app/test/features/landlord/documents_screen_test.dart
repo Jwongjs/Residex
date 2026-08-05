@@ -390,6 +390,10 @@ void main() {
     await tester.tap(find.text('Loans & Financing'), warnIfMissed: false);
     await tester.pumpAndSettle();
 
+    // Prove the tap actually landed in the folder (the empty-state CTA)
+    // before asserting the manual-entry button is absent — otherwise a
+    // missed tap would leave us on the grid and this would pass vacuously.
+    expect(find.text('Upload Loans & Financing'), findsOneWidget);
     expect(find.text('Enter figures manually'), findsNothing);
   });
 
