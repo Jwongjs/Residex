@@ -55,6 +55,14 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   String? _selectedUnitId;
   String? _cadence;
 
+  /// The (unitId, month) scope whose booked figures are currently loaded into
+  /// the fields. Guards `_prefillFor` so it only overwrites the controllers
+  /// when the scope actually changes — this runs from `build`, and the sheet
+  /// rebuilds on provider changes it does not control (e.g. after a save
+  /// invalidates `manualLoanEntriesProvider`), so an unconditional write
+  /// would fight the landlord's in-progress typing.
+  ({String? unitId, int? month})? _prefilledScope;
+
   @override
   void initState() {
     super.initState();
@@ -108,6 +116,44 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
     await ref
         .read(propertyControllerProvider)
         .updateProperty(property.copyWith(loanInputCadence: cadence));
+  }
+
+  /// The booked entry for the scope currently selected in the sheet. An entry
+  /// is keyed by (unit_id, month), exactly as _save writes it.
+  Map<String, dynamic>? _entryForCurrentScope(List<Map<String, dynamic>> entries) {
+    final month = _cadence == 'monthly' ? _month : null;
+    for (final entry in entries) {
+      final entryMonth = (entry['month'] as num?)?.toInt();
+      if (entry['unit_id'] == _selectedUnitId && entryMonth == month) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  /// Load the booked figures into the fields so Modify opens ready to correct.
+  /// Without this, _save's `?? 0` writes zero over whichever field the
+  /// landlord did not retype. Only writes when the (unitId, month) scope
+  /// differs from the last one prefilled, so it neither fights the
+  /// landlord's typing on an unrelated rebuild nor gets stuck showing stale
+  /// figures once a save invalidates the entries provider.
+  void _prefillFor(List<Map<String, dynamic>> entries) {
+    final month = _cadence == 'monthly' ? _month : null;
+    final scope = (unitId: _selectedUnitId, month: month);
+    if (_prefilledScope == scope) return;
+    _prefilledScope = scope;
+
+    final entry = _entryForCurrentScope(entries);
+    final interest = (entry?['interest_paid'] as num?)?.toDouble();
+    final principal = (entry?['principal_paid'] as num?)?.toDouble();
+    final nextInterest = interest == null ? '' : '$interest';
+    final nextPrincipal = principal == null ? '' : '$principal';
+    if (_interestController.text != nextInterest) {
+      _interestController.text = nextInterest;
+    }
+    if (_principalController.text != nextPrincipal) {
+      _principalController.text = nextPrincipal;
+    }
   }
 
   Future<void> _remove(int? month) async {
@@ -198,6 +244,22 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
         (_selectedUnitId == null ||
             !units.any((u) => u.unitId == _selectedUnitId))) {
       _selectedUnitId = units.first.unitId;
+    }
+
+    // Prefill from the booked entry for the now-resolved scope. Must run
+    // after _selectedUnitId is finalized above — an entry is keyed by
+    // (unit_id, month), so prefilling any earlier would look up the wrong
+    // scope for a strata property (whose selection is re-anchored to the
+    // first live unit right above) and open Modify blank.
+    //
+    // Only once entries have actually loaded: entriesAsync starts in a
+    // loading state on first build (asData is null then), and calling
+    // _prefillFor with a placeholder empty list at that point would record
+    // the current scope as "already prefilled" — permanently blocking the
+    // real write once the future resolves with the booked figures.
+    final entriesData = entriesAsync.asData?.value;
+    if (entriesData != null) {
+      _prefillFor(entriesData);
     }
 
     UnitFinance? selectedUnit;

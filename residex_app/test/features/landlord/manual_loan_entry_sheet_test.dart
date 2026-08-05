@@ -521,4 +521,336 @@ void main() {
     expect(find.text('Stale Unit'), findsNothing);
     expect(find.text('Whole property'), findsNothing);
   });
+
+  // --- Prefill (Task 5): Modify must never open blank and silently zero a
+  // figure via _save's `?? 0`. ---
+
+  String interestText(WidgetTester tester) => tester
+      .widget<TextFormField>(find.byKey(const Key('manual-loan-interest')))
+      .controller!
+      .text;
+
+  String principalText(WidgetTester tester) => tester
+      .widget<TextFormField>(find.byKey(const Key('manual-loan-principal')))
+      .controller!
+      .text;
+
+  testWidgets('opens prefilled with the booked figures for the scope',
+      (tester) async {
+    const year = 2025;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => <Map<String, dynamic>>[
+                  {
+                    'interest_paid': 8200.0,
+                    'principal_paid': 14000.0,
+                    'month': null,
+                    'unit_id': null,
+                    'cadence': 'annual',
+                  },
+                ]),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(interestText(tester), '8200.0');
+    expect(principalText(tester), '14000.0');
+  });
+
+  testWidgets('a scope with no booked entry opens empty', (tester) async {
+    await _pumpSheet(tester,
+        structureType: null, units: const [], cadence: 'annual');
+
+    expect(interestText(tester), '');
+    expect(principalText(tester), '');
+  });
+
+  testWidgets('changing the selected unit re-prefills from that unit',
+      (tester) async {
+    const year = 2025;
+    final units = [
+      UnitFinance(unitId: 'u1', label: 'Unit 1', rentedMonths: 12, contribution: 0),
+      UnitFinance(unitId: 'u2', label: 'Unit 2', rentedMonths: 12, contribution: 0),
+    ];
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+              properties: [
+                PropertyFinance(
+                  propertyId: 'p1',
+                  name: 'Test Property',
+                  receivedRent: 0,
+                  derivedRent: 0,
+                  directExpenses: 0,
+                  rentalIncomeOrLoss: 0,
+                  units: units,
+                ),
+              ],
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => <Map<String, dynamic>>[
+                  {
+                    'interest_paid': 1000.0,
+                    'principal_paid': 2000.0,
+                    'month': null,
+                    'unit_id': 'u1',
+                    'cadence': 'annual',
+                  },
+                  {
+                    'interest_paid': 3000.0,
+                    'principal_paid': 4000.0,
+                    'month': null,
+                    'unit_id': 'u2',
+                    'cadence': 'annual',
+                  },
+                ]),
+      ],
+      child: MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: PropertyStructureType.strata,
+          units: units,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Default selection is the first live unit (u1).
+    expect(interestText(tester), '1000.0');
+    expect(principalText(tester), '2000.0');
+
+    await tester.tap(find.byType(DropdownButton<String?>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Unit 2').last);
+    await tester.pumpAndSettle();
+
+    expect(interestText(tester), '3000.0');
+    expect(principalText(tester), '4000.0');
+  });
+
+  testWidgets('changing the month re-prefills when cadence is monthly',
+      (tester) async {
+    const year = 2025;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => <Map<String, dynamic>>[
+                  {
+                    'interest_paid': 500.0,
+                    'principal_paid': 600.0,
+                    'month': 1,
+                    'unit_id': null,
+                    'cadence': 'monthly',
+                  },
+                  {
+                    'interest_paid': 700.0,
+                    'principal_paid': 800.0,
+                    'month': 2,
+                    'unit_id': null,
+                    'cadence': 'monthly',
+                  },
+                ]),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'monthly',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Default month is 1.
+    expect(interestText(tester), '500.0');
+    expect(principalText(tester), '600.0');
+
+    await tester.tap(find.byType(DropdownButton<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Feb').last);
+    await tester.pumpAndSettle();
+
+    expect(interestText(tester), '700.0');
+    expect(principalText(tester), '800.0');
+  });
+
+  testWidgets('typing survives an unrelated rebuild', (tester) async {
+    const year = 2025;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => <Map<String, dynamic>>[
+                  {
+                    'interest_paid': 8200.0,
+                    'principal_paid': 14000.0,
+                    'month': null,
+                    'unit_id': null,
+                    'cadence': 'annual',
+                  },
+                ]),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+        find.byKey(const Key('manual-loan-interest')), '9999');
+
+    // Force a rebuild unrelated to scope: re-fetch the same entries data,
+    // exactly what happens whenever manualLoanEntriesProvider is invalidated
+    // for reasons outside this sheet's control (e.g. another sheet's save).
+    final container = ProviderScope.containerOf(
+        tester.element(find.byType(ManualLoanEntrySheet)));
+    container.invalidate(
+        manualLoanEntriesProvider((propertyId: 'p1', year: year)));
+    await tester.pumpAndSettle();
+
+    expect(interestText(tester), '9999');
+  });
+
+  testWidgets('fields are correct after a save, not reverted or zeroed',
+      (tester) async {
+    // _save() pops the sheet on success (Navigator.of(context).pop()), so a
+    // real Save tap can't be observed post-save here — the widget is gone by
+    // the next pump. Instead this drives the same mechanism a save relies
+    // on: manualLoanEntriesProvider refetching after being invalidated,
+    // now returning the updated figure the same way a successful save
+    // would. `booked` is mutated and re-read by the override closure (Dart
+    // closures capture the variable, not a snapshot), mirroring the backend
+    // now holding the new value.
+    const year = 2025;
+    var booked = <Map<String, dynamic>>[
+      {
+        'interest_paid': 8200.0,
+        'principal_paid': 14000.0,
+        'month': null,
+        'unit_id': null,
+        'cadence': 'annual',
+      },
+    ];
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => booked),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(interestText(tester), '8200.0');
+
+    // Modify only the interest, leaving principal untouched — the exact
+    // scenario the brief calls out as the data-loss case.
+    await tester.enterText(
+        find.byKey(const Key('manual-loan-interest')), '9100');
+
+    // Simulate the save landing: the backend now holds the new interest,
+    // and manualLoanEntriesProvider is invalidated exactly as
+    // recordManualLoanEntryActionProvider does after a real write.
+    booked = [
+      {
+        'interest_paid': 9100.0,
+        'principal_paid': 14000.0,
+        'month': null,
+        'unit_id': null,
+        'cadence': 'annual',
+      },
+    ];
+    final container = ProviderScope.containerOf(
+        tester.element(find.byType(ManualLoanEntrySheet)));
+    container
+        .invalidate(manualLoanEntriesProvider((propertyId: 'p1', year: year)));
+    await tester.pumpAndSettle();
+
+    // The rebuild triggered by the refetch must not revert the just-typed
+    // interest to the pre-save booked value, and must not wipe the
+    // untouched principal to empty/zero.
+    expect(interestText(tester), '9100');
+    expect(principalText(tester), '14000.0');
+  });
 }
