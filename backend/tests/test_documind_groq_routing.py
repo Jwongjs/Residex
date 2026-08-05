@@ -80,3 +80,76 @@ class TestFactLlmGroqBranch:
                         {"FACT_PROVIDER": "groq", "GROQ_API_KEY": "k"}, clear=False):
             chosen = service._fact_llm()
         assert isinstance(chosen, GroqChat)
+
+
+class TestChatLlmProvider:
+    def test_defaults_to_hosted_gemini_client(self):
+        service = _bare()
+        service._llm = "HOSTED"
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CHAT_PROVIDER", None)
+            assert service._chat_llm() == "HOSTED"
+
+    def test_explicit_gemini_stays_hosted(self):
+        service = _bare()
+        service._llm = "HOSTED"
+        with patch.dict(os.environ, {"CHAT_PROVIDER": "gemini"}, clear=False):
+            assert service._chat_llm() == "HOSTED"
+
+    def test_groq_flag_selects_groq_client(self):
+        service = _bare()
+        service._llm = "HOSTED"
+        with patch.dict(os.environ,
+                        {"CHAT_PROVIDER": "groq", "GROQ_API_KEY": "k"}, clear=False):
+            chosen = service._chat_llm()
+        assert isinstance(chosen, GroqChat)
+
+    def test_groq_chat_model_is_overridable(self):
+        service = _bare()
+        service._llm = "HOSTED"
+        with patch.dict(os.environ,
+                        {"CHAT_PROVIDER": "groq", "GROQ_API_KEY": "k",
+                         "GROQ_CHAT_MODEL": "openai/gpt-oss-120b"}, clear=False):
+            chosen = service._chat_llm()
+        assert chosen.model == "openai/gpt-oss-120b"
+
+    def test_case_insensitive(self):
+        service = _bare()
+        service._llm = "HOSTED"
+        with patch.dict(os.environ,
+                        {"CHAT_PROVIDER": "GROQ", "GROQ_API_KEY": "k"}, clear=False):
+            assert isinstance(service._chat_llm(), GroqChat)
+
+
+class TestChatProviderWiring:
+    """PdfOcr must never end up holding the chat client.
+
+    Constructing a real DocuMindService needs live Firestore, so this asserts
+    on __init__'s source. That is deliberate and narrow: it guards the one
+    coupling that fails SILENTLY — swapping PdfOcr onto GroqChat breaks OCR
+    only at upload time, with no test and no startup error to catch it. The
+    behaviour of _chat_llm itself is covered properly by TestChatLlmProvider.
+    """
+
+    def test_pdf_ocr_keeps_the_gemini_client(self):
+        # PdfOcr.invoke is called with a list of multimodal HumanMessages;
+        # GroqChat.invoke takes a plain string and would break on it.
+        import inspect
+
+        from rag.documind_service import DocuMindService as Svc
+        source = inspect.getsource(Svc.__init__)
+        assert "PdfOcr(self._llm)" in source, "PdfOcr must hold the Gemini client"
+        assert "PdfOcr(self._chat" not in source
+
+    def test_llm_property_falls_back_for_bare_instances(self):
+        # Every existing test builds the service via __new__ and sets _llm
+        # directly; the property must keep honouring that.
+        service = _bare()
+        service._llm = "HOSTED"
+        assert service.llm == "HOSTED"
+
+    def test_llm_property_prefers_the_chat_client_when_present(self):
+        service = _bare()
+        service._llm = "HOSTED"
+        service._chat = "CHAT"
+        assert service.llm == "CHAT"

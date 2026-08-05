@@ -82,9 +82,13 @@ class DocuMindService:
         self._llm = llm
         self._hybrid_retriever = HybridRetriever(db=self._db, embeddings=self.embeddings)
         self._conversation_store = ConversationStore(self._db)
-        self._conversation_router = ConversationRouter(self._llm)
+        # One chat client shared by every collaborator that sees chat text.
+        # PdfOcr keeps self._llm below: it is a vision path, and GroqChat
+        # cannot accept the multimodal message list PdfOcr sends.
+        self._chat = self._chat_llm()
+        self._conversation_router = ConversationRouter(self._chat)
         self._category_predictor = CategoryPredictor(
-            self._llm,
+            self._chat,
             allowed_categories=sorted(ALLOWED_CATEGORIES),
         )
         self._fact_extractor = FactExtractor(self._fact_llm())
@@ -154,7 +158,11 @@ class DocuMindService:
 
     @property
     def llm(self):
-        return self._llm
+        """The chat client. AskOrchestrator reaches synthesis through this via
+        its injected llm_getter, so CHAT_PROVIDER governs answers as well as
+        routing. Falls back to the hosted client on instances built via
+        __new__ in tests, which never set _chat."""
+        return getattr(self, "_chat", None) or self._llm
 
     def _fact_llm(self):
         """The LLM injected into FactExtractor. FACT_PROVIDER=ollama (or local)
@@ -171,6 +179,23 @@ class DocuMindService:
         if provider == "groq":
             model = os.getenv("GROQ_FACT_MODEL", "llama-3.3-70b-versatile")
             print(f"🔄 Fact extraction routed to Groq ({model}) — ZDR must be enabled")
+            return GroqChat(model=model)
+        return self._llm
+
+    def _chat_llm(self):
+        """The LLM behind chat: answer synthesis, conversation routing and
+        category prediction. CHAT_PROVIDER=groq routes them to Groq, which
+        already receives lease text for fact extraction under ZDR; default
+        'gemini' keeps the hosted client so merging this changes nothing until
+        the flag is set.
+
+        PdfOcr deliberately does NOT use this — it invokes with a list of
+        multimodal HumanMessages and GroqChat.invoke takes a plain string.
+        """
+        provider = os.getenv("CHAT_PROVIDER", "gemini").lower()
+        if provider == "groq":
+            model = os.getenv("GROQ_CHAT_MODEL", "llama-3.3-70b-versatile")
+            print(f"🔄 Chat routed to Groq ({model}) — ZDR must be enabled")
             return GroqChat(model=model)
         return self._llm
 
