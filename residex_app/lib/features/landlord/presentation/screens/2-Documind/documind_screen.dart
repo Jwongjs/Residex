@@ -329,53 +329,78 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        // Filename is the only elastic part of the line: the page number and
-        // unit badge keep their space, so "p.X" can never be squeezed out.
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                citation.filename,
-                style: GoogleFonts.ibmPlexMono(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Text(
-              ' · p.${citation.page ?? '—'}',
-              style: GoogleFonts.ibmPlexMono(
-                fontSize: 11,
-                color: AppColors.textMuted,
-              ),
-            ),
-            if (displayUnitLabel != null) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 110),
+            // Filename is the only elastic part of the line: the page number
+            // and unit badge keep their space, so "p.X" can never be squeezed
+            // out.
+            Row(
+              children: [
+                Expanded(
                   child: Text(
-                    displayUnitLabel.toUpperCase(),
+                    citation.filename,
+                    style: GoogleFonts.ibmPlexMono(
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.labelSmall.copyWith(
-                      color: AppColors.textMuted,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 9,
+                  ),
+                ),
+                Text(
+                  // An extracted-fact citation has no page to point at: the
+                  // value was parsed at upload, and the pages retrieval
+                  // returned may not state it at all. "p.—" would read as a
+                  // missing page number.
+                  citation.isExtractedFacts
+                      ? ' · extracted'
+                      : ' · p.${citation.page ?? '—'}',
+                  style: GoogleFonts.ibmPlexMono(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                if (displayUnitLabel != null) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.border),
                     ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 110),
+                      child: Text(
+                        displayUnitLabel.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.labelSmall.copyWith(
+                          color: AppColors.textMuted,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            // The cited values themselves, so the strip is verifiable without
+            // opening the document — the whole point of the "extracted" label.
+            if (citation.isExtractedFacts && citation.snippet.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, left: 8),
+                child: Text(
+                  citation.snippet,
+                  style: GoogleFonts.ibmPlexMono(
+                    fontSize: 10,
+                    color: AppColors.textMuted,
                   ),
                 ),
               ),
-            ],
           ],
         ),
       ),

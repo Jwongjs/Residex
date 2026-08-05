@@ -140,6 +140,12 @@ class CitationModel {
   final String? unitId;
   final String? unitLabel;
 
+  /// 'excerpt' | 'extracted_facts'. Defaults to 'excerpt' so an older server
+  /// that omits the field still parses.
+  final String source;
+
+  bool get isExtractedFacts => source == 'extracted_facts';
+
   CitationModel({
     required this.docId,
     required this.filename,
@@ -149,7 +155,20 @@ class CitationModel {
     required this.score,
     this.unitId,
     this.unitLabel,
+    this.source = 'excerpt',
   });
+
+  Citation toEntity() => Citation(
+        docId: docId,
+        filename: filename,
+        category: category,
+        page: page,
+        snippet: snippet,
+        score: score,
+        unitId: unitId,
+        unitLabel: unitLabel,
+        source: source,
+      );
 
   factory CitationModel.fromJson(Map<String, dynamic> json) {
     return CitationModel(
@@ -161,6 +180,7 @@ class CitationModel {
       score: (json['score'] as num?)?.toDouble() ?? 0.0,
       unitId: json['unit_id'] as String?,
       unitLabel: json['unit_label'] as String?,
+      source: json['source'] as String? ?? 'excerpt',
     );
   }
 
@@ -174,6 +194,7 @@ class CitationModel {
       'score': score,
       'unit_id': unitId,
       'unit_label': unitLabel,
+      'source': source,
     };
   }
 }
@@ -295,16 +316,10 @@ class DocuMindAnswerModel {
     return DocuMindAnswer(
       answer: answer,
       confidence: confidence,
-      citations: citations.map((c) => Citation(
-        docId: c.docId,
-        filename: c.filename,
-        category: c.category,
-        page: c.page,
-        snippet: c.snippet,
-        score: c.score,
-        unitId: c.unitId,
-        unitLabel: c.unitLabel,
-      )).toList(),
+      // Delegated rather than re-listed: an inline copy silently drops any
+      // field added to CitationModel later, which is exactly how `source`
+      // would have been lost here.
+      citations: citations.map((c) => c.toEntity()).toList(),
       propertyName: propertyName,
       searchedCategories: searchedCategories,
       categoryFilterMode: categoryFilterMode,

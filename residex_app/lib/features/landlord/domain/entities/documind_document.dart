@@ -79,6 +79,15 @@ class Citation {
   /// Denormalized unit label captured at ingest (display fallback).
   final String? unitLabel;
 
+  /// 'excerpt' (a retrieved page) | 'extracted_facts' (values parsed at
+  /// upload). Facts answer questions no retrieved page states, so citing a
+  /// page for them would send the landlord somewhere the value is not.
+  final String source;
+
+  /// True when this citation stands for the document's parsed details rather
+  /// than one of its pages.
+  bool get isExtractedFacts => source == 'extracted_facts';
+
   Citation({
     required this.docId,
     required this.filename,
@@ -88,6 +97,7 @@ class Citation {
     required this.score,
     this.unitId,
     this.unitLabel,
+    this.source = 'excerpt',
   });
 }
 
