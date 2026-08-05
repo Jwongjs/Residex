@@ -64,6 +64,11 @@ void main() {
     await _tap(tester, find.text('Yes'));
     await tester.pumpAndSettle();
 
+    // Anchor: the cards themselves must actually be there, otherwise the
+    // findsNothing checks below would pass just as well if the selector
+    // rendered nothing at all.
+    expect(find.text('Upload statements'), findsOneWidget);
+
     // Unanswered means null, which behaves as 'upload' downstream — this is
     // what keeps every existing property behaving as it does today.
     expect(

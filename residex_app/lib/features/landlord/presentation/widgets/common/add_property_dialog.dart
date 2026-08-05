@@ -132,18 +132,43 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       if (existing != null) {
         // Edit mode: preserve id/landlordId/createdAt/photos, update the rest.
         // Unit count/rent are not editable here — see UnitsScreen.
-        final updatedProperty = existing.copyWith(
+        //
+        // Built directly rather than via existing.copyWith(...): copyWith
+        // coalesces every field with `?? this.field`, so passing null to
+        // clear loanInputMethod would silently keep the old value instead.
+        // Constructing the Property explicitly is the only way this branch
+        // can actually write null for that field.
+        //
+        // structureType, hasMortgage and trackFromYear all keep the same
+        // `?? existing.field` coalescing copyWith used to apply, so this
+        // change touches loanInputMethod's clearing behaviour only. Each of
+        // the other three has the identical "Not sure"/clear swallowing
+        // problem (picking "Not sure" cannot actually blank a previously-set
+        // value on an existing property) — pre-existing, out of scope here;
+        // see the fix report for the loan-entry-method workstream, task 1,
+        // round 1.
+        final updatedProperty = Property(
+          id: existing.id,
+          landlordId: existing.landlordId,
           name: _nameController.text.trim(),
           address: address,
           type: _selectedType,
           purchasePrice: double.parse(_purchasePriceController.text),
           currentValue: double.parse(_currentValueController.text),
           ownershipShare: ownershipShare,
-          structureType: _selectedStructureType,
-          hasMortgage: _hasMortgage,
-          trackFromYear: _trackFromYear,
+          structureType: _selectedStructureType ?? existing.structureType,
+          hasMortgage: _hasMortgage ?? existing.hasMortgage,
+          trackFromYear: _trackFromYear ?? existing.trackFromYear,
+          utilitiesPaidBy: existing.utilitiesPaidBy,
           loanInputCadence: existing.loanInputCadence,
           loanInputMethod: _hasMortgage == true ? _loanInputMethod : null,
+          nextSetupStep: existing.nextSetupStep,
+          foldersEnabled: existing.foldersEnabled,
+          folderNames: existing.folderNames,
+          folderMoves: existing.folderMoves,
+          photos: existing.photos,
+          createdAt: existing.createdAt,
+          updatedAt: existing.updatedAt,
         );
         await controller.updateProperty(updatedProperty);
       } else {
@@ -685,10 +710,10 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   }) {
     final selected = _loanInputMethod == value;
     return InkWell(
+      key: Key('loan-method-$value'),
       borderRadius: BorderRadius.circular(12),
       onTap: () => setState(() => _loanInputMethod = value),
       child: Container(
-        key: selected ? Key('loan-method-$value-selected') : null,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: selected ? AppColors.registry.withOpacity(0.08) : AppColors.card,
@@ -701,6 +726,11 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Zero-size selection probe: the stable keys above/on Container
+            // stay put across taps (nothing remounts), and tests read
+            // selection state by looking for this key instead of relying on
+            // Container's identity changing.
+            if (selected) SizedBox.shrink(key: Key('loan-method-$value-selected')),
             Icon(icon,
                 size: 20,
                 color: selected ? AppColors.registry : AppColors.textMuted),
