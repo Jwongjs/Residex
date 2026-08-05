@@ -48,10 +48,15 @@ def build_facts_block(
     for filename, unit_label, facts in docs:
         if not facts:
             continue
+        # Structured values (expense_lines is a list[dict]) are skipped: a raw
+        # Python repr would inject hundreds of tokens of literal into every
+        # prompt that retrieves the document. Those rows already reach the
+        # model through the excerpts and the finance engine; this block is for
+        # the scalar facts retrieval keeps losing.
         lines = [
             f"    - {_label(key)}: {value}"
             for key, value in sorted(facts.items())
-            if value is not None and value != ""
+            if value is not None and value != "" and not isinstance(value, (list, dict))
         ]
         if not lines:
             continue

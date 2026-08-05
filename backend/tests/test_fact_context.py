@@ -59,6 +59,19 @@ class TestRendering:
         assert "a.pdf" in block and "b.pdf" in block
         assert "2026-10-31" in block and "2027-01-31" in block
 
+    def test_structured_values_are_skipped(self):
+        # expense_lines is a list[dict]; its repr would be hundreds of tokens
+        # of Python literal in every prompt that retrieves the document.
+        block = build_facts_block([
+            ("bill.pdf", None, {
+                "amount": 120.0,
+                "expense_lines": [{"subtype": "quit_rent", "amount": 120.0}],
+            }),
+        ])
+        assert "Amount (RM): 120.0" in block
+        assert "subtype" not in block
+        assert "Expense lines" not in block
+
     def test_tenant_name_is_included(self):
         # Explicit decision: names are permitted through to the trusted provider.
         block = build_facts_block([("lease.pdf", None, {"tenant_name": "JNT Sdn. Bhd."})])

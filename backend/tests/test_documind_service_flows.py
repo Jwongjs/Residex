@@ -2675,6 +2675,29 @@ class FactContextInjectionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn("**Extracted Document Facts:**", fake_llm.last_prompt)
 
+    async def test_facts_are_not_sent_for_documents_retrieval_never_hit(self):
+        # The spec's privacy boundary: only documents this query actually
+        # retrieved contribute facts. Widening to "all docs for the property"
+        # would answer more questions and leak data the query never touched,
+        # and without this test that change stays green.
+        fake_db, fake_graph = self._fixtures()
+        fake_db.docs.append({
+            "doc_id": "d-other", "landlord_id": "l1", "property_id": "p1",
+            "category": "lease", "filename": "unrelated-lease.pdf",
+            "unit_label": "Unit C-9-9",
+            "extracted_facts": {"lease_end": "2099-12-31"},
+        })
+        fake_llm = _FakeLLM("ok")
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, fake_llm)
+
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        await service.ask_documind(payload, "l1")
+
+        # d-other has facts but no chunks, so retrieval never returns it.
+        self.assertIn("2026-10-31", fake_llm.last_prompt)
+        self.assertNotIn("2099-12-31", fake_llm.last_prompt)
+        self.assertNotIn("unrelated-lease.pdf", fake_llm.last_prompt)
+
     async def test_facts_block_is_pii_scrubbed(self):
         fake_db, fake_graph = self._fixtures()
         fake_db.docs[0]["extracted_facts"] = {

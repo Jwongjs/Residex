@@ -533,7 +533,7 @@ Rules:
 
         # No post-retrieval unit checkpoint: unit routing happened above from
         # the question text, and answers over mixed-unit chunks attribute every
-        # fact to its unit (prompt rule 5) instead of blocking to ask.
+        # fact to its unit (prompt rule 6) instead of blocking to ask.
 
         # Dedupe citations by (filename, page): multiple chunks can come from
         # the same page (overlapping splits), each with its own rerank score.
@@ -638,7 +638,7 @@ Rules:
 
     4. **DO NOT** make up information - only use what's provided in the context.
 
-    5. **Extracted facts take precedence for values.** The Extracted Document Facts block above, when present, holds values already parsed from these same documents at upload — use it to answer the question. The excerpts often only cross-reference a Schedule whose table is not among them. Never contradict that block with a guess, and never claim a value is unavailable when the block states it.
+    5. **Extracted facts take precedence for values.** The Extracted Document Facts block above, when present, holds values already parsed from these same documents at upload. When it answers the question, use it — the excerpts often only cross-reference a Schedule whose table is not among them. Never contradict that block with a guess, and never claim a value is unavailable when the block states it.
 
     6. **Unit attribution:** Each excerpt header names the unit it belongs to (or "Property-wide"). Never blend values from different units — attribute every figure to its unit. If the excerpts span multiple units, break the answer down per unit (e.g. "Unit A-12-03: ...", "Unit B-08-11: ..."). For totals across units, show each unit's value and then the combined total. Property-wide documents apply to the whole property.
 
