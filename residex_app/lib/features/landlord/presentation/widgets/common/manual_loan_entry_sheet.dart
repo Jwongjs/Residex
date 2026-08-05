@@ -391,23 +391,29 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      // Disabled while entries are loading or errored, not
-                      // just while saving: _save reads whatever is in the
-                      // fields right now, and until entriesData resolves
-                      // those fields may not carry the booked figures yet
-                      // (or, on error, never will) — enabling Save then
-                      // would let a landlord silently zero a booked amount.
+                      // Gated on hasValue, not on entriesData/asData: hasValue
+                      // stays true through a *refresh* that fails as long as
+                      // a value was previously known (Riverpod preserves the
+                      // last good value across the AsyncLoading/AsyncError
+                      // that follows an invalidate), so a transient refetch
+                      // error doesn't strand a landlord who can already see
+                      // their booked figures from re-saving them. It's only
+                      // false when no value has ever resolved — first load
+                      // still pending, or the very first load having failed
+                      // — which is the case that would actually zero a
+                      // figure, since the fields have nothing real in them.
                       onPressed:
-                          (_saving || entriesData == null) ? null : _save,
+                          (_saving || !entriesAsync.hasValue) ? null : _save,
                       child: const Text('Save'),
                     ),
                   ),
-                  if (entriesData == null) ...[
+                  if (!entriesAsync.hasValue) ...[
                     const SizedBox(height: 6),
                     Text(
                       entriesAsync.hasError
                           ? "Can't save yet — couldn't load the existing "
-                              'entries. Try again shortly.'
+                              'entries. Pull down to refresh on the Finance '
+                              'tab, then reopen this sheet.'
                           : 'Loading existing entries before you can save…',
                       style: AppTextStyles.bodySmall
                           .copyWith(color: AppColors.textMuted),

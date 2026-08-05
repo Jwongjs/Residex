@@ -616,6 +616,45 @@ void main() {
     expect(find.byType(ManualLoanEntrySheet), findsNothing);
   });
 
+  testWidgets(
+      'the row shows a disabled Add affordance when entries fail to load, not a tappable dead end',
+      (tester) async {
+    // A load that never succeeds even once (Riverpod's automatic retries
+    // exhaust in roughly a minute) leaves manualLoanEntriesProvider in
+    // AsyncError with no previous value. The sheet this row opens gates its
+    // own Save on that same provider having resolved, so an enabled "Add
+    // loan figures" here would walk the landlord into a form they cannot
+    // submit — a tappable dead end. Treated the same as still-loading:
+    // visible, disabled, not silently gone.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2026]),
+          financeSummaryProvider.overrideWith(
+              (ref, y) async => _summaryWithProperty(2026, complete: true)),
+          propertyByIdProvider.overrideWith((ref, id) async =>
+              _fakeProperty(hasMortgage: true, loanInputMethod: 'manual')),
+          manualLoanEntriesProvider.overrideWith(
+              (ref, args) async => throw Exception('network down')),
+        ],
+        child: const MaterialApp(home: FinanceScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Add loan figures'), findsOneWidget);
+
+    final button = tester.widget<TextButton>(find.ancestor(
+      of: find.text('Add loan figures'),
+      matching: find.byType(TextButton),
+    ));
+    expect(button.onPressed, isNull);
+
+    await tester.tap(find.text('Add loan figures'), warnIfMissed: false);
+    await tester.pump();
+    expect(find.byType(ManualLoanEntrySheet), findsNothing);
+  });
+
   testWidgets('saving through Modify updates the amounts the row displays',
       (tester) async {
     // Exercises the real recordManualLoanEntryActionProvider ->

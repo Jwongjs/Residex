@@ -952,8 +952,77 @@ void main() {
     expect(saveEnabled(tester), isFalse);
     expect(
         find.text(
-            "Can't save yet — couldn't load the existing entries. Try again shortly."),
+            "Can't save yet — couldn't load the existing entries. Pull "
+            'down to refresh on the Finance tab, then reopen this sheet.'),
         findsOneWidget);
+  });
+
+  testWidgets(
+      'Save stays enabled when a refresh fails after figures were already known',
+      (tester) async {
+    // Riverpod preserves the last resolved value across the AsyncLoading and
+    // (if the refetch throws) AsyncError that follow an invalidate, so
+    // hasValue stays true here even though this particular fetch failed.
+    // Save must keep trusting fields the landlord can already see are
+    // correct, rather than being blocked by a transient refresh error.
+    const year = 2025;
+    var callCount = 0;
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async {
+          callCount++;
+          if (callCount == 1) {
+            return <Map<String, dynamic>>[
+              {
+                'interest_paid': 8200.0,
+                'principal_paid': 14000.0,
+                'month': null,
+                'unit_id': null,
+                'cadence': 'annual',
+              },
+            ];
+          }
+          throw Exception('network down');
+        }),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(saveEnabled(tester), isTrue);
+    expect(interestText(tester), '8200.0');
+
+    final container = ProviderScope.containerOf(
+        tester.element(find.byType(ManualLoanEntrySheet)));
+    container
+        .invalidate(manualLoanEntriesProvider((propertyId: 'p1', year: year)));
+    await tester.pumpAndSettle();
+
+    expect(saveEnabled(tester), isTrue);
+    // The fields still hold what was already known-good — nothing was
+    // wiped by the failed refresh.
+    expect(interestText(tester), '8200.0');
   });
 
   testWidgets(

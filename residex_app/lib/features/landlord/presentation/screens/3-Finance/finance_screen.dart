@@ -517,7 +517,9 @@ class FinanceScreen extends ConsumerWidget {
     // happen to be nonzero: interest>0||principal>0 also read "errored" and
     // "booked as 0/0" (the sheet allows a 0/0 save) as "nothing booked",
     // which is wrong for the booked-zero case. An error still degrades to
-    // the Add affordance below, since asData is null and entries is empty.
+    // the Add affordance below, since asData is null and entries is empty —
+    // but see isUnusable just below: that affordance must not be tappable
+    // in this case, since the sheet it opens can never save.
     final entries = entriesAsync.asData?.value ?? const <Map<String, dynamic>>[];
     double sum(String key) => entries.fold<double>(
         0, (total, e) => total + ((e[key] as num?)?.toDouble() ?? 0));
@@ -525,13 +527,23 @@ class FinanceScreen extends ConsumerWidget {
     final principal = sum('principal_paid');
     final hasFigures = entries.isNotEmpty;
 
+    // An error is treated the same as still-loading: the sheet's own Save
+    // button is gated on manualLoanEntriesProvider having resolved at least
+    // once (see manual_loan_entry_sheet.dart), and a fetch that has never
+    // succeeded never will resolve on its own — Riverpod's automatic retries
+    // exhaust within roughly a minute, after which pull-to-refresh here is
+    // the only way forward. Opening the sheet at that point would walk the
+    // landlord into a form they cannot submit, so the control stays visible
+    // but disabled rather than inviting the tap.
+    final isUnusable = isInitialLoading || entriesAsync.hasError;
+
     if (!hasFigures) {
       return Align(
         alignment: Alignment.centerLeft,
         child: Opacity(
-          opacity: isInitialLoading ? 0.5 : 1.0,
+          opacity: isUnusable ? 0.5 : 1.0,
           child: TextButton.icon(
-            onPressed: isInitialLoading
+            onPressed: isUnusable
                 ? null
                 : () => _openManualLoanSheet(context, block, property, year),
             icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
