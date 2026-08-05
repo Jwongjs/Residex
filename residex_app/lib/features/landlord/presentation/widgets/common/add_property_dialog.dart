@@ -44,6 +44,11 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   bool? _hasMortgage;
   int? _trackFromYear;
 
+  /// 'upload' | 'manual' | null. Null means unanswered, which behaves as
+  /// 'upload' everywhere downstream — so an existing property, or a landlord
+  /// who skips the question, sees exactly today's behaviour.
+  String? _loanInputMethod;
+
   /// House/apartment/condo imply their structure; commercial varies too much
   /// to guess, so it stays null and [_buildStructureTypeSelector] asks.
   static PropertyStructureType? _structureForType(PropertyType type) {
@@ -78,6 +83,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       _selectedStructureType = property.structureType;
       _hasMortgage = property.hasMortgage;
       _trackFromYear = property.trackFromYear;
+      _loanInputMethod = property.loanInputMethod;
     } else {
       _selectedStructureType = _structureForType(_selectedType);
     }
@@ -137,7 +143,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           hasMortgage: _hasMortgage,
           trackFromYear: _trackFromYear,
           loanInputCadence: existing.loanInputCadence,
-          loanInputMethod: existing.loanInputMethod,
+          loanInputMethod: _hasMortgage == true ? _loanInputMethod : null,
         );
         await controller.updateProperty(updatedProperty);
       } else {
@@ -156,7 +162,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           hasMortgage: _hasMortgage,
           trackFromYear: _trackFromYear,
           loanInputCadence: null,
-          loanInputMethod: null,
+          loanInputMethod: _hasMortgage == true ? _loanInputMethod : null,
           nextSetupStep: 2,
         );
         final propertyId = await controller.createProperty(property);
@@ -414,6 +420,10 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                         const SizedBox(height: 16),
                       ],
                       _buildMortgageSelector(),
+                      if (_hasMortgage == true) ...[
+                        const SizedBox(height: 16),
+                        _buildLoanMethodSelector(),
+                      ],
                       const SizedBox(height: 16),
                       _buildYearPicker(),
                     ],
@@ -622,6 +632,90 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           ],
         ),
       ],
+    );
+  }
+
+  /// Two equally-weighted options, each saying what it does and what the
+  /// landlord gets back. Deliberately not a button plus a text link: these
+  /// are different paths with different downstream behaviour, and rendering
+  /// one as an afterthought is what made the old three surfaces unreadable.
+  Widget _buildLoanMethodSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('How will loan figures arrive?',
+            style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 8),
+        // IntrinsicHeight so CrossAxisAlignment.stretch has a finite height to
+        // stretch to — the Column above sits in an unbounded-height
+        // SingleChildScrollView, and a bare Row.stretch there throws.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _loanMethodCard(
+                  value: 'upload',
+                  icon: Icons.description_outlined,
+                  title: 'Upload statements',
+                  blurb: 'We read the interest and principal out of your bank statement.',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _loanMethodCard(
+                  value: 'manual',
+                  icon: Icons.edit_outlined,
+                  title: 'Enter figures myself',
+                  blurb: 'Type the interest and principal for each period yourself.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _loanMethodCard({
+    required String value,
+    required IconData icon,
+    required String title,
+    required String blurb,
+  }) {
+    final selected = _loanInputMethod == value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => setState(() => _loanInputMethod = value),
+      child: Container(
+        key: selected ? Key('loan-method-$value-selected') : null,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.registry.withOpacity(0.08) : AppColors.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppColors.registry : AppColors.hairline,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon,
+                size: 20,
+                color: selected ? AppColors.registry : AppColors.textMuted),
+            const SizedBox(height: 8),
+            Text(title,
+                style: AppTextStyles.labelLarge.copyWith(
+                  color: selected ? AppColors.registry : AppColors.textPrimary,
+                )),
+            const SizedBox(height: 4),
+            Text(blurb,
+                style: AppTextStyles.bodySmall
+                    .copyWith(color: AppColors.textMuted)),
+          ],
+        ),
+      ),
     );
   }
 
