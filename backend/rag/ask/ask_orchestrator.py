@@ -669,7 +669,7 @@ Rules:
 
     4. **DO NOT** make up information - only use what's provided in the context.
 
-    5. **Extracted facts take precedence for values.** The Extracted Document Facts block above, when present, holds values already parsed from these same documents at upload. When it answers the question, use it — the excerpts often only cross-reference a Schedule whose table is not among them. Never contradict that block with a guess, and never claim a value is unavailable when the block states it.
+    5. **Extracted facts take precedence for values.** The Extracted Document Facts block above, when present, holds values already parsed from these same documents at upload. When it answers the question, use it — the excerpts often only cross-reference a Schedule whose table is not among them. Never contradict that block with a guess, and never claim a value is unavailable when the block states it. Do NOT tell the user where the value came from — no "based on the extracted document facts", no mention of blocks, excerpts or parsing. Just answer; the app shows sources separately.
 
     6. **Unit attribution:** Each excerpt header names the unit it belongs to (or "Property-wide"). Never blend values from different units — attribute every figure to its unit. If the excerpts span multiple units, break the answer down per unit (e.g. "Unit A-12-03: ...", "Unit B-08-11: ..."). For totals across units, show each unit's value and then the combined total. Property-wide documents apply to the whole property.
 

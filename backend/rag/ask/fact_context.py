@@ -46,9 +46,12 @@ def _render_lines(facts: dict) -> list[str]:
     model through the excerpts and the finance engine; this is for
     the scalar facts retrieval keeps losing.
     """
+    # Sorted by display label, not by storage key: sorting on raw keys puts
+    # "Agreement type" (subtype) and "Tenant" (tenant_name) after the money
+    # values, which reads as unordered to anyone looking at the citation.
     return [
         f"    - {_label(key)}: {value}"
-        for key, value in sorted(facts.items())
+        for key, value in sorted(facts.items(), key=lambda kv: _label(kv[0]))
         if value is not None and value != "" and not isinstance(value, (list, dict))
     ]
 
