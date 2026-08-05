@@ -1,14 +1,23 @@
 """Redact regex-reliable PII before any text is sent to a hosted LLM.
 
 Scope, stated honestly: this catches the identifiers that are pattern-matchable
-— Malaysian NRIC, phone, email — at every boundary where text leaves for a
-hosted API (chat context assembly and the extracted-facts block in
-ask_documind). Names and addresses are NOT regex-catchable and DO reach the
-configured chat provider inside chunk text and extracted facts; keeping the
-provider trusted (Groq under ZDR, via CHAT_PROVIDER) is what bounds that, not
+— Malaysian NRIC, phone, email — and it is applied at exactly TWO boundaries,
+both in ask_documind's retrieval answer: the chunk context text and the
+extracted-facts block.
+
+These hosted boundaries are NOT scrubbed today:
+  - _narrate_finance_summary, which sends the computed summary JSON (property
+    names, unit labels, expense descriptions, doc ids)
+  - ConversationRouter's prompt (the user's typed question, property name,
+    prior questions)
+  - CategoryPredictor's prompt (the user's typed question)
+
+Names and addresses are not regex-catchable and DO reach the configured chat
+provider inside chunk text and extracted facts. What bounds all of the above is
+the provider being trusted — Groq under ZDR, selected by CHAT_PROVIDER — not
 this scrubber. Running OCR, embeddings and fact-extraction locally keeps raw
-document bytes and full leading text off the hosted path — a separate control
-from this one.
+document bytes and full leading document text off the hosted path; that is a
+separate control from this one.
 
 Known tradeoff: a bare 12-digit number is treated as an NRIC, so a 12-digit
 invoice/account number is redacted too — acceptable for a privacy net.

@@ -124,22 +124,26 @@ class TestChatLlmProvider:
 class TestChatProviderWiring:
     """PdfOcr must never end up holding the chat client.
 
-    Constructing a real DocuMindService needs live Firestore, so this asserts
-    on __init__'s source. That is deliberate and narrow: it guards the one
-    coupling that fails SILENTLY — swapping PdfOcr onto GroqChat breaks OCR
-    only at upload time, with no test and no startup error to catch it. The
-    behaviour of _chat_llm itself is covered properly by TestChatLlmProvider.
+    Asserted on real objects, not on __init__'s source text. Importing this
+    module already constructs a live DocuMindService at module scope, so
+    building one more costs nothing extra — and a source-substring check would
+    still pass if someone rebound self._llm after the PdfOcr line, which is
+    exactly the silent break this guards. GroqChat.__init__ issues no request,
+    so no network call happens here.
     """
 
-    def test_pdf_ocr_keeps_the_gemini_client(self):
+    def test_pdf_ocr_keeps_the_gemini_client_even_under_groq(self):
         # PdfOcr.invoke is called with a list of multimodal HumanMessages;
-        # GroqChat.invoke takes a plain string and would break on it.
-        import inspect
-
-        from rag.documind_service import DocuMindService as Svc
-        source = inspect.getsource(Svc.__init__)
-        assert "PdfOcr(self._llm)" in source, "PdfOcr must hold the Gemini client"
-        assert "PdfOcr(self._chat" not in source
+        # GroqChat.invoke takes a plain string and would raise on it. The path
+        # is dormant while OCR_PROVIDER=local, so a break stays invisible until
+        # someone flips OCR back to hosted.
+        with patch.dict(os.environ,
+                        {"CHAT_PROVIDER": "groq", "GROQ_API_KEY": "k"}, clear=False):
+            service = DocuMindService()
+        assert not isinstance(service._pdf_ocr._llm, GroqChat)
+        assert service._pdf_ocr._llm is service._llm
+        # ...while chat itself really did move.
+        assert isinstance(service._chat, GroqChat)
 
     def test_llm_property_falls_back_for_bare_instances(self):
         # Every existing test builds the service via __new__ and sets _llm

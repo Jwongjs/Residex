@@ -158,11 +158,17 @@ class DocuMindService:
 
     @property
     def llm(self):
-        """The chat client. AskOrchestrator reaches synthesis through this via
-        its injected llm_getter, so CHAT_PROVIDER governs answers as well as
-        routing. Falls back to the hosted client on instances built via
-        __new__ in tests, which never set _chat."""
-        return getattr(self, "_chat", None) or self._llm
+        """The chat client. AskOrchestrator reaches this through its injected
+        llm_getter, so CHAT_PROVIDER governs answer synthesis AND finance
+        narration, not just routing. Falls back to the hosted client on
+        instances built via __new__ in tests, which never set _chat.
+
+        `is not None`, not `or`: a falsy _chat is unreachable today, but if
+        _chat_llm ever degrades to None on misconfiguration, `or` would route
+        chat text to Gemini while the operator believes CHAT_PROVIDER=groq is
+        in force — failing open in the privacy-relevant direction, silently."""
+        chat = getattr(self, "_chat", None)
+        return chat if chat is not None else self._llm
 
     def _fact_llm(self):
         """The LLM injected into FactExtractor. FACT_PROVIDER=ollama (or local)
@@ -195,6 +201,12 @@ class DocuMindService:
         provider = os.getenv("CHAT_PROVIDER", "gemini").lower()
         if provider == "groq":
             model = os.getenv("GROQ_CHAT_MODEL", "llama-3.3-70b-versatile")
+            if not os.getenv("GROQ_API_KEY"):
+                # Without this, every chat turn 401s and each consumer catches
+                # broadly — the landlord sees generic "something went wrong"
+                # across answers, routing and prediction with no clue why.
+                print("⚠️  CHAT_PROVIDER=groq but GROQ_API_KEY is unset — "
+                      "every chat call will fail authentication")
             print(f"🔄 Chat routed to Groq ({model}) — ZDR must be enabled")
             return GroqChat(model=model)
         return self._llm

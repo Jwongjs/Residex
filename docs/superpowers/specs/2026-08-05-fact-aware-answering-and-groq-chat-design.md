@@ -189,9 +189,16 @@ mirroring the existing `_fact_llm()` precisely.
 | Consumer | Sees | Moves? |
 | --- | --- | --- |
 | `AskOrchestrator` answer synthesis | scrubbed chunk text + facts block | **yes** |
+| `AskOrchestrator._narrate_finance_summary` | computed summary JSON — property names, unit labels, expense descriptions, doc ids (**not** scrubbed) | **yes** |
 | `ConversationRouter` | user's typed question, property name, prior questions/actions | **yes** |
 | `CategoryPredictor` | user's typed question, category list | **yes** |
 | `PdfOcr` | raw document/image bytes | **no — must stay Gemini** |
+
+Finance narration reaches the model through the same injected `llm_getter` as
+synthesis, so it moves with it — unavoidable without a second getter, and
+correct by default, since the movement is *toward* the provider designated as
+trusted. Noted explicitly because it is a fourth consumer, not the three the
+brief named.
 
 The router and predictor never see document text (verified:
 `conversation_router.py:57-84` builds its prompt from the question, property name
