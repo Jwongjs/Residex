@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
 import 'package:residex_app/features/landlord/domain/entities/property.dart';
+import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
 import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/3-Finance/finance_screen.dart';
@@ -67,6 +68,27 @@ Future<void> _pumpScreenWithProperty(
       child: const MaterialApp(
         home: FinanceScreen(),
       ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpScreenWithLoanEntries(
+  WidgetTester tester,
+  int year,
+  FinanceSummary summary,
+  Property property,
+  List<Map<String, dynamic>> entries,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        financeYearsProvider.overrideWith((ref) async => [year]),
+        financeSummaryProvider.overrideWith((ref, y) async => summary),
+        propertyByIdProvider.overrideWith((ref, id) async => property),
+        manualLoanEntriesProvider.overrideWith((ref, args) async => entries),
+      ],
+      child: const MaterialApp(home: FinanceScreen()),
     ),
   );
   await tester.pumpAndSettle();
@@ -155,8 +177,12 @@ void main() {
   });
 
   testWidgets(
-      '"Add loan figures" is hidden when manualLoanIncomplete is false even with mortgage=Yes + method=manual',
+      'the loan figures control survives manualLoanIncomplete going false — the regression this task fixes',
       (tester) async {
+    // Previously the button was gated on `block.manualLoanIncomplete`, which
+    // flips false the instant figures are booked — vanishing the only route
+    // back in exactly when a typo needed correcting. It is now gated on
+    // loanInputMethod alone, so it must stay put here.
     final year = DateTime.now().year;
     await _pumpScreenWithProperty(
       tester,
@@ -165,17 +191,20 @@ void main() {
       _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
     );
 
-    expect(find.text('Add loan figures'), findsNothing);
+    // manualLoanEntriesProvider isn't overridden here, so it degrades to "no
+    // figures" — the row renders as the Add affordance rather than throwing.
+    expect(find.text('Add loan figures'), findsOneWidget);
   });
 
   testWidgets(
-      '"Add loan figures" shows when hasMortgage is true, loanInputMethod is manual, and manualLoanIncomplete is true',
+      '"Add loan figures" shows when hasMortgage is true and loanInputMethod is manual',
       (tester) async {
+    // manualLoanIncomplete no longer drives this control at all.
     final year = DateTime.now().year;
     await _pumpScreenWithProperty(
       tester,
       year,
-      _summaryWithProperty(year, complete: true, manualLoanIncomplete: true),
+      _summaryWithProperty(year, complete: true),
       _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
     );
 
@@ -251,13 +280,16 @@ void main() {
     expect(find.text('Enter figures manually'), findsNothing);
   });
 
-  testWidgets('loan button no longer depends on loanInputMethod', (tester) async {
+  testWidgets('loan button depends only on loanInputMethod, not on manualLoanIncomplete',
+      (tester) async {
+    // The button is gated on loanInputMethod == 'manual' alone. A null
+    // method — even with manualLoanIncomplete true — must not show it.
     await _pumpScreenWithProperty(
       tester, 2026,
       _summaryWithProperty(2026, complete: true, manualLoanIncomplete: true),
       _fakeProperty(hasMortgage: true, loanInputMethod: null),
     );
-    expect(find.text('Add loan figures'), findsOneWidget);
+    expect(find.text('Add loan figures'), findsNothing);
   });
 
   testWidgets('property panel uses the bare glossary and shows cash out', (tester) async {
@@ -376,5 +408,55 @@ void main() {
     await _pumpScreen(tester, 2026, summary);
     expect(find.text('Property-level expenses'), findsNothing);
     expect(find.text('Quit rent'), findsNothing);
+  });
+
+  testWidgets('a manual property with booked figures shows them with Modify',
+      (tester) async {
+    await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
+        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), [
+      {'interest_paid': 8200.0, 'principal_paid': 14000.0,
+       'month': null, 'unit_id': null, 'cadence': 'annual'},
+    ]);
+
+    expect(find.text('Loan figures · 2026'), findsOneWidget);
+    expect(find.text('Modify'), findsOneWidget);
+    expect(find.textContaining('8,200'), findsOneWidget);
+    expect(find.textContaining('14,000'), findsOneWidget);
+    // The old button vanished once figures existed; this must not.
+    expect(find.text('Add loan figures'), findsNothing);
+  });
+
+  testWidgets('a manual property with no figures still offers Add',
+      (tester) async {
+    await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
+        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), const []);
+
+    expect(find.text('Add loan figures'), findsOneWidget);
+    expect(find.text('Modify'), findsNothing);
+  });
+
+  testWidgets('an upload property shows no loan figures row', (tester) async {
+    await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
+        _fakeProperty(hasMortgage: true, loanInputMethod: 'upload'), const []);
+
+    expect(find.text('Add loan figures'), findsNothing);
+    expect(find.text('Modify'), findsNothing);
+  });
+
+  testWidgets('figures sum across property-level and per-unit entries',
+      (tester) async {
+    // Amounts chosen to not collide with the fixture's other displayed
+    // totals (3200, 200, 2800, 3000, 3100), which would make textContaining
+    // over-match.
+    await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
+        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), [
+      {'interest_paid': 700.0, 'principal_paid': 1800.0,
+       'month': null, 'unit_id': null, 'cadence': 'annual'},
+      {'interest_paid': 300.0, 'principal_paid': 700.0,
+       'month': null, 'unit_id': 'u1', 'cadence': 'annual'},
+    ]);
+
+    expect(find.textContaining('1,000'), findsOneWidget);
+    expect(find.textContaining('2,500'), findsOneWidget);
   });
 }

@@ -299,8 +299,12 @@ class FinanceScreen extends ConsumerWidget {
     final missing = property?.loanInputMethod == 'manual'
         ? rawMissing.where((c) => c != 'loan').toList()
         : rawMissing;
+    // Gated on the method, not on completeness. manualLoanIncomplete goes
+    // false the moment figures are booked, which hid the control exactly when
+    // a typo needed correcting — and the Loans-folder route that used to cover
+    // that gap is gone.
     final showManualLoan =
-        block.manualLoanIncomplete && property?.hasMortgage == true;
+        property?.loanInputMethod == 'manual' && property?.hasMortgage == true;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -397,15 +401,7 @@ class FinanceScreen extends ConsumerWidget {
           ],
           if (showManualLoan) ...[
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () =>
-                    _openManualLoanSheet(context, block, property, summary.year),
-                icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
-                label: Text('Add loan figures', style: AppTextStyles.labelLarge),
-              ),
-            ),
+            _buildLoanFiguresRow(context, ref, block, property, summary.year),
           ],
           if (block.units.isNotEmpty) ...[
             const Divider(height: 20, color: AppColors.hairline),
@@ -492,6 +488,78 @@ class FinanceScreen extends ConsumerWidget {
                   ),
                 )),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Reads the raw booked entries rather than the loan expense lines: expense
+  /// amounts are scaled by ownership share at the engine's choke point, and a
+  /// row whose job is letting the landlord verify what they typed must show
+  /// what they typed.
+  Widget _buildLoanFiguresRow(BuildContext context, WidgetRef ref,
+      PropertyFinance block, Property? property, int year) {
+    final entriesAsync = ref.watch(manualLoanEntriesProvider(
+        (propertyId: block.propertyId, year: year)));
+
+    final entries = entriesAsync.asData?.value ?? const <Map<String, dynamic>>[];
+    double sum(String key) => entries.fold<double>(
+        0, (total, e) => total + ((e[key] as num?)?.toDouble() ?? 0));
+    final interest = sum('interest_paid');
+    final principal = sum('principal_paid');
+    final hasFigures = interest > 0 || principal > 0;
+
+    if (!hasFigures) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () =>
+              _openManualLoanSheet(context, block, property, year),
+          icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
+          label: Text('Add loan figures', style: AppTextStyles.labelLarge),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 20, color: AppColors.hairline),
+        Row(
+          children: [
+            Expanded(
+              child: Text('Loan figures · $year',
+                  style: AppTextStyles.titleMedium),
+            ),
+            // Trailing edge of the title row: read together with the label it
+            // modifies, clear of the amounts, and where the panel already puts
+            // row-level actions.
+            TextButton.icon(
+              onPressed: () =>
+                  _openManualLoanSheet(context, block, property, year),
+              icon: const Icon(Icons.edit_outlined,
+                  size: 16, color: AppColors.registry),
+              label: Text('Modify', style: AppTextStyles.labelLarge),
+            ),
+          ],
+        ),
+        _loanFigureLine('Interest', interest),
+        _loanFigureLine('Principal', principal),
+      ],
+    );
+  }
+
+  Widget _loanFigureLine(String label, double amount) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: AppTextStyles.bodyMedium
+                    .copyWith(color: AppColors.textMuted)),
+          ),
+          Text(formatRM(amount), style: AppTextStyles.bodySmall),
         ],
       ),
     );
