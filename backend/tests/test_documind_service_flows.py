@@ -2712,6 +2712,51 @@ class FactContextInjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[NRIC]", fake_llm.last_prompt)
         self.assertNotIn("661214055049", fake_llm.last_prompt)
 
+    async def test_facts_answer_is_cited_as_extracted(self):
+        fake_db, fake_graph = self._fixtures()
+        fake_llm = _FakeLLM("Ends 31 October 2026.")
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, fake_llm)
+
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        response = await service.ask_documind(payload, "l1")
+
+        extracted = [c for c in response.citations if c.source == "extracted_facts"]
+        self.assertEqual(len(extracted), 1)
+        self.assertEqual(extracted[0].doc_id, "d-lease")
+        self.assertEqual(extracted[0].filename, "ayer8-lease.pdf")
+        self.assertIsNone(extracted[0].page)
+        self.assertEqual(extracted[0].unit_label, "Unit B2-1-2")
+        # The snippet shows the value being cited, so the strip is verifiable.
+        self.assertIn("Lease end: 2026-10-31", extracted[0].snippet)
+        # Page citations survive alongside it and keep the default source.
+        self.assertTrue(any(c.source == "excerpt" for c in response.citations))
+
+    async def test_no_extracted_citation_when_no_facts(self):
+        fake_db, fake_graph = self._fixtures()
+        fake_db.docs[0]["extracted_facts"] = {}
+        fake_llm = _FakeLLM("No facts.")
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, fake_llm)
+
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        response = await service.ask_documind(payload, "l1")
+
+        self.assertEqual([c for c in response.citations if c.source == "extracted_facts"], [])
+
+    async def test_extracted_citation_snippet_is_not_scrubbed(self):
+        # Citations go to the landlord, who owns the documents; only text bound
+        # for the hosted LLM is scrubbed.
+        fake_db, fake_graph = self._fixtures()
+        fake_db.docs[0]["extracted_facts"] = {"tenant_nric": "661214055049"}
+        fake_llm = _FakeLLM("ok")
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, fake_llm)
+
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        response = await service.ask_documind(payload, "l1")
+
+        extracted = [c for c in response.citations if c.source == "extracted_facts"]
+        self.assertIn("661214055049", extracted[0].snippet)
+        self.assertIn("[NRIC]", fake_llm.last_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

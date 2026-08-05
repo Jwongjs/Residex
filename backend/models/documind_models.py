@@ -58,6 +58,7 @@ class Citation(BaseModel):
     score: float  # Relevance score (0.0 - 1.0)
     unit_id: str | None = None  # None = property-wide source
     unit_label: str | None = None  # Denormalized label captured at ingest
+    source: str = "excerpt"  # "excerpt" | "extracted_facts"
 
 
 class UnitOption(BaseModel):

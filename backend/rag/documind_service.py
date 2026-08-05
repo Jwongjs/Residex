@@ -245,7 +245,7 @@ class DocuMindService:
         return self._fact_extractor
 
     def _get_document_facts(self, doc_ids):
-        """(filename, unit_label, facts) for each doc_id that has facts.
+        """(doc_id, filename, unit_label, facts) for each doc_id that has facts.
 
         Scoped to the documents retrieval actually hit, so no data leaves for a
         document the query never touched. Best-effort by contract: any Firestore
@@ -265,7 +265,7 @@ class DocuMindService:
             facts = data.get('extracted_facts') or {}
             if not facts:
                 continue
-            rows.append((data.get('filename') or doc_id, data.get('unit_label'), facts))
+            rows.append((doc_id, data.get('filename') or doc_id, data.get('unit_label'), facts))
         return rows
 
     def _list_available_categories(self, landlord_id: str, property_id: str) -> List[str]:

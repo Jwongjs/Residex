@@ -76,3 +76,25 @@ class TestRendering:
         # Explicit decision: names are permitted through to the trusted provider.
         block = build_facts_block([("lease.pdf", None, {"tenant_name": "JNT Sdn. Bhd."})])
         assert "Tenant: JNT Sdn. Bhd." in block
+
+
+class TestFactsSnippet:
+    def test_renders_the_same_lines_without_a_filename_header(self):
+        from rag.ask.fact_context import facts_snippet
+        snippet = facts_snippet({"lease_end": "2026-10-31", "monthly_rent": 8000.0})
+        assert "Lease end: 2026-10-31" in snippet
+        assert "Monthly rent (RM): 8000.0" in snippet
+        assert "[" not in snippet  # no document header
+
+    def test_empty_facts_give_empty_string(self):
+        from rag.ask.fact_context import facts_snippet
+        assert facts_snippet({}) == ""
+
+    def test_skips_structured_and_blank_values_like_the_block_does(self):
+        from rag.ask.fact_context import facts_snippet
+        snippet = facts_snippet({
+            "amount": 120.0, "expense_lines": [{"a": 1}], "note": None,
+        })
+        assert "Amount (RM): 120.0" in snippet
+        assert "Expense lines" not in snippet
+        assert "Note" not in snippet

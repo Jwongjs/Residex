@@ -63,13 +63,13 @@ def _service(docs, explode_on=None):
 
 
 class TestDocumentFactsLookup:
-    def test_returns_filename_unit_label_and_facts(self):
+    def test_returns_doc_id_filename_unit_label_and_facts(self):
         service = _service({
             "d1": {"filename": "lease.pdf", "unit_label": "Unit A",
                    "extracted_facts": {"lease_end": "2026-10-31"}},
         })
         assert service._get_document_facts(["d1"]) == [
-            ("lease.pdf", "Unit A", {"lease_end": "2026-10-31"}),
+            ("d1", "lease.pdf", "Unit A", {"lease_end": "2026-10-31"}),
         ]
 
     def test_deduplicates_doc_ids_preserving_order(self):
@@ -80,7 +80,7 @@ class TestDocumentFactsLookup:
                    "extracted_facts": {"amount": 2}},
         })
         result = service._get_document_facts(["d1", "d2", "d1"])
-        assert [row[0] for row in result] == ["a.pdf", "b.pdf"]
+        assert [row[1] for row in result] == ["a.pdf", "b.pdf"]
 
     def test_document_without_facts_is_omitted(self):
         service = _service({
@@ -100,7 +100,7 @@ class TestDocumentFactsLookup:
         )
         # d1 raises; d2 must still come back.
         assert service._get_document_facts(["d1", "d2"]) == [
-            ("ok.pdf", None, {"amount": 5}),
+            ("d2", "ok.pdf", None, {"amount": 5}),
         ]
 
     def test_empty_input_makes_no_firestore_call(self):

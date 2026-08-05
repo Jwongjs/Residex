@@ -5,7 +5,7 @@ from typing import List, Optional
 from google.api_core.exceptions import FailedPrecondition, ServiceUnavailable
 
 from models.documind_models import AskRequest, AskResponse, Citation, UnitOption
-from rag.ask.fact_context import build_facts_block
+from rag.ask.fact_context import build_facts_block, facts_snippet
 from rag.categories import ALLOWED_CATEGORIES, expand_categories_for_query, normalize_category
 from rag.pii_scrub import scrub_for_hosted
 from rag.unit_resolution import resolve_unit_mention
@@ -572,13 +572,18 @@ Rules:
         # rather than hoping the right chunk won. Scoped to the documents this
         # query actually hit.
         facts_block = ""
+        fact_rows = []
         if self._get_document_facts is not None:
             try:
                 doc_ids = list(dict.fromkeys(c['doc_id'] for c in retrieved_chunks))
-                facts_block = scrub_for_hosted(build_facts_block(self._get_document_facts(doc_ids)))
+                fact_rows = list(self._get_document_facts(doc_ids))
+                facts_block = scrub_for_hosted(
+                    build_facts_block([(f, u, fa) for _, f, u, fa in fact_rows])
+                )
             except Exception as e:
                 print(f"WARNING: facts block unavailable, answering from excerpts only: {e}")
                 facts_block = ""
+                fact_rows = []
 
         citations = [
             Citation(
@@ -593,6 +598,32 @@ Rules:
             )
             for c in sorted(best_citation_by_page.values(), key=lambda c: c['score'], reverse=True)
         ]
+
+        # A value answered from extracted facts is not on any page we retrieved
+        # — citing only those pages would send a landlord to verify a date that
+        # is not there. Cite the facts themselves, page-less, with the value in
+        # the snippet. Category and unit come from the chunk that pulled the
+        # document in, so the badge matches the page citations beside it.
+        chunk_meta = {
+            c['doc_id']: (normalize_category(c['category']), c.get('unit_id'), c.get('unit_label'))
+            for c in retrieved_chunks
+        }
+        for doc_id, filename, unit_label, facts in fact_rows:
+            snippet = facts_snippet(facts)
+            if not snippet:
+                continue
+            category, unit_id, chunk_unit_label = chunk_meta.get(doc_id, ('other', None, None))
+            citations.insert(0, Citation(
+                doc_id=doc_id,
+                filename=filename,
+                category=category,
+                page=None,
+                snippet=snippet,
+                score=1.0,
+                unit_id=unit_id,
+                unit_label=unit_label or chunk_unit_label,
+                source="extracted_facts",
+            ))
 
         searched_categories_text = ", ".join(selected_categories) if selected_categories else "all categories"
         prompt = f"""You are DocuMind, an AI assistant specialized in property document management.

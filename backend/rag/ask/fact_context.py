@@ -36,6 +36,29 @@ def _label(key: str) -> str:
     return key.replace("_", " ").capitalize()
 
 
+def _render_lines(facts: dict) -> list[str]:
+    """The value lines for one document, shared by the prompt block and the
+    citation snippet so the two can never drift apart.
+
+    Structured values (expense_lines is a list[dict]) are skipped: a raw
+    Python repr would inject hundreds of tokens of literal into every
+    prompt that retrieves the document. Those rows already reach the
+    model through the excerpts and the finance engine; this is for
+    the scalar facts retrieval keeps losing.
+    """
+    return [
+        f"    - {_label(key)}: {value}"
+        for key, value in sorted(facts.items())
+        if value is not None and value != "" and not isinstance(value, (list, dict))
+    ]
+
+
+def facts_snippet(facts: dict) -> str:
+    """The rendered values for a single document, with no filename header —
+    what a citation shows so the landlord sees the value being cited."""
+    return "\n".join(line.strip() for line in _render_lines(facts))
+
+
 def build_facts_block(
     docs: Iterable[Tuple[str, Optional[str], dict]],
 ) -> str:
@@ -48,16 +71,7 @@ def build_facts_block(
     for filename, unit_label, facts in docs:
         if not facts:
             continue
-        # Structured values (expense_lines is a list[dict]) are skipped: a raw
-        # Python repr would inject hundreds of tokens of literal into every
-        # prompt that retrieves the document. Those rows already reach the
-        # model through the excerpts and the finance engine; this block is for
-        # the scalar facts retrieval keeps losing.
-        lines = [
-            f"    - {_label(key)}: {value}"
-            for key, value in sorted(facts.items())
-            if value is not None and value != "" and not isinstance(value, (list, dict))
-        ]
+        lines = _render_lines(facts)
         if not lines:
             continue
         scope = unit_label or "Property-wide"
