@@ -2660,7 +2660,9 @@ class FactContextInjectionTests(unittest.IsolatedAsyncioTestCase):
         response = await service.ask_documind(payload, "l1")
 
         self.assertEqual(response.answer, "Answered from excerpts alone.")
-        self.assertNotIn("Extracted Document Facts", fake_llm.last_prompt)
+        # The bolded heading, not the phrase — instruction 5 names the block in
+        # prose and is always present, so a bare substring check can never pass.
+        self.assertNotIn("**Extracted Document Facts:**", fake_llm.last_prompt)
 
     async def test_no_facts_block_when_documents_have_no_facts(self):
         fake_db, fake_graph = self._fixtures()
@@ -2671,7 +2673,7 @@ class FactContextInjectionTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(property_id="p1", question="When does the tenancy end?")
         await service.ask_documind(payload, "l1")
 
-        self.assertNotIn("Extracted Document Facts", fake_llm.last_prompt)
+        self.assertNotIn("**Extracted Document Facts:**", fake_llm.last_prompt)
 
     async def test_facts_block_is_pii_scrubbed(self):
         fake_db, fake_graph = self._fixtures()
