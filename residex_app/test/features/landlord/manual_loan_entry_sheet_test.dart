@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -852,5 +854,174 @@ void main() {
     // untouched principal to empty/zero.
     expect(interestText(tester), '9100');
     expect(principalText(tester), '14000.0');
+  });
+
+  // --- Save must stay disabled until the booked entry is actually known,
+  // otherwise the fields-not-yet-loaded window is a second way to zero a
+  // figure: Save reads whatever is currently in the (possibly still empty)
+  // controllers regardless of why they're empty. ---
+
+  bool saveEnabled(WidgetTester tester) =>
+      tester
+          .widget<ElevatedButton>(
+              find.widgetWithText(ElevatedButton, 'Save'))
+          .onPressed !=
+      null;
+
+  testWidgets('Save is disabled while entries are still loading',
+      (tester) async {
+    const year = 2025;
+    final completer = Completer<List<Map<String, dynamic>>>();
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) => completer.future),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    // A single pump, not pumpAndSettle: the entries future is deliberately
+    // still pending, so this catches the sheet in its loading state.
+    await tester.pump();
+
+    expect(saveEnabled(tester), isFalse);
+    expect(find.text('Loading existing entries before you can save…'),
+        findsOneWidget);
+
+    completer.complete(<Map<String, dynamic>>[]);
+    await tester.pumpAndSettle();
+
+    // A first-ever entry (empty list) still resolves to AsyncData, so Save
+    // must come back once the load finishes even with nothing booked yet.
+    expect(saveEnabled(tester), isTrue);
+  });
+
+  testWidgets('Save is disabled when entries fail to load', (tester) async {
+    const year = 2025;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => throw Exception('network down')),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Permanently disabled (not just "still loading"), because a failed
+    // fetch never resolves to AsyncData on its own — this is the case that
+    // would otherwise silently zero a booked figure for as long as the
+    // backend stays down.
+    expect(saveEnabled(tester), isFalse);
+    expect(
+        find.text(
+            "Can't save yet — couldn't load the existing entries. Try again shortly."),
+        findsOneWidget);
+  });
+
+  testWidgets(
+      'saving after editing only interest sends the booked principal unchanged',
+      (tester) async {
+    const year = 2025;
+    double? capturedInterest;
+    double? capturedPrincipal;
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => <Map<String, dynamic>>[
+                  {
+                    'interest_paid': 8200.0,
+                    'principal_paid': 14000.0,
+                    'month': null,
+                    'unit_id': null,
+                    'cadence': 'annual',
+                  },
+                ]),
+        recordManualLoanEntryActionProvider.overrideWithValue(({
+          required String propertyId,
+          required int year,
+          required String cadence,
+          required double interestPaid,
+          required double principalPaid,
+          int? month,
+          String? unitId,
+        }) async {
+          capturedInterest = interestPaid;
+          capturedPrincipal = principalPaid;
+        }),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(interestText(tester), '8200.0');
+    expect(principalText(tester), '14000.0');
+
+    // This is the literal Task 5 regression: edit only interest, leave
+    // principal untouched, and confirm _save does not send 0 for it.
+    await tester.enterText(
+        find.byKey(const Key('manual-loan-interest')), '9100');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(capturedInterest, 9100);
+    expect(capturedPrincipal, 14000.0);
   });
 }

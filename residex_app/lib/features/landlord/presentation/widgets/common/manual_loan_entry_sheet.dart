@@ -63,6 +63,15 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   /// would fight the landlord's in-progress typing.
   ({String? unitId, int? month})? _prefilledScope;
 
+  /// The (unitId, month) scope the sheet is currently working in — the exact
+  /// key an entry is booked under, and the exact key `_save` writes to.
+  /// Single source of truth: recomputing `_cadence == 'monthly' ? _month :
+  /// null` independently in multiple places is exactly how scope could drift
+  /// between what's shown and what's saved, which is the data-loss vector
+  /// this widget exists to close off.
+  ({String? unitId, int? month}) get _currentScope =>
+      (unitId: _selectedUnitId, month: _cadence == 'monthly' ? _month : null);
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +92,7 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   Future<void> _save() async {
     final interest = double.tryParse(_interestController.text.trim()) ?? 0;
     final principal = double.tryParse(_principalController.text.trim()) ?? 0;
+    final scope = _currentScope;
     setState(() => _saving = true);
     try {
       await ref.read(recordManualLoanEntryActionProvider)(
@@ -91,8 +101,8 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
         cadence: _cadence ?? 'annual',
         interestPaid: interest,
         principalPaid: principal,
-        month: _cadence == 'monthly' ? _month : null,
-        unitId: _selectedUnitId,
+        month: scope.month,
+        unitId: scope.unitId,
       );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
@@ -121,10 +131,10 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   /// The booked entry for the scope currently selected in the sheet. An entry
   /// is keyed by (unit_id, month), exactly as _save writes it.
   Map<String, dynamic>? _entryForCurrentScope(List<Map<String, dynamic>> entries) {
-    final month = _cadence == 'monthly' ? _month : null;
+    final scope = _currentScope;
     for (final entry in entries) {
       final entryMonth = (entry['month'] as num?)?.toInt();
-      if (entry['unit_id'] == _selectedUnitId && entryMonth == month) {
+      if (entry['unit_id'] == scope.unitId && entryMonth == scope.month) {
         return entry;
       }
     }
@@ -138,8 +148,7 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   /// landlord's typing on an unrelated rebuild nor gets stuck showing stale
   /// figures once a save invalidates the entries provider.
   void _prefillFor(List<Map<String, dynamic>> entries) {
-    final month = _cadence == 'monthly' ? _month : null;
-    final scope = (unitId: _selectedUnitId, month: month);
+    final scope = _currentScope;
     if (_prefilledScope == scope) return;
     _prefilledScope = scope;
 
@@ -382,10 +391,28 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _saving ? null : _save,
+                      // Disabled while entries are loading or errored, not
+                      // just while saving: _save reads whatever is in the
+                      // fields right now, and until entriesData resolves
+                      // those fields may not carry the booked figures yet
+                      // (or, on error, never will) — enabling Save then
+                      // would let a landlord silently zero a booked amount.
+                      onPressed:
+                          (_saving || entriesData == null) ? null : _save,
                       child: const Text('Save'),
                     ),
                   ),
+                  if (entriesData == null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      entriesAsync.hasError
+                          ? "Can't save yet — couldn't load the existing "
+                              'entries. Try again shortly.'
+                          : 'Loading existing entries before you can save…',
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.textMuted),
+                    ),
+                  ],
                 ],
                 if (selectedUnit != null) ...[
                   const SizedBox(height: 12),
