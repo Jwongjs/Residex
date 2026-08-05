@@ -165,9 +165,9 @@ class _UnitFinanceDetailScreenState
     return total;
   }
 
-  /// Rental income and Statutory income are two separate dropdowns (user
+  /// Rental Profit/Loss and Statutory income are two separate dropdowns (user
   /// request). They differ in which lines count:
-  ///  - Rental income subtracts everything the landlord actually paid
+  ///  - Rental Profit/Loss subtracts everything the landlord actually paid
   ///    (penalties, principal and first-letting costs included), so those are
   ///    shown normally here and only tenant-paid lines are struck out.
   ///  - Statutory income subtracts only LHDN-deductible lines, so
@@ -176,7 +176,7 @@ class _UnitFinanceDetailScreenState
       BuildContext context, UnitFinance unit, int year) {
     return _breakdownAccordion(
       context,
-      title: 'Rental income',
+      title: 'Rental Profit/Loss',
       total: unit.contribution,
       gross: _grossIncome(unit),
       expensesLabel: 'Direct expenses',
@@ -205,7 +205,7 @@ class _UnitFinanceDetailScreenState
     );
   }
 
-  /// A line is kept out of the Rental income total only when the landlord
+  /// A line is kept out of the Rental Profit/Loss total only when the landlord
   /// does not pay it (tenant-borne utilities). Penalties, principal and
   /// first-letting costs are all real money out, so they are NOT excluded here.
   String? _netExclusionNote(ExpenseLine line) {

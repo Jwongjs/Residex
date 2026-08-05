@@ -58,13 +58,13 @@ void main() {
       unitId: 'u1', label: 'Unit 1', rentedMonths: 12,
       contribution: 3200.0, statutoryContribution: 3200.0,
     ));
-    expect(find.text('Rental income'), findsOneWidget);
+    expect(find.text('Rental Profit/Loss'), findsOneWidget);
     expect(find.text('Statutory income'), findsOneWidget);
     expect(find.text('Net contribution'), findsNothing);
     expect(find.text('Contributing statutory income'), findsNothing);
 
-    // Expand the Rental income accordion to see its caption.
-    await tester.tap(find.text('Rental income').first);
+    // Expand the Rental Profit/Loss accordion to see its caption.
+    await tester.tap(find.text('Rental Profit/Loss').first);
     await tester.pumpAndSettle();
     expect(find.textContaining("Contributes to this property's Rental Income"),
         findsOneWidget);
@@ -126,10 +126,10 @@ void main() {
     expect(find.text('Gross income'), findsNothing);
     expect(find.text('Plumbing repair'), findsNothing);
 
-    await tester.tap(find.text('Rental income'));
+    await tester.tap(find.text('Rental Profit/Loss'));
     await tester.pumpAndSettle();
 
-    // Only the Rental income dropdown is expanded; the statutory dropdown
+    // Only the Rental Profit/Loss dropdown is expanded; the statutory dropdown
     // is a separate collapsed accordion, so the line shows once here.
     expect(find.text('Gross income'), findsOneWidget);
     expect(find.text('Plumbing repair'), findsOneWidget);
@@ -160,7 +160,7 @@ void main() {
       ],
     );
     await _pumpScreen(tester, year, unit);
-    await tester.tap(find.text('Rental income'));
+    await tester.tap(find.text('Rental Profit/Loss'));
     await tester.pumpAndSettle();
 
     // Total reflects only the deductible RM 300, not RM 380.
@@ -188,7 +188,7 @@ void main() {
       ],
     );
     await _pumpScreen(tester, year, unit);
-    await tester.tap(find.text('Rental income'));
+    await tester.tap(find.text('Rental Profit/Loss'));
     await tester.pumpAndSettle();
 
     // Net P/L direct expenses = 3200 (both landlord-paid lines).
@@ -212,7 +212,7 @@ void main() {
     );
     await _pumpScreen(tester, year, unit);
 
-    await tester.tap(find.text('Rental income'));
+    await tester.tap(find.text('Rental Profit/Loss'));
     await tester.pumpAndSettle();
 
     expect(find.text('No direct expenses recorded for $year'), findsOneWidget);
@@ -434,7 +434,7 @@ void main() {
         ),
       ],
     ));
-    await tester.tap(find.text('Rental income'));
+    await tester.tap(find.text('Rental Profit/Loss'));
     await tester.pumpAndSettle();
     expect(find.textContaining('your 50% of'), findsOneWidget);
   });
@@ -449,7 +449,7 @@ void main() {
         ),
       ],
     ));
-    await tester.tap(find.text('Rental income'));
+    await tester.tap(find.text('Rental Profit/Loss'));
     await tester.pumpAndSettle();
     expect(find.textContaining('your'), findsNothing);
   });
