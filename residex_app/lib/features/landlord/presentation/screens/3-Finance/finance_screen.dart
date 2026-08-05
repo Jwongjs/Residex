@@ -438,7 +438,6 @@ class FinanceScreen extends ConsumerWidget {
                   ),
                 )),
           ],
-          _buildPropertyLevelExpenses(block),
           _buildRentIssuesSection(context, ref, block, summary.year),
           if (missing.isNotEmpty) ...[
             const Divider(height: 20, color: AppColors.hairline),
@@ -491,39 +490,6 @@ class FinanceScreen extends ConsumerWidget {
           ],
         ],
       ),
-    );
-  }
-
-  /// Property-scope costs — a building-wide loan, quit rent, assessment tax —
-  /// belong to no unit, so they appear here rather than being split across
-  /// units. Pro-rating them would invent a per-unit number the landlord could
-  /// not tie back to any document.
-  Widget _buildPropertyLevelExpenses(PropertyFinance block) {
-    if (block.propertyExpenseLines.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Divider(height: 20, color: AppColors.hairline),
-        Text('Property-level expenses', style: AppTextStyles.titleMedium),
-        const SizedBox(height: 8),
-        ...block.propertyExpenseLines.map((line) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.receipt_long_outlined,
-                      size: 16, color: AppColors.textMuted),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      line.description ?? line.category,
-                      style: AppTextStyles.bodyMedium,
-                    ),
-                  ),
-                  Text(formatRM(line.amount), style: AppTextStyles.bodySmall),
-                ],
-              ),
-            )),
-      ],
     );
   }
 

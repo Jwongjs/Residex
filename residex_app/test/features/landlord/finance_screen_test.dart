@@ -293,7 +293,11 @@ void main() {
     expect(find.textContaining("property's full figures"), findsNothing);
   });
 
-  testWidgets('property-level expenses are listed on the property panel',
+  // Property-scope costs are already inside the panel's EXPENSES figure;
+  // itemising them again underneath read as a second, separate charge. The
+  // lines stay on the entity (the backend still sends them) — only the
+  // property panel stops rendering them.
+  testWidgets('property-level expenses are not listed on the property panel',
       (tester) async {
     final summary = FinanceSummary(
       year: 2026,
@@ -319,7 +323,7 @@ void main() {
       ],
     );
     await _pumpScreen(tester, 2026, summary);
-    expect(find.text('Property-level expenses'), findsOneWidget);
-    expect(find.text('Quit rent'), findsOneWidget);
+    expect(find.text('Property-level expenses'), findsNothing);
+    expect(find.text('Quit rent'), findsNothing);
   });
 }
