@@ -576,8 +576,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(interestText(tester), '8200.0');
-    expect(principalText(tester), '14000.0');
+    expect(interestText(tester), '8200');
+    expect(principalText(tester), '14000');
   });
 
   testWidgets('a scope with no booked entry opens empty', (tester) async {
@@ -651,16 +651,16 @@ void main() {
     await tester.pumpAndSettle();
 
     // Default selection is the first live unit (u1).
-    expect(interestText(tester), '1000.0');
-    expect(principalText(tester), '2000.0');
+    expect(interestText(tester), '1000');
+    expect(principalText(tester), '2000');
 
     await tester.tap(find.byType(DropdownButton<String?>).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Unit 2').last);
     await tester.pumpAndSettle();
 
-    expect(interestText(tester), '3000.0');
-    expect(principalText(tester), '4000.0');
+    expect(interestText(tester), '3000');
+    expect(principalText(tester), '4000');
   });
 
   testWidgets('changing the month re-prefills when cadence is monthly',
@@ -710,16 +710,16 @@ void main() {
     await tester.pumpAndSettle();
 
     // Default month is 1.
-    expect(interestText(tester), '500.0');
-    expect(principalText(tester), '600.0');
+    expect(interestText(tester), '500');
+    expect(principalText(tester), '600');
 
     await tester.tap(find.byType(DropdownButton<int>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Feb').last);
     await tester.pumpAndSettle();
 
-    expect(interestText(tester), '700.0');
-    expect(principalText(tester), '800.0');
+    expect(interestText(tester), '700');
+    expect(principalText(tester), '800');
   });
 
   testWidgets('typing survives an unrelated rebuild', (tester) async {
@@ -824,7 +824,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(interestText(tester), '8200.0');
+    expect(interestText(tester), '8200');
 
     // Modify only the interest, leaving principal untouched — the exact
     // scenario the brief calls out as the data-loss case.
@@ -853,7 +853,7 @@ void main() {
     // interest to the pre-save booked value, and must not wipe the
     // untouched principal to empty/zero.
     expect(interestText(tester), '9100');
-    expect(principalText(tester), '14000.0');
+    expect(principalText(tester), '14000');
   });
 
   // --- Save must stay disabled until the booked entry is actually known,
@@ -1011,7 +1011,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(saveEnabled(tester), isTrue);
-    expect(interestText(tester), '8200.0');
+    expect(interestText(tester), '8200');
 
     final container = ProviderScope.containerOf(
         tester.element(find.byType(ManualLoanEntrySheet)));
@@ -1022,7 +1022,7 @@ void main() {
     expect(saveEnabled(tester), isTrue);
     // The fields still hold what was already known-good — nothing was
     // wiped by the failed refresh.
-    expect(interestText(tester), '8200.0');
+    expect(interestText(tester), '8200');
   });
 
   testWidgets(
@@ -1080,8 +1080,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(interestText(tester), '8200.0');
-    expect(principalText(tester), '14000.0');
+    expect(interestText(tester), '8200');
+    expect(principalText(tester), '14000');
 
     // This is the literal Task 5 regression: edit only interest, leave
     // principal untouched, and confirm _save does not send 0 for it.
@@ -1191,7 +1191,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Default selection is unit 1.
-    expect(interestText(tester), '1000.0');
+    expect(interestText(tester), '1000');
 
     // Trigger a refresh that fails but carries the prior value forward.
     shouldFail = true;
@@ -1210,8 +1210,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Unit 2's own figures, not unit 1's carried over.
-    expect(interestText(tester), '3000.0');
-    expect(principalText(tester), '4000.0');
+    expect(interestText(tester), '3000');
+    expect(principalText(tester), '4000');
 
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
@@ -1274,8 +1274,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(interestText(tester), '8200.0');
-    expect(principalText(tester), '14000.0');
+    expect(interestText(tester), '8200');
+    expect(principalText(tester), '14000');
 
     await tester.tap(find.byIcon(Icons.delete_outline));
     await tester.pumpAndSettle();
@@ -1285,5 +1285,133 @@ void main() {
     // not keep showing the now-deleted figures.
     expect(interestText(tester), '');
     expect(principalText(tester), '');
+  });
+
+  // --- Final review fix: entriesAsync.when(...) without skipError: true
+  // dispatches to `error:` whenever hasError is true, regardless of
+  // hasValue (riverpod 3.1.0 defaults skipError to false). That let a
+  // refresh that failed after a value was already known replace "Recorded
+  // entries" with error copy while the fields stayed prefilled and Save
+  // stayed enabled directly above it — three surfaces disagreeing about
+  // whether the sheet was usable. ---
+
+  testWidgets(
+      'Recorded entries keeps showing the last-known entries during a failed refresh, not the error copy',
+      (tester) async {
+    const year = 2025;
+    var callCount = 0;
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async {
+          callCount++;
+          if (callCount == 1) {
+            return <Map<String, dynamic>>[
+              {
+                'interest_paid': 8200.0,
+                'principal_paid': 14000.0,
+                'month': null,
+                'unit_id': null,
+                'cadence': 'annual',
+              },
+            ];
+          }
+          throw Exception('network down');
+        }),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Whole property · 2025'), findsOneWidget);
+    expect(find.text("Couldn't load existing entries."), findsNothing);
+
+    final container = ProviderScope.containerOf(
+        tester.element(find.byType(ManualLoanEntrySheet)));
+    container
+        .invalidate(manualLoanEntriesProvider((propertyId: 'p1', year: year)));
+    await tester.pumpAndSettle();
+
+    // The refresh failed, but a value is still known — the list must keep
+    // showing it rather than flipping to error copy that contradicts the
+    // still-enabled Save and still-prefilled fields above.
+    expect(find.text('Whole property · 2025'), findsOneWidget);
+    expect(find.text("Couldn't load existing entries."), findsNothing);
+  });
+
+  // --- Final review fix: Modify is now the sheet's primary entry point, so
+  // its title must say which job is actually happening for the current
+  // scope instead of always claiming "Add". ---
+
+  testWidgets('titles itself "Add loan figures" when no entry is booked for the scope',
+      (tester) async {
+    await _pumpSheet(tester,
+        structureType: null, units: const [], cadence: 'annual');
+
+    expect(find.text('Add loan figures — 2025'), findsOneWidget);
+  });
+
+  testWidgets(
+      'titles itself "Modify loan figures" when an entry is already booked for the scope',
+      (tester) async {
+    const year = 2025;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        financeSummaryProvider.overrideWith((ref, y) async => FinanceSummary(
+              year: y,
+              totals: FinanceTotals(
+                receivedRent: 0,
+                derivedRent: 0,
+                directExpenses: 0,
+                netPl: 0,
+                statutoryRentalIncome: 0,
+                statutoryNote: '',
+              ),
+            )),
+        manualLoanEntriesProvider((propertyId: 'p1', year: year))
+            .overrideWith((ref) async => <Map<String, dynamic>>[
+                  {
+                    'interest_paid': 8200.0,
+                    'principal_paid': 14000.0,
+                    'month': null,
+                    'unit_id': null,
+                    'cadence': 'annual',
+                  },
+                ]),
+      ],
+      child: const MaterialApp(
+        home: ManualLoanEntrySheet(
+          propertyId: 'p1',
+          year: year,
+          cadence: 'annual',
+          structureType: null,
+          units: [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Modify loan figures — 2025'), findsOneWidget);
+    expect(find.text('Add loan figures — 2025'), findsNothing);
   });
 }

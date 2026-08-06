@@ -139,14 +139,19 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         // Constructing the Property explicitly is the only way this branch
         // can actually write null for that field.
         //
-        // structureType, hasMortgage and trackFromYear all keep the same
-        // `?? existing.field` coalescing copyWith used to apply, so this
-        // change touches loanInputMethod's clearing behaviour only. Each of
-        // the other three has the identical "Not sure"/clear swallowing
-        // problem (picking "Not sure" cannot actually blank a previously-set
-        // value on an existing property) — pre-existing, out of scope here;
-        // see the fix report for the loan-entry-method workstream, task 1,
-        // round 1.
+        // effectiveHasMortgage mirrors copyWith's `?? existing.field`
+        // coalescing for hasMortgage itself: a "Not sure" tap sets
+        // _hasMortgage to null, which falls back to the existing value —
+        // same as structureType and trackFromYear below (pre-existing,
+        // out of scope here). loanInputMethod MUST be derived from this
+        // same *effective* value, not from the raw _hasMortgage field:
+        // gating on the raw field let "Not sure" write hasMortgage: true
+        // (coalesced back to the existing value) but loanInputMethod: null
+        // (not coalesced) in the very same save, orphaning a manual-entry
+        // property's booked figures from every UI surface while they kept
+        // feeding the engine. See the fix report for the loan-entry-method
+        // workstream, final review item 1.
+        final effectiveHasMortgage = _hasMortgage ?? existing.hasMortgage;
         final updatedProperty = Property(
           id: existing.id,
           landlordId: existing.landlordId,
@@ -157,11 +162,11 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           currentValue: double.parse(_currentValueController.text),
           ownershipShare: ownershipShare,
           structureType: _selectedStructureType ?? existing.structureType,
-          hasMortgage: _hasMortgage ?? existing.hasMortgage,
+          hasMortgage: effectiveHasMortgage,
           trackFromYear: _trackFromYear ?? existing.trackFromYear,
           utilitiesPaidBy: existing.utilitiesPaidBy,
           loanInputCadence: existing.loanInputCadence,
-          loanInputMethod: _hasMortgage == true ? _loanInputMethod : null,
+          loanInputMethod: effectiveHasMortgage == true ? _loanInputMethod : null,
           nextSetupStep: existing.nextSetupStep,
           foldersEnabled: existing.foldersEnabled,
           folderNames: existing.folderNames,

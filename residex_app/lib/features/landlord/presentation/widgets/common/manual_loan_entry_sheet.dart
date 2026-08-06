@@ -162,8 +162,9 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
 
     final interest = (entry?['interest_paid'] as num?)?.toDouble();
     final principal = (entry?['principal_paid'] as num?)?.toDouble();
-    final nextInterest = interest == null ? '' : '$interest';
-    final nextPrincipal = principal == null ? '' : '$principal';
+    final nextInterest = interest == null ? '' : _formatAmountForInput(interest);
+    final nextPrincipal =
+        principal == null ? '' : _formatAmountForInput(principal);
     if (_interestController.text != nextInterest) {
       _interestController.text = nextInterest;
     }
@@ -290,6 +291,12 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
       _prefillFor(entriesData);
     }
 
+    // Modify is now this sheet's primary entry point (the panel row shows it
+    // beside real figures), so the title must say which job is actually
+    // happening for the current scope rather than always claiming "Add".
+    final hasEntryForScope =
+        entriesData != null && _entryForCurrentScope(entriesData) != null;
+
     UnitFinance? selectedUnit;
     if (_selectedUnitId != null) {
       for (final u in units) {
@@ -315,7 +322,10 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Add loan figures — ${widget.year}',
+                Text(
+                    hasEntryForScope
+                        ? 'Modify loan figures — ${widget.year}'
+                        : 'Add loan figures — ${widget.year}',
                     style: AppTextStyles.titleLarge),
                 if (_cadence == null) ...[
                   const SizedBox(height: 16),
@@ -484,6 +494,17 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                 Text('Recorded entries', style: AppTextStyles.titleMedium),
                 const SizedBox(height: 8),
                 entriesAsync.when(
+                  // Without this, riverpod 3.1.0's default (skipError:
+                  // false) dispatches to `error:` whenever hasError &&
+                  // !skipError, even when hasValue is also true — so a
+                  // refresh that fails after a value was already known
+                  // rendered "Couldn't load existing entries." directly
+                  // beneath prefilled fields and an enabled Save, which
+                  // contradicts them. skipError: true keeps this on the
+                  // `data:` branch (showing the last-known entries) whenever
+                  // a prior value survives the failed refresh, matching what
+                  // Save and the prefill above already trust.
+                  skipError: true,
                   data: (entries) {
                     final scoped = entries
                         .where((entry) => entry['unit_id'] == _selectedUnitId)
@@ -520,8 +541,8 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline,
                                       size: 18, color: AppColors.sealRed),
-                                  onPressed: () =>
-                                      _remove(entry['month'] as int?),
+                                  onPressed: () => _remove(
+                                      (entry['month'] as num?)?.toInt()),
                                 ),
                               ],
                             ),
@@ -555,7 +576,7 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
   /// selection default above guards against.
   String _entryLabel(Map<String, dynamic> entry, List<UnitFinance> units) {
     final period = entry['month'] != null
-        ? monthAbbrev[(entry['month'] as int) - 1]
+        ? monthAbbrev[(entry['month'] as num).toInt() - 1]
         : '${widget.year}';
     final unitId = entry['unit_id'] as String?;
     if (unitId == null) return 'Whole property · $period';
@@ -564,4 +585,15 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
     }
     return period;
   }
+}
+
+/// Formats a booked amount the way a landlord would type it into the field —
+/// no trailing `.0` for a whole number (so Modify shows `8200`, not
+/// `8200.0`), and never a thousands separator: `_save` round-trips whatever
+/// this writes through `double.tryParse`, which returns null on a comma and
+/// would silently save 0.
+String _formatAmountForInput(double value) {
+  return value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toString();
 }

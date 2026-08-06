@@ -566,6 +566,9 @@ class FinanceScreen extends ConsumerWidget {
       );
     }
 
+    final completenessLine =
+        _buildLoanCompletenessLine(property, block, entries, year);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -590,7 +593,64 @@ class FinanceScreen extends ConsumerWidget {
         ),
         _loanFigureLine('Interest', interest),
         _loanFigureLine('Principal', principal),
+        if (completenessLine != null) completenessLine,
       ],
+    );
+  }
+
+  /// A quiet completeness sub-line under the figures block. `manualLoanIncomplete`
+  /// goes true the instant a booked entry stops covering the whole cadence or
+  /// unit list — one missing month out of twelve, or one unit out of three —
+  /// while the figures block above it can otherwise look clean and complete.
+  /// This is the only place that gap becomes visible; it names it concretely
+  /// (how many months/units are actually in) rather than a bare "incomplete".
+  ///
+  /// `block.units[].loanStatus` is read here rather than re-deriving
+  /// completeness from [entries] independently, so this line can never
+  /// disagree with the backend's own `manualLoanIncomplete` computation.
+  Widget? _buildLoanCompletenessLine(
+    Property? property,
+    PropertyFinance block,
+    List<Map<String, dynamic>> entries,
+    int year,
+  ) {
+    if (!block.manualLoanIncomplete) return null;
+
+    final trackedUnits =
+        block.units.where((u) => u.loanStatus != null).toList();
+
+    String message;
+    if (trackedUnits.length > 1) {
+      final resolved =
+          trackedUnits.where((u) => u.loanStatus != 'incomplete').length;
+      message = '$resolved of ${trackedUnits.length} units recorded for $year';
+    } else if ((property?.loanInputCadence ?? 'annual') == 'monthly') {
+      final scopeUnitId =
+          trackedUnits.isNotEmpty ? trackedUnits.first.unitId : null;
+      final recordedMonths = entries
+          .where((e) => e['unit_id'] == scopeUnitId && e['month'] != null)
+          .map((e) => (e['month'] as num).toInt())
+          .toSet()
+          .length;
+      message = '$recordedMonths of 12 months recorded for $year';
+    } else {
+      message = 'Some $year loan figures are still missing';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(message,
+                style:
+                    AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted)),
+          ),
+        ],
+      ),
     );
   }
 

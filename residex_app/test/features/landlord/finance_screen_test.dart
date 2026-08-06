@@ -176,7 +176,11 @@ FinanceSummary _summaryMissing(List<String> categories) {
   );
 }
 
-Property _fakeProperty({required bool hasMortgage, required String? loanInputMethod}) {
+Property _fakeProperty({
+  required bool hasMortgage,
+  required String? loanInputMethod,
+  String? loanInputCadence,
+}) {
   return Property(
     id: 'p1',
     landlordId: 'landlord1',
@@ -193,7 +197,8 @@ Property _fakeProperty({required bool hasMortgage, required String? loanInputMet
     currentValue: 550000,
     hasMortgage: hasMortgage,
     loanInputMethod: loanInputMethod,
-    loanInputCadence: loanInputMethod == 'manual' ? 'annual' : null,
+    loanInputCadence:
+        loanInputCadence ?? (loanInputMethod == 'manual' ? 'annual' : null),
     createdAt: DateTime(2025, 1, 1),
   );
 }
@@ -308,10 +313,17 @@ void main() {
       (tester) async {
     // The panel row owns loan entry in manual mode. A nudge about a loan
     // document the landlord will never upload is simply wrong.
-    await _pumpScreenWithProperty(
+    //
+    // Uses _pumpScreenWithLoanEntries (not _pumpScreenWithProperty): this
+    // property is manual + mortgaged, so the loan-figures row also renders
+    // and reads manualLoanEntriesProvider — leaving it un-overridden here
+    // only passed because 10.0.2.2:8000 is unroutable from a desktop test
+    // runner, not because the provider actually resolved deterministically.
+    await _pumpScreenWithLoanEntries(
       tester, 2026,
       _summaryMissing(const ['loan']),
       _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+      const [],
     );
     // Loans was the only missing category, so the nudge vanishes entirely
     // rather than counting down to a document that is never coming.
@@ -332,10 +344,14 @@ void main() {
 
   testWidgets('a manual property still nudges for its other missing categories',
       (tester) async {
-    await _pumpScreenWithProperty(
+    // See the previous test's note: _pumpScreenWithLoanEntries makes
+    // manualLoanEntriesProvider resolve deterministically instead of
+    // relying on an unroutable network call to fail the same way every time.
+    await _pumpScreenWithLoanEntries(
       tester, 2026,
       _summaryMissing(const ['loan', 'insurance']),
       _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+      const [],
     );
     // Two missing, one filtered out: the count must drop to 1, not stay at 2.
     // Asserting on the count is what pins the filtering — the banner never
@@ -539,6 +555,56 @@ void main() {
   });
 
   testWidgets(
+      'shows a completeness sub-line naming what is missing when manualLoanIncomplete is true',
+      (tester) async {
+    // manualLoanIncomplete goes true the moment a booked entry stops
+    // covering the cadence — here, only January is booked out of twelve
+    // monthly instalments. The figures block above this line would
+    // otherwise look clean and complete on its own.
+    await _pumpScreenWithLoanEntries(
+      tester,
+      2026,
+      _summaryWithProperty(2026, complete: true, manualLoanIncomplete: true),
+      _fakeProperty(
+        hasMortgage: true,
+        loanInputMethod: 'manual',
+        loanInputCadence: 'monthly',
+      ),
+      [
+        {
+          'interest_paid': 500.0, 'principal_paid': 600.0,
+          'month': 1, 'unit_id': null, 'cadence': 'monthly',
+        },
+      ],
+    );
+
+    expect(find.text('1 of 12 months recorded for 2026'), findsOneWidget);
+  });
+
+  testWidgets(
+      'shows no completeness sub-line when manualLoanIncomplete is false',
+      (tester) async {
+    await _pumpScreenWithLoanEntries(
+      tester,
+      2026,
+      _summaryWithProperty(2026, complete: true, manualLoanIncomplete: false),
+      _fakeProperty(
+        hasMortgage: true,
+        loanInputMethod: 'manual',
+        loanInputCadence: 'monthly',
+      ),
+      [
+        {
+          'interest_paid': 500.0, 'principal_paid': 600.0,
+          'month': 1, 'unit_id': null, 'cadence': 'monthly',
+        },
+      ],
+    );
+
+    expect(find.textContaining('recorded for 2026'), findsNothing);
+  });
+
+  testWidgets(
       'a booked entry of 0/0 still renders the figures block with Modify, not Add',
       (tester) async {
     // interest>0||principal>0 would have read this as "nothing booked" —
@@ -653,6 +719,58 @@ void main() {
     await tester.tap(find.text('Add loan figures'), warnIfMissed: false);
     await tester.pump();
     expect(find.byType(ManualLoanEntrySheet), findsNothing);
+  });
+
+  testWidgets(
+      'the Add affordance stays enabled after a refresh fails over an already-resolved empty list',
+      (tester) async {
+    // isUnusable is `isInitialLoading || (hasError && !hasValue)`. A first
+    // load that resolves to an empty list (no entries booked yet, but a
+    // real value) then a failed refresh must land in the second disjunct as
+    // false: hasValue survives the failed refresh (Riverpod carries the
+    // last resolved value forward), so Add must stay tappable — matching
+    // the sheet's own Save gating on the same signal.
+    var callCount = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2026]),
+          financeSummaryProvider.overrideWith(
+              (ref, y) async => _summaryWithProperty(2026, complete: true)),
+          propertyByIdProvider.overrideWith((ref, id) async =>
+              _fakeProperty(hasMortgage: true, loanInputMethod: 'manual')),
+          manualLoanEntriesProvider.overrideWith((ref, args) async {
+            callCount++;
+            if (callCount == 1) return <Map<String, dynamic>>[];
+            throw Exception('network down');
+          }),
+        ],
+        child: const MaterialApp(home: FinanceScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Add loan figures'), findsOneWidget);
+    var button = tester.widget<TextButton>(find.ancestor(
+      of: find.text('Add loan figures'),
+      matching: find.byType(TextButton),
+    ));
+    expect(button.onPressed, isNotNull);
+
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(FinanceScreen)));
+    container.invalidate(
+        manualLoanEntriesProvider((propertyId: 'p1', year: 2026)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Add loan figures'), findsOneWidget);
+    button = tester.widget<TextButton>(find.ancestor(
+      of: find.text('Add loan figures'),
+      matching: find.byType(TextButton),
+    ));
+    expect(button.onPressed, isNotNull,
+        reason: 'a refresh failure over a known (even empty) value must '
+            'not disable Add');
   });
 
   testWidgets('saving through Modify updates the amounts the row displays',
