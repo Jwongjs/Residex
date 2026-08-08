@@ -381,6 +381,21 @@ class FinanceSummaryApiTests(unittest.TestCase):
         self.assertEqual(len(response.json()["entries"]), 1)
         self.assertEqual(response.json()["entries"][0]["interest_paid"], 5000.0)
 
+    def test_list_manual_loan_entries_accepts_no_year(self):
+        """Omitting the year must reach the service as None rather than 422 —
+        the "remove loan tracking" guard needs every year at once."""
+        listing = MagicMock(return_value=[])
+        with patch(
+            "api.rex_routes.documind_service.list_manual_loan_entries", new=listing,
+        ):
+            response = self.client.get(
+                "/api/rex/documind/finance/manual-loan-entry",
+                params={"property_id": "p1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(listing.call_args.args[2])
+
     def test_set_unit_loan_exemption_returns_200(self):
         with patch(
             "api.rex_routes.documind_service.set_unit_loan_exemption",

@@ -549,13 +549,15 @@ class DocuMindRemoteDataSource {
   }
 
   /// All manual loan entries for one property and year.
+  /// Manual loan entries for a property. Omit [year] for every year at once —
+  /// needed by callers whose action spans the property's whole loan history.
   Future<List<Map<String, dynamic>>> listManualLoanEntries({
     required String propertyId,
-    required int year,
+    int? year,
   }) async {
     final queryParameters = {
       'property_id': propertyId,
-      'year': '$year',
+      if (year != null) 'year': '$year',
     };
     final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.documindManualLoanEntry}')
         .replace(queryParameters: queryParameters);

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
+import '../../providers/documind_provider.dart';
+import '../../providers/finance_logic.dart';
 import '../../providers/property_providers.dart';
 import '../../providers/unit_providers.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
@@ -44,11 +46,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   bool? _hasMortgage;
   int? _trackFromYear;
 
-  /// 'upload' | 'manual' | null. Null means unanswered, which behaves as
-  /// 'upload' everywhere downstream — so an existing property, or a landlord
-  /// who skips the question, sees exactly today's behaviour.
-  String? _loanInputMethod;
-
   /// House/apartment/condo imply their structure; commercial varies too much
   /// to guess, so it stays null and [_buildStructureTypeSelector] asks.
   static PropertyStructureType? _structureForType(PropertyType type) {
@@ -83,7 +80,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       _selectedStructureType = property.structureType;
       _hasMortgage = property.hasMortgage;
       _trackFromYear = property.trackFromYear;
-      _loanInputMethod = property.loanInputMethod;
     } else {
       _selectedStructureType = _structureForType(_selectedType);
     }
@@ -103,12 +99,94 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     super.dispose();
   }
 
+  /// "No" means *never had a mortgage* — it retroactively stops expecting loan
+  /// figures for every historical year. A landlord who has simply finished
+  /// paying wants settlement instead, which keeps history intact. Naming the
+  /// right tool here is what stops them reaching for the destructive one.
+  ///
+  /// Returns true when the save may proceed.
+  Future<bool> _confirmRemovingLoanTracking(Property existing) async {
+    if (!(existing.hasMortgage == true && _hasMortgage == false)) return true;
+
+    // Every year, not just this one. The removal is retroactive, so scoping
+    // the guard to the current year let it wave through exactly the case that
+    // loses the most: a property whose loan history sits in earlier years and
+    // has nothing booked yet this year — the normal state of any property in
+    // January, or any property whose mortgage predates this year.
+    final entries =
+        await ref.read(allManualLoanEntriesProvider(existing.id).future);
+    if (entries.isEmpty) return true;
+
+    final booked = entries.fold<double>(
+      0,
+      (total, e) =>
+          total +
+          ((e['interest_paid'] as num?)?.toDouble() ?? 0) +
+          ((e['principal_paid'] as num?)?.toDouble() ?? 0),
+    );
+
+    // Naming the years is what makes the warning act on the landlord: "RM
+    // 90,074.52 of 2025 loan figures" is checkable against what they remember
+    // filing, where a bare amount is just a number.
+    final years = entries
+        .map((e) => e['year'] as int?)
+        .whereType<int>()
+        .toSet()
+        .toList()
+      ..sort();
+    final scope = years.isEmpty
+        ? ''
+        : years.length == 1
+            ? '${years.first} '
+            : '${years.first}–${years.last} ';
+
+    if (!mounted) return false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.paper,
+        title: Text('Remove loan tracking for this property?',
+            style: AppTextStyles.titleMedium),
+        content: Text(
+          'This property has ${formatRM(booked)} of ${scope}loan '
+          "figures recorded. They'll stay in your finance totals but will no "
+          'longer be visible or editable.\n\n'
+          'If your mortgage is fully repaid, mark it settled instead so your '
+          'past years stay accurate.',
+          style: AppTextStyles.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remove tracking'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      // Restore the stored answer so the form never sits contradicting what
+      // is saved.
+      if (mounted) setState(() => _hasMortgage = true);
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
 
     final user = ref.read(currentFirebaseUserProvider);
     if (user == null) {
       _showError('User not authenticated');
+      return;
+    }
+
+    final existing = widget.property;
+    if (existing != null && !await _confirmRemovingLoanTracking(existing)) {
       return;
     }
 
@@ -127,31 +205,16 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           double.parse(_ownershipShareController.text) / 100.0;
 
       final controller = ref.read(propertyControllerProvider);
-      final existing = widget.property;
 
       if (existing != null) {
         // Edit mode: preserve id/landlordId/createdAt/photos, update the rest.
         // Unit count/rent are not editable here — see UnitsScreen.
         //
         // Built directly rather than via existing.copyWith(...): copyWith
-        // coalesces every field with `?? this.field`, so passing null to
-        // clear loanInputMethod would silently keep the old value instead.
-        // Constructing the Property explicitly is the only way this branch
-        // can actually write null for that field.
-        //
-        // effectiveHasMortgage mirrors copyWith's `?? existing.field`
-        // coalescing for hasMortgage itself: a "Not sure" tap sets
-        // _hasMortgage to null, which falls back to the existing value —
-        // same as structureType and trackFromYear below (pre-existing,
-        // out of scope here). loanInputMethod MUST be derived from this
-        // same *effective* value, not from the raw _hasMortgage field:
-        // gating on the raw field let "Not sure" write hasMortgage: true
-        // (coalesced back to the existing value) but loanInputMethod: null
-        // (not coalesced) in the very same save, orphaning a manual-entry
-        // property's booked figures from every UI surface while they kept
-        // feeding the engine. See the fix report for the loan-entry-method
-        // workstream, final review item 1.
-        final effectiveHasMortgage = _hasMortgage ?? existing.hasMortgage;
+        // coalesces every field with `?? this.field`, so it cannot clear a
+        // nullable field back to null. Constructing the Property explicitly
+        // here is what lets structureType/hasMortgage/trackFromYear below be
+        // written raw from state, including null.
         final updatedProperty = Property(
           id: existing.id,
           landlordId: existing.landlordId,
@@ -161,12 +224,15 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           purchasePrice: double.parse(_purchasePriceController.text),
           currentValue: double.parse(_currentValueController.text),
           ownershipShare: ownershipShare,
-          structureType: _selectedStructureType ?? existing.structureType,
-          hasMortgage: effectiveHasMortgage,
-          trackFromYear: _trackFromYear ?? existing.trackFromYear,
+          // Written raw from state, not coalesced with `?? existing.field`:
+          // initState seeds all three from the existing property, so the state
+          // variable *is* the landlord's current answer, and coalescing could
+          // only ever undo a deliberate "Not sure".
+          structureType: _selectedStructureType,
+          hasMortgage: _hasMortgage,
+          trackFromYear: _trackFromYear,
           utilitiesPaidBy: existing.utilitiesPaidBy,
           loanInputCadence: existing.loanInputCadence,
-          loanInputMethod: effectiveHasMortgage == true ? _loanInputMethod : null,
           nextSetupStep: existing.nextSetupStep,
           foldersEnabled: existing.foldersEnabled,
           folderNames: existing.folderNames,
@@ -192,7 +258,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           hasMortgage: _hasMortgage,
           trackFromYear: _trackFromYear,
           loanInputCadence: null,
-          loanInputMethod: _hasMortgage == true ? _loanInputMethod : null,
           nextSetupStep: 2,
         );
         final propertyId = await controller.createProperty(property);
@@ -450,10 +515,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                         const SizedBox(height: 16),
                       ],
                       _buildMortgageSelector(),
-                      if (_hasMortgage == true) ...[
-                        const SizedBox(height: 16),
-                        _buildLoanMethodSelector(),
-                      ],
                       const SizedBox(height: 16),
                       _buildYearPicker(),
                     ],
@@ -641,6 +702,11 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         Text('Do you have a mortgage on this property?',
             style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
         const SizedBox(height: 8),
+        // Yes/No only. A property owner is not unsure whether they have a
+        // mortgage; the third chip existed because null was the initial state,
+        // and a property that has never answered simply shows neither chip
+        // selected. structureType and trackFromYear keep their "Not sure" —
+        // title type and tracking start are real unknowns.
         Wrap(
           spacing: 8,
           children: [
@@ -654,103 +720,9 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
               selected: _hasMortgage == false,
               onSelected: (_) => setState(() => _hasMortgage = false),
             ),
-            AppChoiceChip(
-              label: 'Not sure',
-              selected: _hasMortgage == null,
-              onSelected: (_) => setState(() => _hasMortgage = null),
-            ),
           ],
         ),
       ],
-    );
-  }
-
-  /// Two equally-weighted options, each saying what it does and what the
-  /// landlord gets back. Deliberately not a button plus a text link: these
-  /// are different paths with different downstream behaviour, and rendering
-  /// one as an afterthought is what made the old three surfaces unreadable.
-  Widget _buildLoanMethodSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('How will loan figures arrive?',
-            style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
-        const SizedBox(height: 8),
-        // IntrinsicHeight so CrossAxisAlignment.stretch has a finite height to
-        // stretch to — the Column above sits in an unbounded-height
-        // SingleChildScrollView, and a bare Row.stretch there throws.
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _loanMethodCard(
-                  value: 'upload',
-                  icon: Icons.description_outlined,
-                  title: 'Upload statements',
-                  blurb: 'We read the interest and principal out of your bank statement.',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _loanMethodCard(
-                  value: 'manual',
-                  icon: Icons.edit_outlined,
-                  title: 'Enter figures myself',
-                  blurb: 'Type the interest and principal for each period yourself.',
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _loanMethodCard({
-    required String value,
-    required IconData icon,
-    required String title,
-    required String blurb,
-  }) {
-    final selected = _loanInputMethod == value;
-    return InkWell(
-      key: Key('loan-method-$value'),
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => setState(() => _loanInputMethod = value),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.registry.withOpacity(0.08) : AppColors.card,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? AppColors.registry : AppColors.hairline,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Zero-size selection probe: the stable keys above/on Container
-            // stay put across taps (nothing remounts), and tests read
-            // selection state by looking for this key instead of relying on
-            // Container's identity changing.
-            if (selected) SizedBox.shrink(key: Key('loan-method-$value-selected')),
-            Icon(icon,
-                size: 20,
-                color: selected ? AppColors.registry : AppColors.textMuted),
-            const SizedBox(height: 8),
-            Text(title,
-                style: AppTextStyles.labelLarge.copyWith(
-                  color: selected ? AppColors.registry : AppColors.textPrimary,
-                )),
-            const SizedBox(height: 4),
-            Text(blurb,
-                style: AppTextStyles.bodySmall
-                    .copyWith(color: AppColors.textMuted)),
-          ],
-        ),
-      ),
     );
   }
 

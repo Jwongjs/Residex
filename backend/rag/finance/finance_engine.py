@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from rag.documents.fact_extractor import (
     EXPENSE_SUBTYPE_CATEGORY,
@@ -424,6 +424,23 @@ def _dedup_expense_lines(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return deduped
 
 
+# A typed loan document's interest line takes its subtype straight from the
+# extracted facts ('interest_statement'); its principal line is hardcoded to
+# 'loan_principal'. A bundled 'expenses' statement uses 'loan_interest' /
+# 'loan_principal'. Three distinct spellings, and every one must be here — a
+# missing spelling halves that document at partial share with a green suite.
+# Keying off line["category"] == "loan" does NOT work either, because a
+# bundled principal line maps to category 'loan_principal', not 'loan'.
+_LOAN_EXEMPT_SUBTYPES = {"interest_statement", "loan_interest", "loan_principal"}
+
+
+def _line_share(line: Dict[str, Any], share: float) -> float:
+    """Loan interest and principal are the landlord's own borrowing, not a cost
+    shared with co-owners, so they are never scaled by ownership share. Every
+    other expense line scales normally."""
+    return 1.0 if line.get("subtype") in _LOAN_EXEMPT_SUBTYPES else share
+
+
 def _scaled_lines(lines: List[Dict[str, Any]], share: float) -> List[Dict[str, Any]]:
     """Copy expense lines with amounts at the landlord's ownership share.
 
@@ -431,17 +448,22 @@ def _scaled_lines(lines: List[Dict[str, Any]], share: float) -> List[Dict[str, A
     property-level sum, so scaling is applied exactly once and no sum can be
     scaled twice. At share 1.0 the lines are returned unchanged (no
     `full_amount`), so the overwhelmingly common case is byte-identical to
-    before. Below 1.0 each line also carries `full_amount`, the source
+    before. Below 1.0 each scaled line also carries `full_amount`, the source
     document's face value, so the app can show "your 50% of RM 1,200.00"
-    beside the scaled figure."""
+    beside the scaled figure. Loan lines (see _line_share) are not scaled and
+    so carry no `full_amount` — there is no second figure to show."""
     if share == 1.0:
         return list(lines)
-    return [
-        {**line,
-         "amount": _round2(share * line["amount"]),
-         "full_amount": _round2(line["amount"])}
-        for line in lines
-    ]
+    out: List[Dict[str, Any]] = []
+    for line in lines:
+        line_share = _line_share(line, share)
+        if line_share == 1.0:
+            out.append(dict(line))
+            continue
+        out.append({**line,
+                    "amount": _round2(line_share * line["amount"]),
+                    "full_amount": _round2(line["amount"])})
+    return out
 
 
 def _document_years(doc: Dict[str, Any]) -> List[int]:
@@ -740,12 +762,15 @@ def _property_coverage(
     tax_subtypes: Optional[List[Tuple[str, Tuple[str, ...]]]] = None,
     unavailable: Optional[Dict[int, Set[str]]] = None,
     track_from_year: Optional[int] = None,
+    loan_expected_for: Optional[Callable[[int], bool]] = None,
 ) -> List[Dict[str, Any]]:
     """Per-year document-completeness report from the property's earliest
     lease_start (fallback: earliest document year found) through
     current_year. rental_invoice is only flagged missing for years the
     lease actually covered; expense categories are flagged across the
-    whole window regardless of tenancy."""
+    whole window regardless of tenancy. `loan_expected_for` filters the
+    'loan' category per year (mortgage settlement); omitted means every
+    year in the window expects it, which is today's behaviour."""
     lease_years: List[int] = []
     lease_spans: List[Tuple[Tuple[int, int], Tuple[int, int]]] = []
     all_years: List[int] = []
@@ -807,6 +832,9 @@ def _property_coverage(
         unavailable_for_year = (unavailable or {}).get(year, set())
         partial_categories: List[Dict[str, Any]] = []
         for category in (expected if expected is not None else FINANCE_CATEGORIES):
+            if category == "loan" and loan_expected_for is not None \
+                    and not loan_expected_for(year):
+                continue  # settled mortgage — this year expects nothing
             if category == "rental_invoice" and year not in years_covered_by_lease:
                 continue  # no tenancy that year — nothing to invoice
             if category in unavailable_for_year:
@@ -894,6 +922,52 @@ def _manual_loan_documents(
     return docs
 
 
+def _loan_settled_before(
+    prop: Dict[str, Any], year: int, month: Optional[int] = None
+) -> bool:
+    """Whether a recorded settlement date puts this period *after* the final
+    payment. The settlement month itself, and everything before it, is not
+    settled — those periods still owe figures and must still reconcile.
+
+    Deliberately says nothing about has_mortgage: this is only ever "did the
+    landlord tell us the loan finished, and is this period after that". A
+    malformed or absent mortgage_settled_on is treated as unset, so a bad value
+    can never silently suppress a period's expectation."""
+    settled = prop.get("mortgage_settled_on")
+    if not settled:
+        return False
+    try:
+        s_year, s_month = int(str(settled)[:4]), int(str(settled)[5:7])
+    except (TypeError, ValueError):
+        return False
+    if not (1 <= s_month <= 12):
+        return False
+    if year != s_year:
+        return year > s_year
+    return month is not None and month > s_month
+
+
+def _loan_expected_for(
+    prop: Dict[str, Any], year: int, month: Optional[int] = None
+) -> bool:
+    """Whether loan figures are *tracked for completeness* in a period.
+
+    Requires an affirmed mortgage — an unanswered one is not tracked. This is
+    the completeness predicate only; do NOT reuse it to decide whether a loan
+    *document* is expected. Those two differ precisely on the unanswered case:
+    an unanswered mortgage is still nudged for a loan document (conservative —
+    see _expected_categories, which drops 'loan' only on an explicit False) but
+    is not held to a completeness standard it never opted into. Collapsing them
+    tells every pre-existing property its year is complete when it is not.
+
+    A settled mortgage stops expecting figures after its final month; history
+    before it is unaffected, and has_mortgage stays True on a settled property
+    because every year up to settlement must still reconcile."""
+    if prop.get("has_mortgage") is not True:
+        return False
+    return not _loan_settled_before(prop, year, month)
+
+
 def _loan_completeness(
     prop: Dict[str, Any],
     units: List[Dict[str, Any]],
@@ -906,11 +980,14 @@ def _loan_completeness(
     """Per-unit loan resolution for the manual-entry button gate. A unit is
     resolved when it is marked no-loan, has an uploaded loan statement for the
     year, or has manual figures covering the cadence (annual: any entry;
-    monthly: every in-scope month). Only meaningful for a mortgaged property on
-    the manual method — otherwise returns (False, {})."""
-    if prop.get("has_mortgage") is not True or prop.get("loan_input_method") != "manual":
+    monthly: every in-scope month). Only meaningful for a mortgaged property in
+    a year that still expects loan figures — otherwise returns (False, {})."""
+    if not _loan_expected_for(prop, year):
         return False, {}
     cadence = prop.get("loan_input_cadence") or "annual"
+    # Months past the settled month in the settlement year were never owed,
+    # so a monthly-cadence property is not incomplete for lacking them.
+    months = [m for m in months if _loan_expected_for(prop, year, m)]
     exempt_units = {e.get("unit_id") for e in exemptions}
     months_by_unit: Dict[Optional[str], set] = {}
     any_by_unit: set = set()
@@ -1065,13 +1142,12 @@ def compute_finance_summary(
                 lines_by_unit.get(scope["unit_id"], [])
                 if scope["unit_id"] is not None else []
             )
-            unit_deductible_total = sum(
-                l["amount"] for l in unit_lines if l["deductible"]
-            )
             # Proration keeps using the real-unit lines only. The property-level
             # lines are prorated once, below, by avg_fraction — feeding them in
             # here as well would double-count them in the statutory total.
-            prorated_expenses += unit_deductible_total * fraction
+            prorated_expenses += fraction * sum(
+                _line_share(l, share) * l["amount"] for l in unit_lines if l["deductible"]
+            )
             # Display lines: the synthetic whole-property scope shows the
             # property-level lines (a building-wide loan, quit rent) that belong
             # to no unit. For a single-let house that scope IS the property, so
@@ -1082,11 +1158,13 @@ def compute_finance_summary(
                 unit_lines if scope["unit_id"] is not None
                 else lines_by_unit.get(None, [])
             )
-            display_deductible_total = sum(
-                l["amount"] for l in display_lines if l["deductible"]
+            display_deductible_scaled = sum(
+                _line_share(l, share) * l["amount"]
+                for l in display_lines if l["deductible"]
             )
-            display_landlord_total = sum(
-                l["amount"] for l in display_lines if l["paid_by_landlord"]
+            display_landlord_scaled = sum(
+                _line_share(l, share) * l["amount"]
+                for l in display_lines if l["paid_by_landlord"]
             )
             prop_actual += actual_sum
             prop_derived += derived_sum
@@ -1103,10 +1181,10 @@ def compute_finance_summary(
                 "label": scope["label"],
                 "rented_months": rented,
                 "contribution": _round2(
-                    share * (actual_sum + derived_sum - display_landlord_total)
+                    share * (actual_sum + derived_sum) - display_landlord_scaled
                 ),
                 "statutory_contribution": _round2(
-                    share * (actual_sum + derived_sum - display_deductible_total)
+                    share * (actual_sum + derived_sum) - display_deductible_scaled
                 ),
                 "months": month_rows,
                 "missing_invoice_months": vacant,
@@ -1138,17 +1216,26 @@ def compute_finance_summary(
         # scenario reproduces exactly.
         property_level_lines = lines_by_unit.get(None, [])
         avg_fraction = (sum(fractions) / len(fractions)) if fractions else 0.0
-        prorated_expenses += sum(
-            l["amount"] for l in property_level_lines if l["deductible"]
-        ) * avg_fraction
+        prorated_expenses += avg_fraction * sum(
+            _line_share(l, share) * l["amount"]
+            for l in property_level_lines if l["deductible"]
+        )
 
         # Net P/L uses the landlord's full cash out (not prorated by occupancy,
         # matching how direct/statutory `direct` is summed below).
-        landlord_paid = sum(l["amount"] for l in expense_lines if l["paid_by_landlord"])
+        landlord_paid = sum(
+            _line_share(l, share) * l["amount"]
+            for l in expense_lines if l["paid_by_landlord"]
+        )
 
         coverage_rows = _property_coverage(
             prop_docs, today.year, _expected_categories(prop),
             _expected_tax_subtypes(prop), prop_unavailable, prop.get("track_from_year"),
+            # Settlement only — NOT _loan_expected_for. A property whose
+            # mortgage question was never answered must keep being nudged for
+            # its loan document; only a date the landlord actually recorded
+            # stops the asking.
+            loan_expected_for=lambda y: not _loan_settled_before(prop, y),
         )
         complete = _year_is_complete(coverage_rows, year)
 
@@ -1174,20 +1261,22 @@ def compute_finance_summary(
             unpaid_notes.append(f"{name}: recovered rent booked this year — {recovered_summary}")
 
         received = prop_actual + prop_derived + prop_recovered
-        direct = sum(l["amount"] for l in expense_lines if l["deductible"])
+        direct = sum(
+            _line_share(l, share) * l["amount"] for l in expense_lines if l["deductible"]
+        )
 
-        # Ownership share is applied once, here, to every figure this property
-        # contributes; the already-scaled values then feed the cross-property
-        # totals. Each property carries its own share, so a total can never be
-        # correctly scaled after the fact — the choke point must be per property
-        # and must sit before accumulation. (Superseded the earlier design where
-        # Received and Direct Expenses stayed at the property's full amount.)
+        # Ownership share is applied once, here, to every *income* figure this
+        # property contributes; expense figures are already per-line weighted
+        # above (see _line_share), because loan interest and principal are not
+        # shared with co-owners. The already-scaled values then feed the
+        # cross-property totals. Each property carries its own share, so a
+        # total can never be correctly scaled after the fact.
         s_received = share * received
         s_derived = share * prop_derived
         s_outstanding = share * prop_outstanding
-        s_direct = share * direct
-        s_landlord_paid = share * landlord_paid
-        s_prorated = share * prorated_expenses
+        s_direct = direct
+        s_landlord_paid = landlord_paid
+        s_prorated = prorated_expenses
 
         statutory_sum += s_received - s_prorated
         net_pl_sum += s_received - s_landlord_paid
@@ -1200,7 +1289,14 @@ def compute_finance_summary(
         contributing = {l["category"] for l in expense_lines if l["deductible"]}
         if any(row["source"] == "actual" for u in unit_blocks for row in u["months"]):
             contributing.add("rental_invoice")
-        missing = [c for c in _expected_categories(prop) if c not in contributing]
+        # Settlement only — NOT _loan_expected_for. _expected_categories has
+        # already dropped 'loan' on an explicit "no mortgage"; what remains
+        # includes the unanswered case, which must keep being nudged.
+        expected_this_year = [
+            c for c in _expected_categories(prop)
+            if c != "loan" or not _loan_settled_before(prop, year)
+        ]
+        missing = [c for c in expected_this_year if c not in contributing]
         if missing:
             missing_categories[pid] = missing
             for category in missing:
@@ -1210,13 +1306,17 @@ def compute_finance_summary(
                 )
 
         if share < 1.0:
-            share_notes.append(f"Ownership share applied: {name} at {share:.0%}.")
+            share_notes.append(
+                f"Ownership share applied: {name} at {share:.0%}. Loan interest "
+                "and principal are shown in full — they are your own borrowing."
+            )
 
         for line in expense_lines:
             if not line["deductible"]:
                 continue
             expense_breakdown[line["category"]] = _round2(
-                expense_breakdown.get(line["category"], 0.0) + share * line["amount"]
+                expense_breakdown.get(line["category"], 0.0)
+                + _line_share(line, share) * line["amount"]
             )
 
         excluded = _round2(sum(

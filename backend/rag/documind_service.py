@@ -365,7 +365,7 @@ class DocuMindService:
             landlord_id=landlord_id, property_id=property_id, unit_id=unit_id,
         )
 
-    def list_manual_loan_entries(self, landlord_id, property_id, year):
+    def list_manual_loan_entries(self, landlord_id, property_id, year=None):
         return self._finance_overrides.list_manual_loan_entries(landlord_id, property_id, year)
 
     async def ask_documind(self, payload: AskRequest, landlord_id: str) -> AskResponse:

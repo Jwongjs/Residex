@@ -423,6 +423,9 @@ class CompletenessTests(unittest.TestCase):
             _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": "2025-01"}),
         ]
         result = _summary(docs, [_prop("p1", "House")], year=2025, today=date(2026, 1, 1))
+        # has_mortgage is unset here (the module-level _prop() helper doesn't
+        # set it) and 'loan' is still expected. Only an explicit "no mortgage",
+        # or a recorded settlement date, stops the asking — never silence.
         self.assertEqual(
             result["missing_categories"]["p1"],
             ["loan", "tax", "upkeep", "maintenance", "insurance"],
@@ -433,6 +436,7 @@ class CompletenessTests(unittest.TestCase):
     def test_empty_year_yields_empty_not_zero_truth(self):
         result = _summary([], [_prop("p1", "House")], year=2025, today=date(2026, 1, 1))
         self.assertEqual(result["totals"]["received_rent"], 0.0)
+        # See note above: has_mortgage unset still expects a loan document.
         self.assertEqual(result["missing_categories"]["p1"],
                          ["rental_invoice", "loan", "tax", "upkeep", "maintenance", "insurance"])
 
@@ -655,7 +659,12 @@ class NonDeductibleLineTests(unittest.TestCase):
         docs = [_doc("p1", "expenses", {"expense_lines": [
             {"subtype": "loan_principal", "amount": 12000.0, "period_year": 2025},
         ]})]
-        result = _summary(docs, [_prop("p1", "House")])
+        # has_mortgage=True (rather than the module-level _prop() helper's
+        # unset default) so 'loan' is still expected for this year and this
+        # test actually exercises the coverage-satisfaction logic under test,
+        # rather than being vacuously true via _loan_expected_for's unset gate.
+        prop = dict(_prop("p1", "House"), has_mortgage=True)
+        result = _summary(docs, [prop])
         self.assertIn("loan", result["missing_categories"]["p1"])
 
     def test_exclusion_is_announced_not_silent(self):
@@ -844,6 +853,14 @@ class ProfileExpectationTests(unittest.TestCase):
         self.assertIn("loan", row["missing"])
 
     def test_unknown_profile_keeps_todays_behaviour(self):
+        # THE CONSERVATISM GUARD. has_mortgage is unset here (the module-level
+        # _prop() helper doesn't set it), which is the state of every property
+        # registered before the mortgage question existed. An unanswered
+        # mortgage must still be asked for a loan document: silence is not a
+        # "no". Settlement suppression must key off a recorded date alone —
+        # routing this through the completeness predicate (which requires
+        # has_mortgage is True) tells those landlords their year is complete
+        # when a deductible interest statement is still missing.
         row = self._row(_prop("p1", "House"))
         self.assertIn("maintenance", row["missing"])
         self.assertIn("insurance", row["missing"])
@@ -1890,14 +1907,13 @@ class ManualLoanEntryEngineTests(unittest.TestCase):
 
 
 class LoanCompletenessTests(unittest.TestCase):
-    def _prop_manual(self, cadence="annual"):
+    def _prop_mortgaged(self, cadence="annual"):
         return {"property_id": "p1", "name": "Block", "ownership_share": 1.0,
-                "has_mortgage": True, "loan_input_method": "manual",
-                "loan_input_cadence": cadence}
+                "has_mortgage": True, "loan_input_cadence": cadence}
 
     def test_incomplete_when_a_unit_has_no_figures(self):
         summary = _summary(
-            documents=[], properties=[self._prop_manual()],
+            documents=[], properties=[self._prop_mortgaged()],
             units={"p1": [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]},
             manual_loan_entries=[
                 {"property_id": "p1", "unit_id": "u1", "year": 2025, "month": None,
@@ -1912,7 +1928,7 @@ class LoanCompletenessTests(unittest.TestCase):
 
     def test_complete_when_every_unit_resolved(self):
         summary = _summary(
-            documents=[], properties=[self._prop_manual()],
+            documents=[], properties=[self._prop_mortgaged()],
             units={"p1": [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]},
             manual_loan_entries=[
                 {"property_id": "p1", "unit_id": "u1", "year": 2025, "month": None,
@@ -1931,7 +1947,7 @@ class LoanCompletenessTests(unittest.TestCase):
                     "interest_paid": 100.0, "principal_paid": 0.0, "cadence": "monthly"}
                    for m in range(1, 12)]  # only 11 of 12
         summary = _summary(
-            documents=[], properties=[self._prop_manual("monthly")], year=2024,
+            documents=[], properties=[self._prop_mortgaged("monthly")], year=2024,
             units={"p1": [{"unit_id": "u1", "label": "A-1"}]},
             manual_loan_entries=entries,
         )
@@ -1939,7 +1955,7 @@ class LoanCompletenessTests(unittest.TestCase):
 
     def test_whole_property_scope_complete_when_manual_entry_present(self):
         summary = _summary(
-            documents=[], properties=[self._prop_manual()],
+            documents=[], properties=[self._prop_mortgaged()],
             manual_loan_entries=[
                 {"property_id": "p1", "unit_id": None, "year": 2025, "month": None,
                  "interest_paid": 1000.0, "principal_paid": 0.0, "cadence": "annual"},
@@ -1952,16 +1968,27 @@ class LoanCompletenessTests(unittest.TestCase):
 
     def test_whole_property_scope_incomplete_when_no_figures(self):
         summary = _summary(
-            documents=[], properties=[self._prop_manual()],
+            documents=[], properties=[self._prop_mortgaged()],
         )
         block = summary["properties"][0]
         self.assertTrue(block["manual_loan_incomplete"])
         whole = next(u for u in block["units"] if u["unit_id"] is None)
         self.assertEqual(whole["loan_status"], "incomplete")
 
-    def test_not_evaluated_for_upload_method(self):
-        prop = self._prop_manual()
-        prop["loan_input_method"] = "upload"
+    def test_evaluated_for_any_mortgaged_property(self):
+        # The entry-method fork is gone: completeness tracking applies to every
+        # mortgaged property, not only ones that once answered "manual".
+        summary = _summary(
+            documents=[], properties=[self._prop_mortgaged()],
+            units={"p1": [{"unit_id": "u1", "label": "A-1"}]},
+        )
+        block = summary["properties"][0]
+        self.assertTrue(block["manual_loan_incomplete"])
+        self.assertEqual(block["units"][0]["loan_status"], "incomplete")
+
+    def test_not_evaluated_when_not_mortgaged(self):
+        prop = self._prop_mortgaged()
+        prop["has_mortgage"] = False
         summary = _summary(
             documents=[], properties=[prop],
             units={"p1": [{"unit_id": "u1", "label": "A-1"}]},
@@ -1969,6 +1996,15 @@ class LoanCompletenessTests(unittest.TestCase):
         block = summary["properties"][0]
         self.assertFalse(block["manual_loan_incomplete"])
         self.assertIsNone(block["units"][0]["loan_status"])
+
+    def test_not_evaluated_when_mortgage_unanswered(self):
+        prop = self._prop_mortgaged()
+        prop["has_mortgage"] = None
+        summary = _summary(
+            documents=[], properties=[prop],
+            units={"p1": [{"unit_id": "u1", "label": "A-1"}]},
+        )
+        self.assertFalse(summary["properties"][0]["manual_loan_incomplete"])
 
 
 class WholePropertyScopeExpenseLineTests(unittest.TestCase):
@@ -2009,3 +2045,303 @@ class WholePropertyScopeExpenseLineTests(unittest.TestCase):
         self.assertEqual(result["totals"]["statutory_rental_income"], 983.33)
         self.assertEqual(result["totals"]["net_pl"], 800.0)
         self.assertEqual(result["totals"]["direct_expenses"], 200.0)
+
+
+class LoanShareExemptionTests(unittest.TestCase):
+    """Loan interest and principal are the landlord's own borrowing, not a
+    cost shared with co-owners, so they pass through at face value at any
+    ownership share. Every other expense line still scales."""
+
+    def _docs(self):
+        return [
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 8200.0, "principal_paid": 3000.0}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+            ]}),
+        ]
+
+    def test_direct_expenses_reconciles_against_its_own_lines_at_half_share(self):
+        # THE GATE. direct_expenses must equal the sum of the deductible
+        # expense_lines the app renders beneath it. A site missed in the
+        # per-line conversion breaks this and nothing else.
+        result = _summary(self._docs(), [_prop("p1", "Block", share=0.5)])
+        block = result["properties"][0]
+        deductible = [l for l in block["expense_lines"] if l["deductible"]]
+        self.assertAlmostEqual(
+            block["direct_expenses"], sum(l["amount"] for l in deductible), places=2
+        )
+
+    def test_direct_expenses_reconciles_at_full_share(self):
+        result = _summary(self._docs(), [_prop("p1", "Block", share=1.0)])
+        block = result["properties"][0]
+        deductible = [l for l in block["expense_lines"] if l["deductible"]]
+        self.assertAlmostEqual(
+            block["direct_expenses"], sum(l["amount"] for l in deductible), places=2
+        )
+
+    def test_loan_interest_is_whole_and_other_expenses_are_halved(self):
+        result = _summary(self._docs(), [_prop("p1", "Block", share=0.5)])
+        block = result["properties"][0]
+        by_subtype = {l["subtype"]: l for l in block["expense_lines"]}
+        self.assertEqual(by_subtype["interest_statement"]["amount"], 8200.0)
+        self.assertEqual(by_subtype["loan_principal"]["amount"], 3000.0)
+        self.assertEqual(by_subtype["maintenance"]["amount"], 500.0)
+        # 8200 (whole) + 500 (half of 1000); principal is never deductible.
+        self.assertAlmostEqual(block["direct_expenses"], 8700.0, places=2)
+
+    def test_loan_lines_carry_no_full_amount_and_others_do(self):
+        result = _summary(self._docs(), [_prop("p1", "Block", share=0.5)])
+        by_subtype = {l["subtype"]: l
+                      for l in result["properties"][0]["expense_lines"]}
+        self.assertNotIn("full_amount", by_subtype["interest_statement"])
+        self.assertNotIn("full_amount", by_subtype["loan_principal"])
+        self.assertEqual(by_subtype["maintenance"]["full_amount"], 1000.0)
+
+    def test_principal_passes_whole_through_landlord_expenses_and_net_pl(self):
+        result = _summary(self._docs(), [_prop("p1", "Block", share=0.5)])
+        block = result["properties"][0]
+        # landlord_expenses = 8200 interest + 3000 principal (both whole)
+        #                     + 500 maintenance (halved)
+        self.assertAlmostEqual(block["landlord_expenses"], 11700.0, places=2)
+        self.assertAlmostEqual(
+            block["net_pl"], block["received_rent"] - 11700.0, places=2
+        )
+
+    def test_expense_breakdown_matches_the_lines(self):
+        result = _summary(self._docs(), [_prop("p1", "Block", share=0.5)])
+        breakdown = result["expense_breakdown"]
+        self.assertAlmostEqual(breakdown["loan"], 8200.0, places=2)
+        self.assertAlmostEqual(breakdown["maintenance"], 500.0, places=2)
+
+    def test_bundled_expenses_loan_lines_are_exempt_too(self):
+        # A bundled 'expenses' statement carries subtype 'loan_interest',
+        # not 'interest_statement' — both must be exempt.
+        docs = [_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "loan_interest", "amount": 4000.0, "period_year": 2025},
+            {"subtype": "loan_principal", "amount": 2000.0, "period_year": 2025},
+        ]})]
+        result = _summary(docs, [_prop("p1", "Block", share=0.5)])
+        by_subtype = {l["subtype"]: l
+                      for l in result["properties"][0]["expense_lines"]}
+        self.assertEqual(by_subtype["loan_interest"]["amount"], 4000.0)
+        self.assertEqual(by_subtype["loan_principal"]["amount"], 2000.0)
+
+    def test_unit_scoped_loan_lines_are_exempt(self):
+        docs = [
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 1200.0}, unit_id="u1"),
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u1"),
+        ]
+        result = _summary(docs, [_prop("p1", "Block", share=0.5)],
+                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
+        unit = result["properties"][0]["units"][0]
+        loan = next(l for l in unit["expense_lines"]
+                    if l["subtype"] == "interest_statement")
+        self.assertEqual(loan["amount"], 1200.0)
+
+    def test_full_share_property_is_unchanged(self):
+        # The overwhelmingly common case must be byte-identical to before.
+        docs = self._docs()
+        result = _summary(docs, [_prop("p1", "Block", share=1.0)])
+        block = result["properties"][0]
+        self.assertAlmostEqual(block["direct_expenses"], 9200.0, places=2)
+        self.assertAlmostEqual(block["landlord_expenses"], 12200.0, places=2)
+        for line in block["expense_lines"]:
+            self.assertNotIn("full_amount", line)
+
+    # --- unit-scope gates -------------------------------------------------
+    # Everything above asserts property-level figures. The unit `contribution`
+    # and `statutory_contribution` expressions were also re-associated by this
+    # task — they subtract an already per-line-weighted expense sum from a
+    # share-scaled income term, rather than scaling the whole difference. That
+    # is invisible to every assertion above, so it gets its own gates.
+
+    def _unit_docs(self):
+        return [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u1"),
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 1200.0, "principal_paid": 3000.0},
+                 unit_id="u1"),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 600.0, "period_year": 2025},
+            ]}, unit_id="u1"),
+        ]
+
+    def _unit_at(self, share):
+        result = _summary(self._unit_docs(), [_prop("p1", "Block", share=share)],
+                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
+        return result["properties"][0]["units"][0]
+
+    def test_unit_contribution_reconciles_against_its_own_lines_at_half_share(self):
+        # THE UNIT GATE. Re-wrapping this as share * (income - expenses) — the
+        # shape it had before this task — scales the loan lines a second time
+        # and breaks this, while leaving every other test in this file green.
+        unit = self._unit_at(0.5)
+        gross = sum(m["amount"] for m in unit["months"])
+        landlord_paid = sum(l["amount"] for l in unit["expense_lines"]
+                            if l["paid_by_landlord"])
+        self.assertAlmostEqual(
+            unit["contribution"], 0.5 * gross - landlord_paid, places=2
+        )
+
+    def test_unit_statutory_reconciles_and_keeps_loan_interest_whole(self):
+        # The statutory expression is a separate site from `contribution` and
+        # can regress on its own. Asserted against the unit's own rendered
+        # lines, plus the face values that prove the exemption reached them.
+        unit = self._unit_at(0.5)
+        gross = sum(m["amount"] for m in unit["months"])
+        deductible = sum(l["amount"] for l in unit["expense_lines"]
+                         if l["deductible"])
+        self.assertAlmostEqual(
+            unit["statutory_contribution"], 0.5 * gross - deductible, places=2
+        )
+        by_subtype = {l["subtype"]: l["amount"] for l in unit["expense_lines"]}
+        self.assertEqual(by_subtype["interest_statement"], 1200.0)  # whole
+        self.assertEqual(by_subtype["maintenance"], 300.0)          # halved
+
+    def test_unit_statutory_and_contribution_differ_by_the_nondeductible_lines(self):
+        # Pins the two expressions against each other. Principal is exempt from
+        # share *and* non-deductible, so the gap is its whole face value —
+        # 3000, not 1500. Scaling either expression twice collapses it to 1500.
+        unit = self._unit_at(0.5)
+        nondeductible = sum(l["amount"] for l in unit["expense_lines"]
+                            if l["paid_by_landlord"] and not l["deductible"])
+        self.assertAlmostEqual(nondeductible, 3000.0, places=2)
+        self.assertAlmostEqual(
+            unit["statutory_contribution"] - unit["contribution"],
+            nondeductible, places=2
+        )
+
+
+class MortgageSettlementTests(unittest.TestCase):
+    def _prop(self, settled=None, cadence="annual"):
+        row = {"property_id": "p1", "name": "Block", "ownership_share": 1.0,
+               "has_mortgage": True, "loan_input_cadence": cadence}
+        if settled is not None:
+            row["mortgage_settled_on"] = settled
+        return row
+
+    def _lease(self):
+        # Gives _property_coverage a window to walk (2026 through today's year).
+        return _doc("p1", "lease", {"monthly_rent": 1000.0,
+                                    "lease_start": "2026-01-01",
+                                    "lease_end": "2028-12-31"})
+
+    def _missing_for(self, year, settled=None):
+        summary = _summary(
+            [self._lease()], [self._prop(settled)], year=year,
+            today=date(2029, 6, 15),
+        )
+        return summary["missing_categories"].get("p1", [])
+
+    def test_year_before_settlement_still_expects_loan(self):
+        self.assertIn("loan", self._missing_for(2026, settled="2027-03"))
+
+    def test_settlement_year_still_expects_loan(self):
+        self.assertIn("loan", self._missing_for(2027, settled="2027-03"))
+
+    def test_year_after_settlement_does_not_expect_loan(self):
+        self.assertNotIn("loan", self._missing_for(2028, settled="2027-03"))
+
+    def test_unsettled_property_expects_loan_in_every_year(self):
+        self.assertIn("loan", self._missing_for(2028))
+
+    def test_malformed_settlement_date_is_treated_as_unset(self):
+        # Never silently suppress a year's expectation on unparseable data.
+        for bad in ("not-a-date", "2027", "", "20XX-03", None):
+            with self.subTest(bad=bad):
+                self.assertIn("loan", self._missing_for(2028, settled=bad))
+
+    def test_coverage_grid_stops_flagging_loan_after_settlement(self):
+        summary = _summary(
+            [self._lease()], [self._prop("2027-03")], year=2028,
+            today=date(2029, 6, 15),
+        )
+        coverage = {row["year"]: row for row in summary["properties"][0]["coverage"]}
+        self.assertIn("loan", coverage[2026]["missing"])
+        self.assertIn("loan", coverage[2027]["missing"])
+        self.assertNotIn("loan", coverage[2028]["missing"])
+        self.assertNotIn("loan", coverage[2029]["missing"])
+
+    def test_records_grid_keeps_its_loan_column_after_settlement(self):
+        # The column set is the property's whole-history vocabulary, not one
+        # year's expectation — a settled property's past years still hold
+        # loan documents and must still have somewhere to show them.
+        summary = _summary(
+            [self._lease()], [self._prop("2027-03")], year=2028,
+            today=date(2029, 6, 15),
+        )
+        self.assertIn("loan", summary["properties"][0]["expected_categories"])
+
+    def test_completeness_resolves_for_years_after_settlement(self):
+        summary = _summary(
+            [], [self._prop("2027-03")], year=2028, today=date(2029, 6, 15),
+        )
+        self.assertFalse(summary["properties"][0]["manual_loan_incomplete"])
+
+    def test_completeness_still_incomplete_in_the_settlement_year(self):
+        summary = _summary(
+            [], [self._prop("2027-03")], year=2027, today=date(2029, 6, 15),
+        )
+        self.assertTrue(summary["properties"][0]["manual_loan_incomplete"])
+
+    def test_monthly_cadence_ignores_months_after_the_settled_month(self):
+        entries = [{"property_id": "p1", "unit_id": None, "year": 2027,
+                    "month": m, "interest_paid": 100.0, "principal_paid": 0.0,
+                    "cadence": "monthly"} for m in (1, 2, 3)]
+        summary = _summary(
+            [], [self._prop("2027-03", cadence="monthly")], year=2027,
+            today=date(2029, 6, 15), manual_loan_entries=entries,
+        )
+        self.assertFalse(summary["properties"][0]["manual_loan_incomplete"])
+
+    def test_monthly_cadence_still_flags_a_gap_before_the_settled_month(self):
+        entries = [{"property_id": "p1", "unit_id": None, "year": 2027,
+                    "month": m, "interest_paid": 100.0, "principal_paid": 0.0,
+                    "cadence": "monthly"} for m in (1, 3)]
+        summary = _summary(
+            [], [self._prop("2027-03", cadence="monthly")], year=2027,
+            today=date(2029, 6, 15), manual_loan_entries=entries,
+        )
+        self.assertTrue(summary["properties"][0]["manual_loan_incomplete"])
+
+    def test_an_unanswered_mortgage_is_still_nudged_and_never_reads_complete(self):
+        # The regression this predicate split exists to prevent. has_mortgage
+        # is None on every property registered before the question existed.
+        # Routing the expectation through the completeness predicate (which
+        # demands has_mortgage is True) made those properties indistinguishable
+        # from an explicit "no mortgage": the loan nudge vanished, the year
+        # flipped to complete, and the statutory figure lost its provisional
+        # caveat — while a deductible interest statement was still missing.
+        prop = {"property_id": "p1", "name": "Block", "ownership_share": 1.0}
+        self.assertIsNone(prop.get("has_mortgage"), "fixture must stay unanswered")
+        summary = _summary([self._lease()], [prop], year=2027,
+                           today=date(2029, 6, 15))
+        self.assertIn("loan", summary["missing_categories"].get("p1", []))
+        coverage = {r["year"]: r for r in summary["properties"][0]["coverage"]}
+        self.assertIn("loan", coverage[2027]["missing"])
+        # ...but it is still not held to a completeness standard it never
+        # opted into. That half of the asymmetry is the deliberate one.
+        self.assertFalse(summary["properties"][0]["manual_loan_incomplete"])
+
+    def test_settlement_suppresses_even_when_the_mortgage_is_unanswered(self):
+        # Suppression keys off the recorded date, not has_mortgage, so the two
+        # predicates cannot silently re-converge.
+        prop = {"property_id": "p1", "name": "Block", "ownership_share": 1.0,
+                "mortgage_settled_on": "2027-03"}
+        summary = _summary([self._lease()], [prop], year=2028,
+                           today=date(2029, 6, 15))
+        self.assertNotIn("loan", summary["missing_categories"].get("p1", []))
+
+    def test_has_mortgage_stays_true_and_history_still_reconciles(self):
+        docs = [self._lease(),
+                _doc("p1", "loan", {"subtype": "interest_statement",
+                                    "period_year": 2026, "interest_paid": 5000.0})]
+        summary = _summary(docs, [self._prop("2027-03")], year=2026,
+                           today=date(2029, 6, 15))
+        block = summary["properties"][0]
+        self.assertNotIn("loan", summary["missing_categories"].get("p1", []))
+        self.assertAlmostEqual(block["direct_expenses"], 5000.0, places=2)

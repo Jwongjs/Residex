@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/data/datasources/documind_remote_datasource.dart';
 import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
 import 'package:residex_app/features/landlord/domain/entities/property.dart';
+import 'package:residex_app/features/landlord/domain/repositories/property_repository.dart';
 import 'package:residex_app/features/landlord/presentation/providers/documind_provider.dart';
 import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
@@ -26,7 +27,7 @@ class _FakeLoanDataSource extends DocuMindRemoteDataSource {
   @override
   Future<List<Map<String, dynamic>>> listManualLoanEntries({
     required String propertyId,
-    required int year,
+    int? year,
   }) async => _entries;
 
   @override
@@ -49,6 +50,36 @@ class _FakeLoanDataSource extends DocuMindRemoteDataSource {
       },
     ];
   }
+}
+
+/// Records what the settlement sheet writes, so a test can assert both halves
+/// of that save: the property reaching the repository *and* the finance
+/// summary being rebuilt afterwards.
+class _FakePropertyRepository implements PropertyRepository {
+  _FakePropertyRepository(this.property);
+
+  final Property property;
+  Property? lastUpdated;
+
+  @override
+  Future<void> updateProperty(Property property) async {
+    lastUpdated = property;
+  }
+
+  @override
+  Future<String> createProperty(Property property) async => 'p1';
+  @override
+  Future<void> deleteProperty(String propertyId) async {}
+  @override
+  Future<Property?> getPropertyById(String propertyId) async => property;
+  @override
+  Future<List<Property>> getPropertiesByLandlord(String landlordId) async =>
+      [property];
+  @override
+  Future<List<Property>> searchProperties(String landlordId, String query) async => [];
+  @override
+  Stream<List<Property>> streamPropertiesByLandlord(String landlordId) =>
+      const Stream.empty();
 }
 
 FinanceSummary _summaryWithProperty(int year,
@@ -107,6 +138,13 @@ Future<void> _pumpScreenWithProperty(
         financeYearsProvider.overrideWith((ref) async => [year]),
         financeSummaryProvider.overrideWith((ref, y) async => summary),
         propertyByIdProvider.overrideWith((ref, id) async => property),
+        // Overridden even though this helper is for tests that don't care
+        // about loan entries: the loan figures row is now gated on
+        // hasMortgage alone, so any mortgaged property renders it and reads
+        // this provider. Left un-overridden it reaches the real data source,
+        // and only passes because the emulator host is unroutable from a
+        // desktop test runner — not because it resolves deterministically.
+        manualLoanEntriesProvider.overrideWith((ref, args) async => const []),
       ],
       child: const MaterialApp(
         home: FinanceScreen(),
@@ -176,10 +214,16 @@ FinanceSummary _summaryMissing(List<String> categories) {
   );
 }
 
+/// Task 2: `loanInputMethod` no longer exists — both loan routes (upload to
+/// the Loans & Financing folder, or type at this panel) are permanently
+/// available, so `loanInputCadence` defaults to 'annual' unconditionally
+/// rather than only when the (now-removed) method was 'manual'.
 Property _fakeProperty({
-  required bool hasMortgage,
-  required String? loanInputMethod,
+  // Nullable, and still required: null is the state every property created
+  // before the mortgage question existed is in, so it has to be expressible.
+  required bool? hasMortgage,
   String? loanInputCadence,
+  String? mortgageSettledOn,
 }) {
   return Property(
     id: 'p1',
@@ -196,9 +240,8 @@ Property _fakeProperty({
     purchasePrice: 500000,
     currentValue: 550000,
     hasMortgage: hasMortgage,
-    loanInputMethod: loanInputMethod,
-    loanInputCadence:
-        loanInputCadence ?? (loanInputMethod == 'manual' ? 'annual' : null),
+    loanInputCadence: loanInputCadence ?? 'annual',
+    mortgageSettledOn: mortgageSettledOn,
     createdAt: DateTime(2025, 1, 1),
   );
 }
@@ -238,14 +281,31 @@ void main() {
   });
 
   testWidgets(
-      '"Add loan figures" is hidden when loanInputMethod is manual but hasMortgage is not true',
+      '"Add loan figures" is hidden when hasMortgage is not true',
       (tester) async {
     final year = DateTime.now().year;
     await _pumpScreenWithProperty(
       tester,
       year,
       _summaryWithProperty(year, complete: true),
-      _fakeProperty(hasMortgage: false, loanInputMethod: 'manual'),
+      _fakeProperty(hasMortgage: false),
+    );
+
+    expect(find.text('Add loan figures'), findsNothing);
+  });
+
+  testWidgets(
+      '"Add loan figures" is hidden when the mortgage question is unanswered',
+      (tester) async {
+    // `hasMortgage == true` and not `!= false`: an unanswered mortgage is not
+    // a yes. Offering loan entry to a landlord who never said they have a
+    // mortgage would invent an expectation they never agreed to.
+    final year = DateTime.now().year;
+    await _pumpScreenWithProperty(
+      tester,
+      year,
+      _summaryWithProperty(year, complete: true),
+      _fakeProperty(hasMortgage: null),
     );
 
     expect(find.text('Add loan figures'), findsNothing);
@@ -257,7 +317,7 @@ void main() {
     // Previously the button was gated on `block.manualLoanIncomplete`, which
     // flips false the instant figures are booked — vanishing the only route
     // back in exactly when a typo needed correcting. It is now gated on
-    // loanInputMethod alone, so it must stay put here.
+    // hasMortgage alone, so it must stay put here.
     //
     // Uses _pumpScreenWithLoanEntries (not _pumpScreenWithProperty) so
     // manualLoanEntriesProvider resolves deterministically to "no entries
@@ -269,7 +329,7 @@ void main() {
       tester,
       year,
       _summaryWithProperty(year, complete: true, manualLoanIncomplete: false),
-      _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+      _fakeProperty(hasMortgage: true),
       const [],
     );
 
@@ -277,7 +337,7 @@ void main() {
   });
 
   testWidgets(
-      '"Add loan figures" shows when hasMortgage is true, loanInputMethod is manual, and manualLoanIncomplete is true',
+      '"Add loan figures" shows for a mortgaged property',
       (tester) async {
     // Brackets the previous test: together the pair pins that the control
     // shows regardless of manualLoanIncomplete's value, rather than the two
@@ -287,75 +347,22 @@ void main() {
       tester,
       year,
       _summaryWithProperty(year, complete: true, manualLoanIncomplete: true),
-      _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
+      _fakeProperty(hasMortgage: true),
       const [],
     );
 
     expect(find.text('Add loan figures'), findsOneWidget);
   });
 
-  testWidgets('the nudge no longer offers manual entry, even for a null method',
+  testWidgets('the nudge still counts a missing loan document',
       (tester) async {
-    // The fork moved to the property dialog. Offering "enter figures manually"
-    // here re-asked a question the landlord already answered at registration,
-    // which is the duplication this workstream exists to remove.
+    // 'loan' nudges like any other missing category now — there is no
+    // per-property routing preference left to gate it on.
     await _pumpScreenWithProperty(
       tester, 2026,
       _summaryMissing(const ['loan']),
-      _fakeProperty(hasMortgage: true, loanInputMethod: null),
+      _fakeProperty(hasMortgage: true),
     );
-    expect(find.text('Enter figures manually'), findsNothing);
-    // ...but a null-method property is still nudged to upload the document.
-    expect(find.text('1 document needed for 2026'), findsOneWidget);
-  });
-
-  testWidgets('a manual property drops loans from the missing-docs nudge',
-      (tester) async {
-    // The panel row owns loan entry in manual mode. A nudge about a loan
-    // document the landlord will never upload is simply wrong.
-    //
-    // Uses _pumpScreenWithLoanEntries (not _pumpScreenWithProperty): this
-    // property is manual + mortgaged, so the loan-figures row also renders
-    // and reads manualLoanEntriesProvider — leaving it un-overridden here
-    // only passed because 10.0.2.2:8000 is unroutable from a desktop test
-    // runner, not because the provider actually resolved deterministically.
-    await _pumpScreenWithLoanEntries(
-      tester, 2026,
-      _summaryMissing(const ['loan']),
-      _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
-      const [],
-    );
-    // Loans was the only missing category, so the nudge vanishes entirely
-    // rather than counting down to a document that is never coming.
-    expect(find.text('Enter figures manually'), findsNothing);
-    expect(find.textContaining('needed for 2026'), findsNothing);
-  });
-
-  testWidgets('an upload property still nudges about the loan document',
-      (tester) async {
-    await _pumpScreenWithProperty(
-      tester, 2026,
-      _summaryMissing(const ['loan']),
-      _fakeProperty(hasMortgage: true, loanInputMethod: 'upload'),
-    );
-    expect(find.text('1 document needed for 2026'), findsOneWidget);
-    expect(find.text('Enter figures manually'), findsNothing);
-  });
-
-  testWidgets('a manual property still nudges for its other missing categories',
-      (tester) async {
-    // See the previous test's note: _pumpScreenWithLoanEntries makes
-    // manualLoanEntriesProvider resolve deterministically instead of
-    // relying on an unroutable network call to fail the same way every time.
-    await _pumpScreenWithLoanEntries(
-      tester, 2026,
-      _summaryMissing(const ['loan', 'insurance']),
-      _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'),
-      const [],
-    );
-    // Two missing, one filtered out: the count must drop to 1, not stay at 2.
-    // Asserting on the count is what pins the filtering — the banner never
-    // renders category names, so asserting on those would prove nothing.
     expect(find.text('1 document needed for 2026'), findsOneWidget);
   });
 
@@ -369,21 +376,27 @@ void main() {
         properties: summary.properties,
         missingCategories: const {'p1': ['insurance']},
       ),
-      _fakeProperty(hasMortgage: true, loanInputMethod: null),
+      _fakeProperty(hasMortgage: true),
     );
     expect(find.text('Enter figures manually'), findsNothing);
   });
 
-  testWidgets('loan button depends only on loanInputMethod, not on manualLoanIncomplete',
+  testWidgets(
+      '"Add loan figures" shows for a mortgaged property regardless of manualLoanIncomplete — '
+      'the dead end this rework closes',
       (tester) async {
-    // The button is gated on loanInputMethod == 'manual' alone. A null
-    // method — even with manualLoanIncomplete true — must not show it.
+    // Before this rework, a mortgaged property that never answered "upload
+    // or type it myself" (loanInputMethod null) had no route to manual entry
+    // at all: the Loans folder stayed visible (so it wasn't "upload"), but
+    // the panel row was gated on loanInputMethod == 'manual', which was also
+    // never true. Every existing property was in exactly this state. The row
+    // is now gated on hasMortgage alone, so it shows unconditionally here.
     await _pumpScreenWithProperty(
       tester, 2026,
       _summaryWithProperty(2026, complete: true, manualLoanIncomplete: true),
-      _fakeProperty(hasMortgage: true, loanInputMethod: null),
+      _fakeProperty(hasMortgage: true),
     );
-    expect(find.text('Add loan figures'), findsNothing);
+    expect(find.text('Add loan figures'), findsOneWidget);
   });
 
   testWidgets('property panel uses the bare glossary and shows cash out', (tester) async {
@@ -466,7 +479,11 @@ void main() {
       ],
     );
     await _pumpScreen(tester, 2026, summary);
-    expect(find.text('Shown at your 50% share'), findsOneWidget);
+    expect(
+      find.text('Shown at your 50% share. '
+          'Loan interest and principal are shown in full.'),
+      findsOneWidget,
+    );
     expect(find.textContaining("property's full figures"), findsNothing);
   });
 
@@ -504,10 +521,10 @@ void main() {
     expect(find.text('Quit rent'), findsNothing);
   });
 
-  testWidgets('a manual property with booked figures shows them with Modify',
+  testWidgets('a property with booked figures shows them with Modify',
       (tester) async {
     await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
-        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), [
+        _fakeProperty(hasMortgage: true), [
       {'interest_paid': 8200.0, 'principal_paid': 14000.0,
        'month': null, 'unit_id': null, 'cadence': 'annual'},
     ]);
@@ -520,20 +537,15 @@ void main() {
     expect(find.text('Add loan figures'), findsNothing);
   });
 
-  testWidgets('a manual property with no figures still offers Add',
+  testWidgets('a mortgaged property with no figures yet offers Add',
       (tester) async {
+    // Both loan routes (upload, or type here) are always available now, so a
+    // mortgaged property with nothing booked always offers Add — there is no
+    // property-level preference left that could hide this row instead.
     await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
-        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), const []);
+        _fakeProperty(hasMortgage: true), const []);
 
     expect(find.text('Add loan figures'), findsOneWidget);
-    expect(find.text('Modify'), findsNothing);
-  });
-
-  testWidgets('an upload property shows no loan figures row', (tester) async {
-    await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
-        _fakeProperty(hasMortgage: true, loanInputMethod: 'upload'), const []);
-
-    expect(find.text('Add loan figures'), findsNothing);
     expect(find.text('Modify'), findsNothing);
   });
 
@@ -543,7 +555,7 @@ void main() {
     // totals (3200, 200, 2800, 3000, 3100), which would make textContaining
     // over-match.
     await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
-        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), [
+        _fakeProperty(hasMortgage: true), [
       {'interest_paid': 700.0, 'principal_paid': 1800.0,
        'month': null, 'unit_id': null, 'cadence': 'annual'},
       {'interest_paid': 300.0, 'principal_paid': 700.0,
@@ -561,13 +573,16 @@ void main() {
     // covering the cadence — here, only January is booked out of twelve
     // monthly instalments. The figures block above this line would
     // otherwise look clean and complete on its own.
+    //
+    // Year is a past one (not the current year) so the denominator is the
+    // full 12 rather than elapsed-so-far — see the dedicated
+    // "counts elapsed months, not 12" test for the current-year case.
     await _pumpScreenWithLoanEntries(
       tester,
-      2026,
-      _summaryWithProperty(2026, complete: true, manualLoanIncomplete: true),
+      2020,
+      _summaryWithProperty(2020, complete: true, manualLoanIncomplete: true),
       _fakeProperty(
         hasMortgage: true,
-        loanInputMethod: 'manual',
         loanInputCadence: 'monthly',
       ),
       [
@@ -578,7 +593,7 @@ void main() {
       ],
     );
 
-    expect(find.text('1 of 12 months recorded for 2026'), findsOneWidget);
+    expect(find.text('1 of 12 months recorded for 2020'), findsOneWidget);
   });
 
   testWidgets(
@@ -590,7 +605,6 @@ void main() {
       _summaryWithProperty(2026, complete: true, manualLoanIncomplete: false),
       _fakeProperty(
         hasMortgage: true,
-        loanInputMethod: 'manual',
         loanInputCadence: 'monthly',
       ),
       [
@@ -612,7 +626,7 @@ void main() {
     // reachable. Presence of a booked entry is what should decide this, not
     // whether its amounts happen to be nonzero.
     await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
-        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), [
+        _fakeProperty(hasMortgage: true), [
       {'interest_paid': 0.0, 'principal_paid': 0.0,
        'month': null, 'unit_id': null, 'cadence': 'annual'},
     ]);
@@ -628,7 +642,7 @@ void main() {
     // full-width target beside real figures invites accidental opens while
     // scrolling.
     await _pumpScreenWithLoanEntries(tester, 2026, _summaryWithProperty(2026, complete: true),
-        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), [
+        _fakeProperty(hasMortgage: true), [
       {'interest_paid': 8200.0, 'principal_paid': 14000.0,
        'month': null, 'unit_id': null, 'cadence': 'annual'},
     ]);
@@ -657,7 +671,7 @@ void main() {
           financeSummaryProvider.overrideWith(
               (ref, y) async => _summaryWithProperty(2026, complete: true)),
           propertyByIdProvider.overrideWith((ref, id) async =>
-              _fakeProperty(hasMortgage: true, loanInputMethod: 'manual')),
+              _fakeProperty(hasMortgage: true)),
           manualLoanEntriesProvider.overrideWith((ref, args) => neverResolves.future),
         ],
         child: const MaterialApp(home: FinanceScreen()),
@@ -699,7 +713,7 @@ void main() {
           financeSummaryProvider.overrideWith(
               (ref, y) async => _summaryWithProperty(2026, complete: true)),
           propertyByIdProvider.overrideWith((ref, id) async =>
-              _fakeProperty(hasMortgage: true, loanInputMethod: 'manual')),
+              _fakeProperty(hasMortgage: true)),
           manualLoanEntriesProvider.overrideWith(
               (ref, args) async => throw Exception('network down')),
         ],
@@ -738,7 +752,7 @@ void main() {
           financeSummaryProvider.overrideWith(
               (ref, y) async => _summaryWithProperty(2026, complete: true)),
           propertyByIdProvider.overrideWith((ref, id) async =>
-              _fakeProperty(hasMortgage: true, loanInputMethod: 'manual')),
+              _fakeProperty(hasMortgage: true)),
           manualLoanEntriesProvider.overrideWith((ref, args) async {
             callCount++;
             if (callCount == 1) return <Map<String, dynamic>>[];
@@ -784,7 +798,7 @@ void main() {
        'month': null, 'unit_id': null, 'cadence': 'annual'},
     ]);
     await _pumpScreenWithFakeDataSource(tester, 2026, _summaryWithProperty(2026, complete: true),
-        _fakeProperty(hasMortgage: true, loanInputMethod: 'manual'), dataSource);
+        _fakeProperty(hasMortgage: true), dataSource);
 
     expect(find.textContaining('8,200'), findsOneWidget);
 
@@ -801,5 +815,210 @@ void main() {
     expect(find.textContaining('15,200'), findsOneWidget);
     expect(find.textContaining('8,200'), findsNothing);
     expect(find.textContaining('14,000'), findsNothing);
+  });
+
+  testWidgets('the settled control is reachable from the empty state',
+      (tester) async {
+    await _pumpScreenWithLoanEntries(
+      tester, 2026, _summaryWithProperty(2026, complete: true),
+      _fakeProperty(hasMortgage: true), const [],
+    );
+
+    expect(find.text('Add loan figures'), findsOneWidget);
+    expect(find.text('Mortgage paid off?'), findsOneWidget);
+  });
+
+  testWidgets('the settled control is reachable from the populated state',
+      (tester) async {
+    await _pumpScreenWithLoanEntries(
+      tester, 2026, _summaryWithProperty(2026, complete: true),
+      _fakeProperty(hasMortgage: true),
+      [{'interest_paid': 8200.0, 'principal_paid': 0.0, 'month': null, 'unit_id': null}],
+    );
+
+    expect(find.text('Modify'), findsOneWidget);
+    expect(find.text('Mortgage paid off?'), findsOneWidget);
+  });
+
+  testWidgets('a year after settlement collapses to the settled state',
+      (tester) async {
+    await _pumpScreenWithLoanEntries(
+      tester, 2028, _summaryWithProperty(2028, complete: true),
+      _fakeProperty(hasMortgage: true, mortgageSettledOn: '2027-03'), const [],
+    );
+
+    expect(find.text('Mortgage settled · March 2027'), findsOneWidget);
+    expect(find.text('Add loan figures'), findsNothing);
+  });
+
+  testWidgets('the settlement year itself still behaves normally',
+      (tester) async {
+    await _pumpScreenWithLoanEntries(
+      tester, 2027, _summaryWithProperty(2027, complete: true),
+      _fakeProperty(hasMortgage: true, mortgageSettledOn: '2027-03'),
+      [{'interest_paid': 2000.0, 'principal_paid': 0.0, 'month': null, 'unit_id': null}],
+    );
+
+    expect(find.text('Loan figures · 2027'), findsOneWidget);
+    expect(find.text('Modify'), findsOneWidget);
+    expect(find.textContaining('Mortgage settled'), findsOneWidget,
+        reason: 'shown as a quiet line, not taking over the block');
+  });
+
+  testWidgets('a year before settlement behaves normally', (tester) async {
+    await _pumpScreenWithLoanEntries(
+      tester, 2026, _summaryWithProperty(2026, complete: true),
+      _fakeProperty(hasMortgage: true, mortgageSettledOn: '2027-03'),
+      [{'interest_paid': 8200.0, 'principal_paid': 0.0, 'month': null, 'unit_id': null}],
+    );
+
+    expect(find.text('Loan figures · 2026'), findsOneWidget);
+    expect(find.text('RM 8,200.00'), findsWidgets);
+  });
+
+  testWidgets('the completeness sub-line counts elapsed months, not 12',
+      (tester) async {
+    // The backend requires only elapsed months (finance_engine.py:98-104);
+    // a hardcoded 12 told a landlord in March they were 3 of 12 done when
+    // they were in fact complete.
+    final now = DateTime.now();
+    final entries = [
+      for (var m = 1; m <= now.month; m++)
+        {'interest_paid': 100.0, 'principal_paid': 0.0, 'month': m, 'unit_id': null},
+    ];
+    await _pumpScreenWithLoanEntries(
+      tester, now.year,
+      _summaryWithProperty(now.year, complete: false, manualLoanIncomplete: true),
+      _fakeProperty(hasMortgage: true, loanInputCadence: 'monthly'), entries,
+    );
+
+    expect(find.textContaining('of ${now.month} months recorded'), findsOneWidget);
+    expect(find.textContaining('of 12 months'), findsNothing);
+  });
+
+  testWidgets('the completeness denominator stops at the settled month',
+      (tester) async {
+    // A *past* settlement year, because that is the only kind the picker can
+    // produce (its year list runs down from the current year). The plan wrote
+    // this against 2027, which was then in the future and made the elapsed
+    // bound 0 — a state no landlord can reach, and one that would push the
+    // implementation into overriding the elapsed bound rather than capping it.
+    final year = DateTime.now().year - 1;
+    await _pumpScreenWithLoanEntries(
+      tester, year,
+      _summaryWithProperty(year, complete: false, manualLoanIncomplete: true),
+      _fakeProperty(hasMortgage: true, loanInputCadence: 'monthly',
+          mortgageSettledOn: '$year-03'),
+      [{'interest_paid': 100.0, 'principal_paid': 0.0, 'month': 1, 'unit_id': null}],
+    );
+
+    expect(find.textContaining('1 of 3 months recorded'), findsOneWidget);
+  });
+
+  testWidgets('the denominator never exceeds the elapsed months', (tester) async {
+    // The settlement picker offers all 12 months of the current year, so a
+    // settled month still in the future is reachable. The backend intersects
+    // both bounds (_months_in_scope, then _loan_expected_for), so the line
+    // must show the elapsed count, not the later settled month.
+    final now = DateTime.now();
+    if (now.month == 12) return; // no future month to pick this month
+    await _pumpScreenWithLoanEntries(
+      tester, now.year,
+      _summaryWithProperty(now.year, complete: false, manualLoanIncomplete: true),
+      _fakeProperty(hasMortgage: true, loanInputCadence: 'monthly',
+          mortgageSettledOn: '${now.year}-12'),
+      [{'interest_paid': 100.0, 'principal_paid': 0.0, 'month': 1, 'unit_id': null}],
+    );
+
+    expect(find.textContaining('1 of ${now.month} months recorded'), findsOneWidget);
+    expect(find.textContaining('of 12 months'), findsNothing);
+  });
+
+  /// Drives the settlement sheet for real — tapping through both steps and
+  /// saving via `propertyControllerProvider` — with a `financeSummaryProvider`
+  /// that answers differently on its second build. The nudge count is
+  /// therefore a direct read of whether the summary was invalidated: it can
+  /// only change if the provider rebuilt.
+  ///
+  /// The settlement date is an engine input (it decides whether `loan` is
+  /// still expected), but `updateProperty` refreshes only the property
+  /// providers. That left the loan block — which reads the property object —
+  /// updating instantly while the nudge above it kept counting the loan
+  /// document as outstanding, so the screen stated two contradictory things
+  /// until a pull-to-refresh.
+  Future<_FakePropertyRepository> pumpForSettlement(
+    WidgetTester tester, {
+    required String? settledOn,
+    required List<String> before,
+    required List<String> after,
+  }) async {
+    final property =
+        _fakeProperty(hasMortgage: true, mortgageSettledOn: settledOn);
+    final repo = _FakePropertyRepository(property);
+    var builds = 0;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2026]),
+          financeSummaryProvider.overrideWith((ref, y) async {
+            builds++;
+            return _summaryMissing(builds == 1 ? before : after);
+          }),
+          propertyByIdProvider.overrideWith((ref, id) async => property),
+          manualLoanEntriesProvider.overrideWith((ref, args) async => const []),
+          propertyRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: FinanceScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return repo;
+  }
+
+  testWidgets('marking the mortgage settled refreshes the finance summary',
+      (tester) async {
+    final repo = await pumpForSettlement(
+      tester,
+      settledOn: null,
+      before: ['tax', 'insurance', 'loan'],
+      after: ['tax', 'insurance'],
+    );
+    expect(find.textContaining('3 documents needed for 2026'), findsOneWidget);
+
+    await tester.tap(find.text('Mortgage paid off?'));
+    await tester.pumpAndSettle();
+    // Scoped to the sheet's ListTile: the year selector behind it also
+    // renders a bare "2026".
+    await tester.tap(find.widgetWithText(ListTile, '2026'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'June'));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastUpdated!.mortgageSettledOn, '2026-06');
+    expect(find.textContaining('2 documents needed for 2026'), findsOneWidget,
+        reason: 'the nudge must not keep counting a loan document the engine '
+            'has already stopped expecting');
+  });
+
+  testWidgets('clearing the settlement refreshes the finance summary',
+      (tester) async {
+    // The same gap in the other direction: the engine starts expecting the
+    // loan document again, so a stale nudge under-counts instead.
+    final repo = await pumpForSettlement(
+      tester,
+      settledOn: '2026-06',
+      before: ['tax', 'insurance'],
+      after: ['tax', 'insurance', 'loan'],
+    );
+    expect(find.textContaining('2 documents needed for 2026'), findsOneWidget);
+
+    await tester.tap(find.text('Mortgage settled · June 2026'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Still paying it off'));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastUpdated!.mortgageSettledOn, isNull);
+    expect(find.textContaining('3 documents needed for 2026'), findsOneWidget);
   });
 }

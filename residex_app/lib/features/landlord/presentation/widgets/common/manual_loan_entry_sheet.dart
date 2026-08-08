@@ -10,9 +10,9 @@ import '../../providers/property_providers.dart';
 import 'app_choice_chip.dart';
 
 /// Add/edit form + list for a property whose loan figures are keyed in by
-/// hand rather than uploaded (`loanInputMethod == 'manual'`). Opened as a
-/// bottom sheet from the finance tab. Purely an input surface — the engine
-/// (not this widget) recomputes the year's figures once an entry lands.
+/// hand rather than uploaded. Opened from the finance panel's loan figures
+/// row. Purely an input surface — the engine (not this widget) recomputes
+/// the year's figures once an entry lands.
 ///
 /// When [units] is non-empty, the sheet lets the landlord scope each entry
 /// to "Whole property" or a specific unit, and mark/unmark a unit as having

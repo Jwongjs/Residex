@@ -195,16 +195,27 @@ class FinanceOverridesRepository:
             ref.delete()
         return {"property_id": property_id, "year": year, "month": month}
 
-    def list_manual_loan_entries(self, landlord_id: str, property_id: str, year: int) -> List[Dict[str, Any]]:
-        """All manual loan entries for one property and year, for the finance-tab
-        list/edit UI. Ownership-scoped by landlord_id."""
+    def list_manual_loan_entries(
+        self, landlord_id: str, property_id: str, year: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Manual loan entries for one property, for the finance-tab list/edit
+        UI. Ownership-scoped by landlord_id.
+
+        `year=None` returns every year the property has entries for. Callers
+        that need to reason about the property's whole loan history — such as
+        the "remove loan tracking" guard, whose effect is retroactive across
+        all years — must omit the year rather than probe one year at a time.
+        This costs nothing extra: the query already streams all of the
+        landlord's entries and filters in Python."""
         query = self._db.collection('documind_manual_loan_entries').where(
             filter=FieldFilter('landlord_id', '==', landlord_id)
         )
         entries: List[Dict[str, Any]] = []
         for snap in query.stream():
             data = snap.to_dict() or {}
-            if data.get("property_id") != property_id or data.get("year") != year:
+            if data.get("property_id") != property_id:
+                continue
+            if year is not None and data.get("year") != year:
                 continue
             entries.append({
                 "property_id": data.get("property_id"), "unit_id": data.get("unit_id"),

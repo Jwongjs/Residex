@@ -139,9 +139,12 @@ class Property {
   /// upload method; shapes the manual-entry form.
   final String? loanInputCadence;
 
-  /// 'upload' | 'manual' — whether loan figures arrive by uploaded statement
-  /// (default) or manual entry. null until mortgage = Yes.
-  final String? loanInputMethod;
+  /// 'YYYY-MM' — the month the mortgage was fully repaid, or null if it is
+  /// still running. [hasMortgage] stays true on a settled property: it did
+  /// have a mortgage, and historical years must still expect and reconcile
+  /// loan figures. Atomic rather than a year/month pair so it cannot land
+  /// half-set.
+  final String? mortgageSettledOn;
 
   /// 0 = nothing to resume (legacy property, or setup fully finished).
   /// 2 or 3 = the registration wizard step to reopen via "Continue setup".
@@ -178,7 +181,7 @@ class Property {
     this.trackFromYear,
     this.utilitiesPaidBy = 'tenant',
     this.loanInputCadence,
-    this.loanInputMethod,
+    this.mortgageSettledOn,
     this.nextSetupStep = 0,
     this.foldersEnabled = false,
     this.folderNames = const {},
@@ -218,7 +221,7 @@ class Property {
     int? trackFromYear,
     String? utilitiesPaidBy,
     String? loanInputCadence,
-    String? loanInputMethod,
+    String? mortgageSettledOn,
     int? nextSetupStep,
     bool? foldersEnabled,
     Map<String, String>? folderNames,
@@ -241,7 +244,7 @@ class Property {
       trackFromYear: trackFromYear ?? this.trackFromYear,
       utilitiesPaidBy: utilitiesPaidBy ?? this.utilitiesPaidBy,
       loanInputCadence: loanInputCadence ?? this.loanInputCadence,
-      loanInputMethod: loanInputMethod ?? this.loanInputMethod,
+      mortgageSettledOn: mortgageSettledOn ?? this.mortgageSettledOn,
       nextSetupStep: nextSetupStep ?? this.nextSetupStep,
       foldersEnabled: foldersEnabled ?? this.foldersEnabled,
       folderNames: folderNames ?? this.folderNames,
@@ -251,6 +254,36 @@ class Property {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  /// The only way to *clear* the settlement date. [copyWith] coalesces every
+  /// field with `?? this.field`, so `copyWith(mortgageSettledOn: null)` is a
+  /// no-op — a footgun for a field whose whole point is being cleared when a
+  /// landlord corrects a mistake. Named explicitly so the asymmetry is
+  /// visible at the call site, and kept here beside copyWith so a field added
+  /// to Property later is obviously missing from both.
+  Property withMortgageSettledOn(String? value) => Property(
+        id: id,
+        landlordId: landlordId,
+        name: name,
+        address: address,
+        type: type,
+        purchasePrice: purchasePrice,
+        currentValue: currentValue,
+        ownershipShare: ownershipShare,
+        structureType: structureType,
+        hasMortgage: hasMortgage,
+        trackFromYear: trackFromYear,
+        utilitiesPaidBy: utilitiesPaidBy,
+        loanInputCadence: loanInputCadence,
+        mortgageSettledOn: value,
+        nextSetupStep: nextSetupStep,
+        foldersEnabled: foldersEnabled,
+        folderNames: folderNames,
+        folderMoves: folderMoves,
+        photos: photos,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+      );
 
   @override
   bool operator ==(Object other) =>

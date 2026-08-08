@@ -1928,7 +1928,7 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         fake_db.properties_rows = [
             {"doc_id": "p1", "landlordId": "l1", "name": "Block",
              "property_type": "landed", "has_mortgage": True,
-             "loan_input_method": "manual", "loan_input_cadence": "annual"},
+             "loan_input_cadence": "annual"},
         ]
         service = _build_service(
             fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
@@ -2495,6 +2495,46 @@ class ManualLoanEntryServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["interest_paid"], 5000.0)
 
+    async def test_list_without_a_year_returns_every_year(self):
+        """The "remove loan tracking" guard is retroactive across all years, so
+        it asks without a year. Probing only the current year let a property
+        with nothing booked this year but a full history last year skip the
+        confirmation entirely."""
+        fake_db = _FakeDB(property_owners={"p1": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=0.0,
+        )
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2024, cadence="annual",
+            interest_paid=1000.0, principal_paid=0.0,
+        )
+
+        entries = service.list_manual_loan_entries("l1", "p1")
+
+        self.assertEqual(
+            sorted(e["year"] for e in entries), [2024, 2025],
+        )
+
+    async def test_list_without_a_year_still_scopes_to_the_property(self):
+        """Dropping the year filter must not also drop the property filter."""
+        fake_db = _FakeDB(property_owners={"p1": "l1", "p2": "l1"})
+        service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p1", year=2025, cadence="annual",
+            interest_paid=5000.0, principal_paid=0.0,
+        )
+        await service.record_manual_loan_entry(
+            landlord_id="l1", property_id="p2", year=2025, cadence="annual",
+            interest_paid=9999.0, principal_paid=0.0,
+        )
+
+        entries = service.list_manual_loan_entries("l1", "p1")
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["interest_paid"], 5000.0)
+
     async def test_delete_is_idempotent(self):
         fake_db = _FakeDB(property_owners={"p1": "l1"})
         service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
@@ -2566,12 +2606,13 @@ class ManualLoanEntryServiceTests(unittest.IsolatedAsyncioTestCase):
         fake_db = _FakeDB()
         fake_db.properties_rows = [
             {"doc_id": "p1", "landlordId": "l1", "name": "H",
-             "loan_input_cadence": "monthly", "loan_input_method": "manual"},
+             "loan_input_cadence": "monthly", "mortgage_settled_on": "2027-03"},
         ]
         service = _build_service(fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused"))
         rows = service._list_landlord_properties("l1")
         self.assertEqual(rows[0]["loan_input_cadence"], "monthly")
-        self.assertEqual(rows[0]["loan_input_method"], "manual")
+        self.assertEqual(rows[0]["mortgage_settled_on"], "2027-03")
+        self.assertNotIn("loan_input_method", rows[0])
 
 
 class UnitLoanExemptionServiceTests(unittest.IsolatedAsyncioTestCase):

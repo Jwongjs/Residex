@@ -9,11 +9,22 @@ import 'package:residex_app/features/landlord/presentation/providers/documind_pr
 import 'package:residex_app/features/landlord/presentation/providers/property_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/5-Documents/documents_screen.dart';
 
-/// Task 2: the Loans & Financing folder is gated by `loanInputMethod`, and
-/// manual entry is dropped from both folder states (a later task puts a
-/// permanent loan-figures row on the finance tab instead).
+/// Task 2: the Loans & Financing folder is unconditional. It was once gated
+/// by `loanInputMethod`; that fork is gone — upload to the folder or type at
+/// the finance panel, both always available regardless of the property's
+/// mortgage state.
+///
+/// Note: this file does not have a "property fails to load" test. Passing a
+/// null property would require `propertiesStreamProvider` to emit an empty
+/// list, which routes DocumentsScreen to `_buildNoPropertiesState()` (a
+/// distinct "No Properties Found" screen with no GridView at all) rather
+/// than the category grid — there is no reachable path where the grid
+/// renders with a null property, since `build()` only calls `_buildMainUI`
+/// once `_selectedPropertyId` is confirmed present in a non-empty
+/// `properties` list. `_categoriesFor(Property?)`'s nullable parameter is a
+/// defensive signature, not a reachable UI state.
 void main() {
-  Property propertyWith(String? loanInputMethod) => Property(
+  Property propertyWith({bool? hasMortgage}) => Property(
         id: 'prop-1',
         landlordId: 'landlord-1',
         name: 'Maple Residency',
@@ -28,7 +39,7 @@ void main() {
         purchasePrice: 500000,
         currentValue: 550000,
         createdAt: DateTime(2026, 1, 1),
-        loanInputMethod: loanInputMethod,
+        hasMortgage: hasMortgage,
       );
 
   Widget buildTestWidget({
@@ -46,19 +57,21 @@ void main() {
     );
   }
 
-  testWidgets('manual hides the Loans & Financing tile', (tester) async {
-    await tester.pumpWidget(buildTestWidget(property: propertyWith('manual')));
+  testWidgets('the Loans & Financing tile is shown for a mortgaged property',
+      (tester) async {
+    await tester.pumpWidget(buildTestWidget(property: propertyWith(hasMortgage: true)));
     await tester.pumpAndSettle();
 
     // Scroll to make sure a tile in the second row wouldn't be missed.
     await tester.drag(find.byType(GridView), const Offset(0, -200));
     await tester.pumpAndSettle();
 
-    expect(find.text('Loans & Financing'), findsNothing);
+    expect(find.text('Loans & Financing'), findsOneWidget);
   });
 
-  testWidgets('upload keeps the tile', (tester) async {
-    await tester.pumpWidget(buildTestWidget(property: propertyWith('upload')));
+  testWidgets('the Loans & Financing tile is shown for an unmortgaged property',
+      (tester) async {
+    await tester.pumpWidget(buildTestWidget(property: propertyWith(hasMortgage: false)));
     await tester.pumpAndSettle();
 
     await tester.drag(find.byType(GridView), const Offset(0, -200));
@@ -67,8 +80,9 @@ void main() {
     expect(find.text('Loans & Financing'), findsOneWidget);
   });
 
-  testWidgets('null keeps the tile', (tester) async {
-    await tester.pumpWidget(buildTestWidget(property: propertyWith(null)));
+  testWidgets('the Loans & Financing tile is shown when the mortgage question '
+      'is unanswered', (tester) async {
+    await tester.pumpWidget(buildTestWidget(property: propertyWith(hasMortgage: null)));
     await tester.pumpAndSettle();
 
     await tester.drag(find.byType(GridView), const Offset(0, -200));
@@ -79,7 +93,7 @@ void main() {
 
   testWidgets('neither folder state offers manual entry', (tester) async {
     // Empty state.
-    await tester.pumpWidget(buildTestWidget(property: propertyWith('upload')));
+    await tester.pumpWidget(buildTestWidget(property: propertyWith(hasMortgage: true)));
     await tester.pumpAndSettle();
 
     await tester.drag(find.byType(GridView), const Offset(0, -200));
@@ -104,7 +118,7 @@ void main() {
       uploadedAt: DateTime(2026, 1, 1),
     );
     await tester.pumpWidget(buildTestWidget(
-      property: propertyWith('upload'),
+      property: propertyWith(hasMortgage: true),
       documents: [loanDoc],
     ));
     await tester.pumpAndSettle();
@@ -120,11 +134,11 @@ void main() {
   });
 
   testWidgets(
-      'switching to manual while inside the Loans folder falls back to the grid',
+      'switching mortgage state while inside the Loans folder keeps the tile reachable',
       (tester) async {
     // Drive propertiesStreamProvider through a controller we keep open for
     // the whole test, so we can push a live update — the landlord changing
-    // loanInputMethod from property settings while this screen is still
+    // the mortgage answer from property settings while this screen is still
     // open on the Loans folder — without re-pumping the widget tree (which
     // would just reuse the existing State rather than exercising a real
     // provider-driven rebuild).
@@ -140,7 +154,7 @@ void main() {
       ],
       child: MaterialApp(home: DocumentsScreen(onOpenDocumind: () {})),
     ));
-    controller.add([propertyWith('upload')]);
+    controller.add([propertyWith(hasMortgage: true)]);
     await tester.pumpAndSettle();
 
     await tester.drag(find.byType(GridView), const Offset(0, -200));
@@ -151,11 +165,9 @@ void main() {
 
     expect(find.text('Upload Loans & Financing'), findsOneWidget);
 
-    controller.add([propertyWith('manual')]);
+    controller.add([propertyWith(hasMortgage: false)]);
     await tester.pumpAndSettle();
 
-    expect(find.text('Upload Loans & Financing'), findsNothing);
-    expect(find.byType(GridView), findsOneWidget);
-    expect(find.text('Back to Categories'), findsNothing);
+    expect(find.text('Upload Loans & Financing'), findsOneWidget);
   });
 }

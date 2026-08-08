@@ -47,16 +47,11 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   // uploads from the Expenses folder send category 'expenses' so the
   // backend runs line-item extraction).
   //
-  // Loans is dropped only for 'manual': those landlords type figures on the
-  // finance tab and have no loan documents to file. 'upload', null and a
-  // property that failed to load all keep it.
-  List<String> _categoriesFor(Property? property) {
-    final base = ['lease', 'rental_invoice', 'loan', 'expenses'];
-    if (property?.loanInputMethod == 'manual') {
-      base.remove('loan');
-    }
-    return base;
-  }
+  // Every folder is unconditional. Loans was once hidden for landlords who
+  // answered "I'll type the figures" at registration; that fork is gone —
+  // upload to the folder or type at the finance panel, both always available.
+  List<String> _categoriesFor(Property? property) =>
+      const ['lease', 'rental_invoice', 'loan', 'expenses'];
 
   @override
   Widget build(BuildContext context) {
@@ -88,8 +83,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   }
 
   /// Null-safe lookup of the currently selected property. Null while
-  /// loading/unavailable — callers treat that the same as 'upload' (keeps
-  /// the Loans folder), per `_categoriesFor`.
+  /// loading/unavailable.
   Property? _selectedProperty(List<Property> properties) {
     for (final p in properties) {
       if (p.id == _selectedPropertyId) return p;
@@ -255,26 +249,6 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   }
 
   Widget _buildBody(Property? property, List<Property> properties) {
-    // The landlord can switch to manual from property settings while this
-    // screen is open on the Loans folder; fall back rather than stranding
-    // them in a folder the grid no longer offers.
-    if (_selectedCategory != null &&
-        !_categoriesFor(property).contains(_selectedCategory)) {
-      // Clear the stale selection post-frame rather than during build, so
-      // _buildMainUI's "Back to Categories" breadcrumb (keyed off
-      // _selectedCategory) doesn't keep floating above the grid we're
-      // falling back to.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            _selectedCategory = null;
-            _selectedFolderKey = null;
-          });
-        }
-      });
-      return _buildCategoryGrid(property);
-    }
-
     return _selectedCategory == null
         ? _buildCategoryGrid(property)
         : _buildCategoryDocuments(properties);

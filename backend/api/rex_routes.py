@@ -378,11 +378,12 @@ async def delete_manual_loan_entry(
 @router.get("/documind/finance/manual-loan-entry", response_model=ManualLoanEntryListResponse)
 async def list_manual_loan_entries(
     property_id: str = Query(..., description="Property ID"),
-    year: int = Query(..., ge=2000, le=2100),
+    year: int | None = Query(None, ge=2000, le=2100, description="Omit for every year"),
     landlord_id: str = Depends(current_landlord_id),
 ):
-    """All manual loan entries for one property and year, for the finance-tab
-    list/edit UI."""
+    """Manual loan entries for one property, for the finance-tab list/edit UI.
+    Omitting `year` returns every year, which the "remove loan tracking" guard
+    needs because that action is retroactive across all years."""
     entries = documind_service.list_manual_loan_entries(landlord_id, property_id, year)
     return {"entries": entries}
 

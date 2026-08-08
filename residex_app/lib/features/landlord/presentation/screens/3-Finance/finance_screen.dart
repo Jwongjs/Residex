@@ -125,6 +125,7 @@ class FinanceScreen extends ConsumerWidget {
           // providers below already use on financeSummaryProvider: retries
           // every property/year combination currently mounted, not just one.
           ref.invalidate(manualLoanEntriesProvider);
+          ref.invalidate(allManualLoanEntriesProvider);
           await ref.read(financeSummaryProvider(year).future);
         },
         child: ListView(
@@ -297,18 +298,12 @@ class FinanceScreen extends ConsumerWidget {
   Widget _buildPropertyBlock(BuildContext context, WidgetRef ref,
       FinanceSummary summary, PropertyFinance block) {
     final property = ref.watch(propertyByIdProvider(block.propertyId)).value;
-    final rawMissing = summary.missingCategories[block.propertyId] ?? const [];
-    // A manual-mode landlord has no loan document to upload and a permanent
-    // figures row below, so nudging about loans is either wrong or duplicate.
-    final missing = property?.loanInputMethod == 'manual'
-        ? rawMissing.where((c) => c != 'loan').toList()
-        : rawMissing;
-    // Gated on the method, not on completeness. manualLoanIncomplete goes
-    // false the moment figures are booked, which hid the control exactly when
-    // a typo needed correcting — and the Loans-folder route that used to cover
-    // that gap is gone.
-    final showManualLoan =
-        property?.loanInputMethod == 'manual' && property?.hasMortgage == true;
+    final missing = summary.missingCategories[block.propertyId] ?? const [];
+    // 'loan' nudges like any other category: a mortgaged property with no
+    // figures booked by either route genuinely is missing a document.
+    // Both loan routes are always available, so the panel row — the
+    // discoverable manual route — is shown for any mortgaged property.
+    final showManualLoan = property?.hasMortgage == true;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -392,7 +387,8 @@ class FinanceScreen extends ConsumerWidget {
           if (block.ownershipShare < 1.0) ...[
             const SizedBox(height: 4),
             Text(
-              'Shown at your ${(block.ownershipShare * 100).toStringAsFixed(0)}% share',
+              'Shown at your ${(block.ownershipShare * 100).toStringAsFixed(0)}% share. '
+              'Loan interest and principal are shown in full.',
               style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
             ),
           ],
@@ -463,9 +459,10 @@ class FinanceScreen extends ConsumerWidget {
                 missing: missing,
                 mode: MissingDocsMode.markUnavailable,
               ),
-              // No onEnterManually: the upload-or-type fork is answered once,
-              // at registration. Re-asking it here is what made the same
-              // question read three different ways across the app.
+              // No onEnterManually: the nudge is about missing documents, and
+              // the manual route already has a permanent home in the loan
+              // figures row below. Offering it here too made the same choice
+              // read two different ways on one screen.
             ),
           ],
           if ((yearCoverageFor(block.coverage, summary.year)?.unavailable ?? const []).isNotEmpty) ...[
@@ -497,10 +494,40 @@ class FinanceScreen extends ConsumerWidget {
     );
   }
 
-  /// Reads the raw booked entries rather than the loan expense lines: expense
-  /// amounts are scaled by ownership share at the engine's choke point, and a
-  /// row whose job is letting the landlord verify what they typed must show
-  /// what they typed.
+  /// 'YYYY-MM' -> ('March 2027'). Returns null for anything unparseable, so a
+  /// bad stored value degrades to "not settled" rather than rendering garbage
+  /// — matching the backend's _loan_expected_for, which treats a malformed
+  /// value as unset.
+  static ({int year, int month})? _parseSettled(String? value) {
+    if (value == null || value.length < 7) return null;
+    final year = int.tryParse(value.substring(0, 4));
+    final month = int.tryParse(value.substring(5, 7));
+    if (year == null || month == null || month < 1 || month > 12) return null;
+    return (year: year, month: month);
+  }
+
+  static const _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  /// Both the empty and populated states use this so the control never reads
+  /// "Mortgage paid off?" on a property that already has a date (which
+  /// happens in the *settlement year and earlier*, where the block still
+  /// behaves normally).
+  static String _settlementLabel(({int year, int month})? settled) =>
+      settled == null
+          ? 'Mortgage paid off?'
+          : 'Mortgage settled · ${_monthNames[settled.month - 1]} ${settled.year}';
+
+  /// Reads the raw booked entries rather than the loan expense lines. This
+  /// was once a deliberate carve-out against the engine scaling every
+  /// expense line by ownership share uniformly; now that the engine exempts
+  /// loan interest and principal from that scaling (see `_line_share` in
+  /// `finance_engine.py`), this row simply agrees with the engine rather
+  /// than working around it — it still reads the raw booked entries because
+  /// its job is letting the landlord verify what they typed, not because the
+  /// expense lines would show a different number.
   Widget _buildLoanFiguresRow(BuildContext context, WidgetRef ref,
       PropertyFinance block, Property? property, int year) {
     final entriesAsync = ref.watch(manualLoanEntriesProvider(
@@ -550,19 +577,63 @@ class FinanceScreen extends ConsumerWidget {
     final isUnusable =
         isInitialLoading || (entriesAsync.hasError && !entriesAsync.hasValue);
 
-    if (!hasFigures) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: Opacity(
-          opacity: isUnusable ? 0.5 : 1.0,
-          child: TextButton.icon(
-            onPressed: isUnusable
-                ? null
-                : () => _openManualLoanSheet(context, block, property, year),
-            icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
-            label: Text('Add loan figures', style: AppTextStyles.labelLarge),
+    final settled = _parseSettled(property?.mortgageSettledOn);
+    // The settled *state* replaces the block only for years after the
+    // settlement year. The settlement year and every year before it still
+    // expect figures, so they keep the normal block with the settled date as
+    // a quiet line beneath.
+    if (settled != null && year > settled.year) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Divider(height: 20, color: AppColors.hairline),
+          Row(
+            children: [
+              const Icon(Icons.check_circle_outline,
+                  size: 16, color: AppColors.textMuted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Mortgage settled · ${_monthNames[settled.month - 1]} ${settled.year}',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textMuted),
+                ),
+              ),
+              if (property != null)
+                TextButton(
+                  onPressed: () => _openSettlementSheet(context, ref, property),
+                  child: Text('Change', style: AppTextStyles.labelLarge),
+                ),
+            ],
           ),
-        ),
+        ],
+      );
+    }
+
+    if (!hasFigures) {
+      return Row(
+        children: [
+          Opacity(
+            opacity: isUnusable ? 0.5 : 1.0,
+            child: TextButton.icon(
+              onPressed: isUnusable
+                  ? null
+                  : () => _openManualLoanSheet(context, block, property, year),
+              icon: const Icon(Icons.add, size: 18, color: AppColors.registry),
+              label: Text('Add loan figures', style: AppTextStyles.labelLarge),
+            ),
+          ),
+          const Spacer(),
+          if (property != null)
+            TextButton(
+              onPressed: () => _openSettlementSheet(context, ref, property),
+              child: Text(
+                _settlementLabel(settled),
+                style: AppTextStyles.labelSmall
+                    .copyWith(color: AppColors.textMuted),
+              ),
+            ),
+        ],
       );
     }
 
@@ -594,8 +665,160 @@ class FinanceScreen extends ConsumerWidget {
         _loanFigureLine('Interest', interest),
         _loanFigureLine('Principal', principal),
         if (completenessLine != null) completenessLine,
+        if (property != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => _openSettlementSheet(context, ref, property),
+              child: Text(
+                _settlementLabel(settled),
+                style: AppTextStyles.labelSmall
+                    .copyWith(color: AppColors.textMuted),
+              ),
+            ),
+          ),
       ],
     );
+  }
+
+  /// Records (or corrects, or clears) the month the mortgage was repaid.
+  ///
+  /// Two sheets rather than one 12×N list: a flat month-year list would be
+  /// hundreds of rows. Mirrors _pickTrackFromYear's modal-list pattern so a
+  /// landlord meets the same interaction twice, not two inventions.
+  Future<void> _openSettlementSheet(
+      BuildContext context, WidgetRef ref, Property property) async {
+    final currentYear = DateTime.now().year;
+    final earliest = property.trackFromYear ?? 2000;
+    final existing = _parseSettled(property.mortgageSettledOn);
+    const clear = -1; // sentinel: distinguishes "clear it" from a dismissed sheet
+
+    final year = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('When was the mortgage repaid?',
+                  style: AppTextStyles.titleLarge),
+              const SizedBox(height: 4),
+              Text(
+                'Past years keep their loan figures — you just stop being '
+                'asked from this point on.',
+                style: AppTextStyles.bodySmall
+                    .copyWith(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    if (existing != null)
+                      ListTile(
+                        leading: const Icon(Icons.undo,
+                            color: AppColors.textMuted),
+                        title: Text('Still paying it off',
+                            style: AppTextStyles.bodyLarge),
+                        onTap: () => Navigator.of(sheetContext).pop(clear),
+                      ),
+                    for (var y = currentYear; y >= earliest; y--)
+                      ListTile(
+                        title: Text('$y', style: AppTextStyles.bodyLarge),
+                        trailing: existing?.year == y
+                            ? const Icon(Icons.check, color: AppColors.registry)
+                            : null,
+                        onTap: () => Navigator.of(sheetContext).pop(y),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (year == null) return; // dismissed
+    if (year == clear) {
+      // withMortgageSettledOn, never copyWith: copyWith coalesces `?? this`,
+      // so copyWith(mortgageSettledOn: null) would silently keep the old date.
+      await _saveSettlement(ref, property.withMortgageSettledOn(null));
+      return;
+    }
+
+    if (!context.mounted) return;
+    final month = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Which month in $year?', style: AppTextStyles.titleLarge),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (var m = 1; m <= 12; m++)
+                      ListTile(
+                        title: Text(_monthNames[m - 1],
+                            style: AppTextStyles.bodyLarge),
+                        trailing:
+                            existing?.year == year && existing?.month == m
+                                ? const Icon(Icons.check,
+                                    color: AppColors.registry)
+                                : null,
+                        onTap: () => Navigator.of(sheetContext).pop(m),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (month == null) return; // dismissed at the second step — nothing written
+    await _saveSettlement(
+      ref,
+      property.withMortgageSettledOn(
+        '$year-${month.toString().padLeft(2, '0')}',
+      ),
+    );
+  }
+
+  /// Persist a settlement change and refresh the finance summary with it.
+  ///
+  /// `updateProperty` invalidates only the property providers. The settlement
+  /// date is also an *engine* input — it decides whether `loan` is still
+  /// expected — so without invalidating the summary the loan block (which
+  /// reads the property directly) updates instantly while the nudge above it
+  /// keeps counting the loan document as outstanding. The screen then shows
+  /// two statements that contradict each other until a pull-to-refresh.
+  /// Every other finance-affecting write in `documind_provider.dart` already
+  /// invalidates the summary; this path is the one that did not.
+  Future<void> _saveSettlement(WidgetRef ref, Property updated) async {
+    await ref.read(propertyControllerProvider).updateProperty(updated);
+    ref.invalidate(financeSummaryProvider);
   }
 
   /// A quiet completeness sub-line under the figures block. `manualLoanIncomplete`
@@ -632,7 +855,24 @@ class FinanceScreen extends ConsumerWidget {
           .map((e) => (e['month'] as num).toInt())
           .toSet()
           .length;
-      message = '$recordedMonths of 12 months recorded for $year';
+      final now = DateTime.now();
+      // The backend requires only *elapsed* months (finance_engine.py's
+      // _months_in_scope), and settlement adds a third bound. A hardcoded 12
+      // told a landlord in March they were 3 of 12 done when the backend
+      // considered them complete.
+      var monthsInScope = year < now.year ? 12 : (year > now.year ? 0 : now.month);
+      final settled = _parseSettled(property?.mortgageSettledOn);
+      // A cap, never an override. The backend takes the *intersection* of
+      // both bounds: _months_in_scope stops at the elapsed month, then
+      // _loan_expected_for drops months past the settled one. The settlement
+      // picker offers all 12 months of the current year, so a landlord can
+      // pick a month still in the future — overriding to settled.month there
+      // would read "2 of 11" in August against a backend that wants 8, which
+      // is the same class of mismatch the hardcoded 12 used to cause.
+      if (settled != null && year == settled.year) {
+        monthsInScope = monthsInScope < settled.month ? monthsInScope : settled.month;
+      }
+      message = '$recordedMonths of $monthsInScope months recorded for $year';
     } else {
       message = 'Some $year loan figures are still missing';
     }

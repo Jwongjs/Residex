@@ -64,7 +64,7 @@ def list_landlord_properties(db, landlord_id: str) -> List[Dict]:
                 "utilities_paid_by": data.get('utilities_paid_by'),
                 "track_from_year": data.get('track_from_year'),
                 "loan_input_cadence": data.get('loan_input_cadence'),
-                "loan_input_method": data.get('loan_input_method'),
+                "mortgage_settled_on": data.get('mortgage_settled_on'),
             })
         return results
     except Exception as e:

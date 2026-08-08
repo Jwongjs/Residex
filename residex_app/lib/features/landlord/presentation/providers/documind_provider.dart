@@ -427,6 +427,7 @@ final recordManualLoanEntryActionProvider = Provider<Future<void> Function({
     // entire job is showing the landlord what they just typed — keeps
     // showing the pre-save amount for the rest of the session.
     ref.invalidate(manualLoanEntriesProvider);
+    ref.invalidate(allManualLoanEntriesProvider);
   };
 });
 
@@ -449,6 +450,7 @@ final deleteManualLoanEntryActionProvider = Provider<Future<void> Function({
     );
     ref.invalidate(financeSummaryProvider);
     ref.invalidate(manualLoanEntriesProvider);
+    ref.invalidate(allManualLoanEntriesProvider);
   };
 });
 
@@ -487,4 +489,16 @@ final manualLoanEntriesProvider =
   return dataSource.listManualLoanEntries(
     propertyId: arg.propertyId, year: arg.year,
   );
+});
+
+/// Every manual loan entry for one property, across all years.
+///
+/// Kept separate from [manualLoanEntriesProvider] rather than widening that
+/// family's key to a nullable year: the year-scoped provider is the one the
+/// finance tab watches and the one tests override, and widening its key would
+/// silently change every existing override's argument type.
+final allManualLoanEntriesProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, propertyId) async {
+  final dataSource = ref.read(documindRemoteDataSourceProvider);
+  return dataSource.listManualLoanEntries(propertyId: propertyId);
 });
