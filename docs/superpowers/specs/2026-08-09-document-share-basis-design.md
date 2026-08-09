@@ -3,8 +3,12 @@
 **Date:** 2026-08-09
 **Status:** Approved design, ready for implementation planning
 **Related:** follow-up 1 from `2026-08-09-unit-panel-share-reconciliation-design.md`.
-Independent of follow-up 2 (unit-level ownership share) — they share no files
-and can land in either order.
+**Build this third**, after `2026-08-09-unit-level-ownership-share-design.md`.
+Basis and share are two halves of one calculation — a document declared `full`
+means "multiply by the applicable share", and unit-level share is what decides
+which share that is. That spec also establishes the per-scope accumulation loop
+this one splits into buckets (§6), and its existence is what forces the gate in
+§3a.
 
 ## Problem
 
@@ -70,7 +74,7 @@ explicit answer.
 
 ### §2 Where the answer is stored
 
-**On the property** — two fields, written only when `ownership_share < 1.0`:
+**On the property** — two fields, written only when a share applies (§3a):
 
 - `share_basis_default`: `'full'` or `'mine'`. Absent means `'full'`.
 - `share_basis_exceptions`: a map of category → basis, holding only the
@@ -95,13 +99,30 @@ For any document, the basis is the first of these that exists:
 3. `share_basis_default`
 4. `'full'`
 
-At `ownership_share == 1.0` the result is never consulted — scaling by 1.0 is
-identity — so a property owned outright is untouched by every part of this
-design.
+### §3a When any of this is shown at all — one predicate
+
+Every gate in this spec is keyed on **"a share applies here"**, defined as:
+
+> the property's own `ownership_share < 1.0`, **or** any of its units resolves
+> to a share below 1.0.
+
+The second clause exists only once unit-level ownership share ships; until then
+the predicate reduces to the property's own share.
+
+> **This must not be written as `property.ownership_share < 1.0`.** That spec
+> lets a property owned outright contain a single co-owned unit. Keyed on the
+> property's own share, the registration question would never be asked and the
+> upload chip would never appear for exactly that unit — whose documents *do*
+> need a basis, and would be scaled wrong in silence. Since unit-level share is
+> sequenced **before** this spec, the naive gate is wrong on the day this lands.
+
+Where a share does not apply, the resolved basis is never consulted — scaling
+by 1.0 is identity — so a property owned outright with no co-owned units is
+untouched by every part of this design.
 
 ### §4 What the landlord sees
 
-**At registration and on edit**, only when share is below 100%: one question with
+**At registration and on edit**, only when a share applies (§3a): one question with
 two options — *"At the full property amount"* / *"Already split to my share"* —
 followed by an optional "Any exceptions?" control that adds category-specific
 overrides. Six categories are offered: lease, rental_invoice, tax, upkeep,
@@ -118,7 +139,8 @@ resolved default, so the landlord confirms rather than answers, and they are
 looking at the extracted charges while they decide. Changing it writes
 `share_basis` on that document.
 
-The chip renders **only when `ownership_share < 1.0`**. At full ownership the
+The chip renders **only when a share applies (§3a)** — which includes a property
+owned outright that contains one co-owned unit. Where no share applies, the
 sheet is unchanged.
 
 > **Per-document, not per-line.** One statement genuinely can mix bases, but a
@@ -218,12 +240,16 @@ Flutter:
 
 8. Property model round-trips `share_basis_default` and
    `share_basis_exceptions`, including their absence.
-9. The registration question does not render at 100% ownership.
+9. The registration question does not render when no share applies.
 10. Setting a share below 100% on a property that already has documents raises
     the question.
-11. The expenses review sheet shows the chip pre-set to the resolved default,
-    and hides it entirely at 100% ownership.
-12. Changing the chip writes `share_basis` on that document and nothing else.
+11. **A property at 100% containing one unit below 100% still raises the
+    question and still renders the chip.** The §3a gate, asserted directly —
+    keyed on the property's own share this passes silently and the feature is
+    simply absent for that unit.
+12. The expenses review sheet shows the chip pre-set to the resolved default,
+    and hides it entirely when no share applies.
+13. Changing the chip writes `share_basis` on that document and nothing else.
 
 ## Open risk worth naming
 
