@@ -941,6 +941,8 @@ class FinanceScreen extends ConsumerWidget {
               paymentState: month.paymentState ?? 'outstanding',
               reason: month.reason, billedAmount: month.billedAmount,
               fullBilledAmount: month.fullBilledAmount,
+              grossIncome: unit.grossIncome,
+              fullGrossIncome: unit.fullGrossIncome,
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),

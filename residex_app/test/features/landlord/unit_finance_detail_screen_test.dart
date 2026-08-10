@@ -416,5 +416,53 @@ void main() {
       expect(find.textContaining('Enter your'), findsNothing);
       expect(find.text('3200.00'), findsOneWidget);
     });
+
+    testWidgets(
+        'a co-owned unit falls back to the unit-level share when the month '
+        'has no invoice on file', (tester) async {
+      // The engine only emits billed_amount/full_billed_amount when the
+      // month has a billed figure at all (`if row.get("billed_amount")`), so
+      // a written-off month with no invoice and no lease-derived rent
+      // carries neither field even at a share below 1.0 — the exact case
+      // that let a co-owner see the full-ownership label and type the whole
+      // property's rent as their own income. The unit-level grossIncome /
+      // fullGrossIncome pair is present regardless of this month's invoice
+      // status, so it must drive the same share-aware label.
+      await pumpWithUnit(
+        tester,
+        UnitFinance(
+          unitId: 'u1',
+          label: 'B-08-11',
+          rentedMonths: 1,
+          contribution: 0,
+          grossIncome: 1600.0,
+          fullGrossIncome: 3200.0,
+          months: [
+            MonthIncome(
+              month: 9,
+              source: 'unpaid',
+              amount: 0,
+              paymentState: 'written_off',
+              // Deliberately no billedAmount/fullBilledAmount.
+            ),
+          ],
+        ),
+      );
+
+      await tester.tap(find.text('WRITTEN OFF'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Record a recovery'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Your share of the amount received (RM)'), findsOneWidget);
+      expect(
+        find.text(
+          'Enter your 50% share of what the tenant paid — this unit is '
+          'co-owned and this month has no separate invoice on file.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('full RM'), findsNothing);
+    });
   });
 }

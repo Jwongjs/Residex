@@ -106,6 +106,8 @@ Future<void> showManageUnpaidSheet(
   String? reason,
   double? billedAmount,
   double? fullBilledAmount,
+  double? grossIncome,
+  double? fullGrossIncome,
 }) async {
   final action = await showModalBottomSheet<String>(
     context: context,
@@ -190,6 +192,8 @@ Future<void> showManageUnpaidSheet(
       propertyId: propertyId, unitId: unitId, originalMonth: month, monthLabel: monthLabel,
       defaultAmount: billedAmount,
       fullAmount: fullBilledAmount,
+      unitGrossIncome: grossIncome,
+      unitFullGrossIncome: fullGrossIncome,
     );
   }
 }
@@ -203,11 +207,42 @@ Future<void> _showRecoverSheet(
   required String monthLabel,
   double? defaultAmount,
   double? fullAmount,
+  double? unitGrossIncome,
+  double? unitFullGrossIncome,
 }) async {
   final amountController = TextEditingController(
     text: defaultAmount != null ? defaultAmount.toStringAsFixed(2) : '',
   );
   final yearController = TextEditingController(text: '${DateTime.now().year}');
+
+  // The month's own billed/full-billed pair is the most specific signal that
+  // a partial share applies here: it is present whenever this month was
+  // invoiced. But the engine only emits billed_amount/full_billed_amount
+  // when the month has a billed figure at all (`if row.get("billed_amount")`)
+  // — a month with no invoice and no lease-derived rent carries neither, even
+  // at a share below 1.0. The unit-level gross/full-gross pair is present
+  // regardless of any single month's invoice status, so it is the fallback
+  // signal that this unit is co-owned. Never read an ownership-share field
+  // directly: share is moving from the property to the unit in a follow-on
+  // plan, and only these figure pairs stay stable across that change.
+  final hasMonthPair = fullAmount != null && fullAmount > 0;
+  final hasUnitPair = !hasMonthPair &&
+      unitFullGrossIncome != null &&
+      unitFullGrossIncome > 0;
+  final isPartialShare = hasMonthPair || hasUnitPair;
+
+  String? helperText;
+  if (hasMonthPair && defaultAmount != null) {
+    final pct = ((defaultAmount / fullAmount) * 100).toStringAsFixed(0);
+    helperText = 'Enter your $pct% share, not the full '
+        '${formatRM(fullAmount)} the tenant paid.';
+  } else if (hasUnitPair && unitGrossIncome != null) {
+    final pct =
+        ((unitGrossIncome / unitFullGrossIncome) * 100).toStringAsFixed(0);
+    helperText = 'Enter your $pct% share of what the tenant paid — this '
+        'unit is co-owned and this month has no separate invoice on file.';
+  }
+
   try {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
@@ -235,21 +270,16 @@ Future<void> _showRecoverSheet(
             // The engine books this figure verbatim — it does not apply
             // ownership share to recoveries. At a partial share the month tile
             // already shows the landlord's half, so the field asks for that
-            // same half and names the invoiced figure it came from.
+            // same half and names the invoiced figure it came from (or, when
+            // this month has no invoice on file, the unit-level share).
             TextField(
               controller: amountController,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                labelText: fullAmount != null && fullAmount > 0
+                labelText: isPartialShare
                     ? 'Your share of the amount received (RM)'
                     : 'Amount received from tenant (RM)',
-                helperText: fullAmount != null &&
-                        fullAmount > 0 &&
-                        defaultAmount != null
-                    ? 'Enter your '
-                        '${((defaultAmount / fullAmount) * 100).toStringAsFixed(0)}% share, '
-                        'not the full ${formatRM(fullAmount)} the tenant paid.'
-                    : null,
+                helperText: helperText,
                 helperMaxLines: 2,
               ),
             ),

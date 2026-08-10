@@ -598,6 +598,8 @@ class _UnitFinanceDetailScreenState
         paymentState: month.paymentState ?? 'outstanding',
         reason: month.reason, billedAmount: month.billedAmount,
         fullBilledAmount: month.fullBilledAmount,
+        grossIncome: _displayedUnit.grossIncome,
+        fullGrossIncome: _displayedUnit.fullGrossIncome,
       );
     } else {
       await showMarkUnpaidSheet(

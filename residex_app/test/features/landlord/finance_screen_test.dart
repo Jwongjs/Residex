@@ -1021,4 +1021,130 @@ void main() {
     expect(repo.lastUpdated!.mortgageSettledOn, isNull);
     expect(find.textContaining('3 documents needed for 2026'), findsOneWidget);
   });
+
+  testWidgets(
+      'the year-level rent issues entry point also asks for the landlord '
+      'share', (tester) async {
+    // Task 8's recovery-sheet tests only ever mounted UnitFinanceDetailScreen,
+    // so a regression that dropped the grossIncome/fullGrossIncome (or
+    // billedAmount/fullBilledAmount) threading at this call site — the
+    // property panel's "Rent payment issues" list, a second and separate
+    // entry point into the same sheet — would have shipped with the full
+    // suite green. This test drives the sheet from here instead.
+    final summary = FinanceSummary(
+      year: 2026,
+      totals: FinanceTotals(
+        receivedRent: 1600.0, derivedRent: 0.0, directExpenses: 0.0,
+        netPl: 1600.0, statutoryRentalIncome: 1600.0, statutoryNote: '',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8',
+          receivedRent: 1600.0, derivedRent: 0.0, directExpenses: 0.0,
+          rentalIncomeOrLoss: 1600.0,
+          units: [
+            UnitFinance(
+              unitId: 'u1',
+              label: 'B-08-11',
+              rentedMonths: 1,
+              contribution: 0,
+              grossIncome: 1600.0,
+              fullGrossIncome: 3200.0,
+              months: [
+                MonthIncome(
+                  month: 9,
+                  source: 'unpaid',
+                  amount: 0,
+                  paymentState: 'written_off',
+                  billedAmount: 1600.0,
+                  fullBilledAmount: 3200.0,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await _pumpScreen(tester, 2026, summary);
+
+    expect(find.text('Rent payment issues — 2026'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('B-08-11 — Sep 2026'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('B-08-11 — Sep 2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('Record a recovery'), findsOneWidget);
+
+    await tester.tap(find.text('Record a recovery'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Your share of the amount received (RM)'), findsOneWidget);
+    expect(
+      find.text(
+        'Enter your 50% share, not the full RM 3,200.00 the tenant paid.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'the year-level rent issues entry point falls back to the unit-level '
+      'share when the month has no invoice', (tester) async {
+    // Companion to the test above: that one's month carries its own
+    // billed/full-billed pair, which alone is enough to drive the
+    // share-aware label — so it does not, by itself, prove this call site
+    // also threads unit.grossIncome/unit.fullGrossIncome (the Medium fix's
+    // fallback signal). This fixture omits the month's billed pair entirely,
+    // so only that unit-level threading can produce the share-aware label.
+    final summary = FinanceSummary(
+      year: 2026,
+      totals: FinanceTotals(
+        receivedRent: 1600.0, derivedRent: 0.0, directExpenses: 0.0,
+        netPl: 1600.0, statutoryRentalIncome: 1600.0, statutoryNote: '',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1', name: 'Ayer 8',
+          receivedRent: 1600.0, derivedRent: 0.0, directExpenses: 0.0,
+          rentalIncomeOrLoss: 1600.0,
+          units: [
+            UnitFinance(
+              unitId: 'u1',
+              label: 'B-08-11',
+              rentedMonths: 1,
+              contribution: 0,
+              grossIncome: 1600.0,
+              fullGrossIncome: 3200.0,
+              months: [
+                MonthIncome(
+                  month: 9,
+                  source: 'unpaid',
+                  amount: 0,
+                  paymentState: 'written_off',
+                  // Deliberately no billedAmount/fullBilledAmount.
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await _pumpScreen(tester, 2026, summary);
+
+    await tester.ensureVisible(find.text('B-08-11 — Sep 2026'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('B-08-11 — Sep 2026'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Record a recovery'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Your share of the amount received (RM)'), findsOneWidget);
+    expect(
+      find.text(
+        'Enter your 50% share of what the tenant paid — this unit is '
+        'co-owned and this month has no separate invoice on file.',
+      ),
+      findsOneWidget,
+    );
+  });
 }
