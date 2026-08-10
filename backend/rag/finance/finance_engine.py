@@ -466,6 +466,36 @@ def _scaled_lines(lines: List[Dict[str, Any]], share: float) -> List[Dict[str, A
     return out
 
 
+def _scaled_month_rows(rows: List[Dict[str, Any]], share: float) -> List[Dict[str, Any]]:
+    """Copy month rows with amounts at the landlord's ownership share.
+
+    Mirrors _scaled_lines: never mutates the input, returns the rows unchanged
+    at share 1.0 so the common payload is byte-identical, and below 1.0 carries
+    the source figure in `full_amount` / `full_billed_amount` so the app can
+    show "your 50% of RM 1,000.00". Zero-amount rows (vacant, outstanding) are
+    left alone — they render a state, not a figure.
+
+    Only the *rendered* rows are scaled. `_scope_income`'s scalar returns
+    (actual_sum, derived_sum) and its `unpaid_months` tuples stay at face
+    value: those feed the property-level received and outstanding sums, which
+    are scaled separately at the property level. Scaling them here as well
+    would scale them twice, and no property-level assertion would notice.
+    """
+    if share == 1.0:
+        return list(rows)
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        scaled = dict(row)
+        if row.get("amount"):
+            scaled["amount"] = _round2(share * row["amount"])
+            scaled["full_amount"] = _round2(row["amount"])
+        if row.get("billed_amount"):
+            scaled["billed_amount"] = _round2(share * row["billed_amount"])
+            scaled["full_billed_amount"] = _round2(row["billed_amount"])
+        out.append(scaled)
+    return out
+
+
 def _document_years(doc: Dict[str, Any]) -> List[int]:
     """All years a document's facts reference, for the coverage window
     fallback and per-year completeness. Mirrors _expense_lines' allocation
@@ -1192,7 +1222,7 @@ def compute_finance_summary(
                 "statutory_contribution": _round2(gross_income - sum(
                     l["amount"] for l in scaled_lines if l["deductible"]
                 )),
-                "months": month_rows,
+                "months": _scaled_month_rows(month_rows, share),
                 "missing_invoice_months": vacant,
                 "expense_lines": scaled_lines,
                 "loan_status": loan_status_by_unit.get(scope["unit_id"]),

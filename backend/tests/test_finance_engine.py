@@ -2180,11 +2180,12 @@ class LoanShareExemptionTests(unittest.TestCase):
         # shape it had before this task — scales the loan lines a second time
         # and breaks this, while leaving every other test in this file green.
         unit = self._unit_at(0.5)
-        gross = sum(m["amount"] for m in unit["months"])
+        # `months` now arrives already scaled, so gross is read rather than
+        # re-derived. This asserts the identity the panel renders.
         landlord_paid = sum(l["amount"] for l in unit["expense_lines"]
                             if l["paid_by_landlord"])
         self.assertAlmostEqual(
-            unit["contribution"], 0.5 * gross - landlord_paid, places=2
+            unit["contribution"], unit["gross_income"] - landlord_paid, places=2
         )
 
     def test_unit_statutory_reconciles_and_keeps_loan_interest_whole(self):
@@ -2192,11 +2193,11 @@ class LoanShareExemptionTests(unittest.TestCase):
         # can regress on its own. Asserted against the unit's own rendered
         # lines, plus the face values that prove the exemption reached them.
         unit = self._unit_at(0.5)
-        gross = sum(m["amount"] for m in unit["months"])
         deductible = sum(l["amount"] for l in unit["expense_lines"]
                          if l["deductible"])
         self.assertAlmostEqual(
-            unit["statutory_contribution"], 0.5 * gross - deductible, places=2
+            unit["statutory_contribution"], unit["gross_income"] - deductible,
+            places=2
         )
         by_subtype = {l["subtype"]: l["amount"] for l in unit["expense_lines"]}
         self.assertEqual(by_subtype["interest_statement"], 1200.0)  # whole
@@ -2427,4 +2428,67 @@ class UnitGrossIncomeTests(unittest.TestCase):
         )
         self.assertEqual(
             round(unit["gross_income"] - deductible, 2), unit["statutory_contribution"]
+        )
+
+
+class ScaledMonthRowTests(unittest.TestCase):
+    """The month strip is the source the panel's gross line sums from, so its
+    rows have to carry the same share treatment as everything stacked around
+    them. The property-level sums are scaled elsewhere and must not move."""
+
+    def _docs(self):
+        return [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u1"),
+        ]
+
+    def _result_at(self, share, payment_exceptions=None):
+        return _summary(self._docs(), [_prop("p1", "Block", share=share)],
+                        units={"p1": [{"unit_id": "u1", "label": "A-1"}]},
+                        payment_exceptions=payment_exceptions)
+
+    def test_month_rows_are_scaled_and_carry_the_face_value(self):
+        unit = self._result_at(0.5)["properties"][0]["units"][0]
+        january = next(m for m in unit["months"] if m["month"] == 1)
+        self.assertAlmostEqual(january["amount"], 500.0, places=2)
+        self.assertAlmostEqual(january["full_amount"], 1000.0, places=2)
+
+    def test_month_rows_are_untouched_at_full_share(self):
+        unit = self._result_at(1.0)["properties"][0]["units"][0]
+        january = next(m for m in unit["months"] if m["month"] == 1)
+        self.assertAlmostEqual(january["amount"], 1000.0, places=2)
+        self.assertNotIn("full_amount", january)
+        self.assertNotIn("full_billed_amount", january)
+
+    def test_the_strip_sums_to_gross_income(self):
+        # The whole point: the figures stacked on the panel now agree.
+        unit = self._result_at(0.5)["properties"][0]["units"][0]
+        strip = sum(m["amount"] for m in unit["months"]
+                    if m["source"] in ("actual", "derived"))
+        self.assertAlmostEqual(strip, unit["gross_income"], places=2)
+
+    def test_billed_amount_is_scaled_and_carries_the_face_value(self):
+        # unit_id="u1" is required: this fixture's sole income scope is the
+        # unit (no property-wide income doc exists), and _scope_income
+        # matches exceptions to a scope by strict unit_id equality — an
+        # exception without it never reaches the unit's rows.
+        result = self._result_at(
+            0.5, payment_exceptions=[_exception("p1", "2025-03", unit_id="u1")]
+        )
+        unit = result["properties"][0]["units"][0]
+        march = next(m for m in unit["months"] if m["month"] == 3)
+        self.assertAlmostEqual(march["billed_amount"], 500.0, places=2)
+        self.assertAlmostEqual(march["full_billed_amount"], 1000.0, places=2)
+
+    def test_outstanding_rent_is_not_double_scaled(self):
+        # THE TRAP GATE. `_scope_income` returns `billed` in the rendered rows
+        # AND in its `unpaid_months` tuples, and the tuple path already feeds
+        # prop_outstanding, which is scaled once at the property level. Scaling
+        # the tuple as well quarters this figure, and every other test in this
+        # file stays green. 1000 billed at 50% = 500.
+        result = self._result_at(
+            0.5, payment_exceptions=[_exception("p1", "2025-03", unit_id="u1")]
+        )
+        self.assertAlmostEqual(
+            result["properties"][0]["outstanding_rent"], 500.0, places=2
         )
