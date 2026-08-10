@@ -130,7 +130,10 @@ Expected: a scan count, then either "0 on a partial-share property" or an itemis
 
 Edit this file and replace the line below with the actual output summary:
 
-> **AUDIT RESULT (fill in during Task 1):** _not yet run_
+> **AUDIT RESULT (2026-08-10):** 0 rent recovery record(s) scanned; 0 on a
+> partial-share property. The `documind_rent_recoveries` collection is empty,
+> so Task 4's change of meaning has no stored data to affect and **Task 5 is a
+> no-op**.
 
 If the count is 0, Task 5 is a no-op and says so. If it is above 0, Task 5 corrects exactly those documents.
 
