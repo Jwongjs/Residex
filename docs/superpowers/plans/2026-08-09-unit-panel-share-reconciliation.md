@@ -22,6 +22,55 @@
 
 ---
 
+## Amendments during execution (2026-08-10)
+
+Three corrections were made during execution, each approved as governing over the
+text below. Read these before re-running this plan or writing the follow-on
+plans (`2026-08-09-unit-level-ownership-share.md`,
+`2026-08-09-document-share-basis.md`), which inherit these code shapes.
+
+**A1 — Build every emitted total from the same rounded list you emit.** Tasks 2
+and 3 originally subtracted unrounded scalars (`display_landlord_scaled`,
+`share * (actual_sum + derived_sum)`) while emitting per-line and per-row amounts
+that `_round2` each element. Rounding a sum is not the same number as summing
+rounded parts, so the payload told the app to render subtractions that were off
+by a cent — the very defect this plan exists to remove. The landed code computes
+`scaled_lines` and `scaled_months` **once**, reuses each as the emitted
+`expense_lines` / `months`, and derives `gross_income`, `full_gross_income`,
+`contribution` and `statutory_contribution` from those same rounded elements.
+The subtraction is then exact by construction rather than by matching rounding
+order. See `finance_engine.py:1201-1240`. `display_landlord_scaled` /
+`display_deductible_scaled` no longer exist.
+
+**A2 — Every test fixture below had to be checked against the value at which its
+own bug is invisible.** Three of this plan's tests sat exactly on such a value:
+
+| Test as originally written | Why it could never fail |
+| --- | --- |
+| `test_the_rendered_subtraction_is_exact_on_a_half_cent` | Structurally impossible: when the subtrahend is cent-aligned, `round(a-b) == round(a)-b` for every input. Also its premise was wrong — `1000.01*3 == 3000.0299999999997`, so the half rounds *down*. **Deleted** and replaced by a test that gates A1's real defect (expense `600.01` at share 0.5). |
+| `test_contribution_equals_gross_minus_landlord_paid_lines` | Fixture `600.00` at share 0.5 scales to an exact `300.00`, so the rounded and unrounded expense sums agree. Re-fixtured. |
+| `test_the_strip_sums_to_gross_income` | Fixture rent `1000.00` at share 0.5 makes round-the-sum and sum-the-rounded agree. At `1000.01` they differ by 6 cents. Re-fixtured to `1000.01`. |
+
+Each replacement was proven to fail against the old code before being accepted.
+**A gate you have not watched fail is not a gate.** This is the same trap the
+workstream memo records for all three specs — it recurs *inside the tests written
+to catch it*, not only in the production fixtures.
+
+**A3 — Two of Task 3's own new tests could never pass.** `test_billed_amount_...`
+and `test_outstanding_rent_is_not_double_scaled` used
+`_exception("p1", "2025-03")` with no `unit_id`, and `_scope_income` matches
+`unit_id` strictly, so the exception never reached the unit scope. Both call
+sites gained `unit_id="u1"`. The trap gate was then re-verified to still have
+teeth (halving the tuple path yields `outstanding_rent` 250.0, not 500.0).
+
+**Invariant wording correction.** "Byte-identical at share 1.0" holds for amounts
+with **≤2 decimal places**, which is every realistic amount but is not enforced
+anywhere — `fact_extractor.py:761-766` does not normalise. Where a sub-cent raw
+amount would move the payload, the new value is the correct one, because it
+matches the strip the panel actually renders.
+
+---
+
 ## File Structure
 
 **Backend**
@@ -210,6 +259,8 @@ class UnitGrossIncomeTests(unittest.TestCase):
             places=2
         )
 
+    # SUPERSEDED by amendment A2 — this test cannot fail under any fixture and
+    # its premise is arithmetically wrong. Deleted during execution; see A2.
     def test_the_rendered_subtraction_is_exact_on_a_half_cent(self):
         # THE ROUNDING GATE. 3 months at 1000.01 = 3000.03; half is 1500.015,
         # which rounds up to 1500.02 on its own but can land a cent lower when
@@ -244,7 +295,11 @@ class UnitGrossIncomeTests(unittest.TestCase):
 Run: `cd backend && py -3.11 -m pytest tests/test_finance_engine.py::UnitGrossIncomeTests -v`
 Expected: FAIL — `KeyError: 'gross_income'` on every test except `test_full_gross_income_is_absent_at_full_share`, which fails on the same key.
 
-- [ ] **Step 3: Emit gross and build both totals from it**
+- [x] **Step 3: Emit gross and build both totals from it**
+
+> **SUPERSEDED by amendment A1** — the block below subtracts unrounded scalars and
+> was corrected during execution. Do not copy it. The landed shape is
+> `finance_engine.py:1201-1240`.
 
 In `backend/rag/finance/finance_engine.py`, replace the `unit_blocks.append({...})` call at `:1179-1193` with:
 
@@ -408,7 +463,12 @@ def _scaled_month_rows(rows: List[Dict[str, Any]], share: float) -> List[Dict[st
     return out
 ```
 
-- [ ] **Step 4: Call it from the unit block**
+- [x] **Step 4: Call it from the unit block**
+
+> **SUPERSEDED by amendment A1** — the rows are assigned to a `scaled_months`
+> local that `gross_income` and `full_gross_income` are then summed from, so the
+> strip sums to the header by construction. Assigning the call inline as below
+> leaves gross round-the-sum and the strip sum-the-rounded, which disagree.
 
 In the block added by Task 2, change the one line:
 
