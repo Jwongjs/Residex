@@ -2505,3 +2505,41 @@ class ScaledMonthRowTests(unittest.TestCase):
         self.assertAlmostEqual(
             result["properties"][0]["outstanding_rent"], 500.0, places=2
         )
+
+
+class RecoveryShareTests(unittest.TestCase):
+    """A recovery is typed in by the landlord, not read off a document, and
+    the sheet asks a partial-share owner for their own share. So it is stored
+    as the landlord's money already and must not be scaled again on read."""
+
+    def _docs(self):
+        return [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}),
+        ]
+
+    def test_recovered_rent_is_not_scaled_by_ownership_share(self):
+        result = _summary(
+            self._docs(), [_prop("p1", "House", share=0.5)],
+            rent_recoveries=[_recovery("p1", "2024-03", 900.0, 2025)],
+        )
+        block = result["properties"][0]
+        # 12 derived months at 1000 = 12000, halved = 6000, plus the 900
+        # recovery at face value.
+        self.assertAlmostEqual(block["received_rent"], 6900.0, places=2)
+
+    def test_rent_income_is_still_scaled_alongside_it(self):
+        # Guards the other half: exempting recoveries must not exempt rent.
+        result = _summary(self._docs(), [_prop("p1", "House", share=0.5)])
+        self.assertAlmostEqual(
+            result["properties"][0]["received_rent"], 6000.0, places=2
+        )
+
+    def test_full_share_is_unaffected(self):
+        result = _summary(
+            self._docs(), [_prop("p1", "House", share=1.0)],
+            rent_recoveries=[_recovery("p1", "2024-03", 900.0, 2025)],
+        )
+        self.assertAlmostEqual(
+            result["properties"][0]["received_rent"], 12900.0, places=2
+        )

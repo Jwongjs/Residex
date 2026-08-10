@@ -1311,7 +1311,6 @@ def compute_finance_summary(
             )
             unpaid_notes.append(f"{name}: recovered rent booked this year — {recovered_summary}")
 
-        received = prop_actual + prop_derived + prop_recovered
         direct = sum(
             _line_share(l, share) * l["amount"] for l in expense_lines if l["deductible"]
         )
@@ -1322,7 +1321,12 @@ def compute_finance_summary(
         # shared with co-owners. The already-scaled values then feed the
         # cross-property totals. Each property carries its own share, so a
         # total can never be correctly scaled after the fact.
-        s_received = share * received
+        # Recovered rent is exempt from the share multiply. Invoiced and
+        # lease-derived rent come off documents that state the whole
+        # property's figure; a recovery is typed in by the landlord, and the
+        # sheet asks a partial-share owner for their own share directly. It is
+        # already their money.
+        s_received = share * (prop_actual + prop_derived) + prop_recovered
         s_derived = share * prop_derived
         s_outstanding = share * prop_outstanding
         s_direct = direct
