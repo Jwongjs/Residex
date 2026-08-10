@@ -1198,19 +1198,28 @@ def compute_finance_summary(
             # so this changes only what is displayed.
             if scope["unit_id"] is None and rented == 0 and units_by_property.get(pid):
                 continue
-            # Gross is rounded once, here, and both totals are built from the
-            # rounded value AND from the rounded per-line amounts the panel
-            # actually displays (`scaled_lines`, computed once and reused as
-            # the `expense_lines` field). Subtracting the unrounded
-            # `share * amount` sums instead — as `_scaled_lines` itself
-            # rounds each line to `_round2(share * amount)` — let the emitted
-            # total disagree by a cent with what the panel gets by summing
-            # the emitted lines it was handed, because rounding a sum is not
-            # the same as summing rounded parts. Building the totals from the
-            # same rounded lines the app subtracts makes that subtraction
-            # exact by construction, not just by matching rounding order.
+            # Every figure the panel stacks — the gross line, the month strip
+            # beneath it, and the two contribution totals — is built from the
+            # SAME rounded rows the panel is handed (`scaled_months` /
+            # `scaled_lines`, each computed once and reused as `months` /
+            # `expense_lines`), not re-derived from an unrounded scalar.
+            # `_round2(share * (actual_sum + derived_sum))` (round-the-sum)
+            # is not the same number as summing the rounded per-row amounts
+            # the strip renders (sum-the-rounded) — they disagree by a cent
+            # at ordinary values (e.g. rent 1000.01 x12 at share 0.5: strip
+            # sums to 6000.00, round-the-sum gives 6000.06) — so gross has to
+            # be summed from `scaled_months` for the strip to sum to the
+            # header by construction. `full_gross_income` is built the same
+            # way, from each row's `full_amount`, so the percentage the app
+            # derives as `gross / full_gross` stays internally coherent:
+            # numerator and denominator are sums of the same per-row
+            # roundings, not a rounded sum paired with a summed round.
             scaled_lines = _scaled_lines(display_lines, share)
-            gross_income = _round2(share * (actual_sum + derived_sum))
+            scaled_months = _scaled_month_rows(month_rows, share)
+            income_sources = ("actual", "derived")
+            gross_income = _round2(sum(
+                m["amount"] for m in scaled_months if m["source"] in income_sources
+            ))
             block: Dict[str, Any] = {
                 "unit_id": scope["unit_id"],
                 "label": scope["label"],
@@ -1222,13 +1231,16 @@ def compute_finance_summary(
                 "statutory_contribution": _round2(gross_income - sum(
                     l["amount"] for l in scaled_lines if l["deductible"]
                 )),
-                "months": _scaled_month_rows(month_rows, share),
+                "months": scaled_months,
                 "missing_invoice_months": vacant,
                 "expense_lines": scaled_lines,
                 "loan_status": loan_status_by_unit.get(scope["unit_id"]),
             }
             if share < 1.0:
-                block["full_gross_income"] = _round2(actual_sum + derived_sum)
+                block["full_gross_income"] = _round2(sum(
+                    m.get("full_amount", m["amount"]) for m in scaled_months
+                    if m["source"] in income_sources
+                ))
             unit_blocks.append(block)
             if derived:
                 derived_notes.append(

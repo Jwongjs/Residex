@@ -2461,11 +2461,24 @@ class ScaledMonthRowTests(unittest.TestCase):
         self.assertNotIn("full_billed_amount", january)
 
     def test_the_strip_sums_to_gross_income(self):
-        # The whole point: the figures stacked on the panel now agree.
-        unit = self._result_at(0.5)["properties"][0]["units"][0]
+        # The whole point: the figures stacked on the panel now agree. Rent is
+        # deliberately 1000.01, not a clean 1000.0 — at a clean value,
+        # round-the-sum (_round2(share * (actual_sum + derived_sum))) and
+        # sum-the-rounded (summing the already-rounded months rows) land on
+        # the same cent and this test could pass even if gross_income were
+        # built the wrong way. At 1000.01 x 12 months, share 0.5, they
+        # diverge: the strip sums to 6000.00, round-the-sum gives 6000.06.
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.01, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u1"),
+        ]
+        result = _summary(docs, [_prop("p1", "Block", share=0.5)],
+                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
+        unit = result["properties"][0]["units"][0]
         strip = sum(m["amount"] for m in unit["months"]
                     if m["source"] in ("actual", "derived"))
-        self.assertAlmostEqual(strip, unit["gross_income"], places=2)
+        self.assertAlmostEqual(strip, 6000.00, places=2)
+        self.assertAlmostEqual(unit["gross_income"], strip, places=2)
 
     def test_billed_amount_is_scaled_and_carries_the_face_value(self):
         # unit_id="u1" is required: this fixture's sole income scope is the
