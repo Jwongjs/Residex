@@ -2345,3 +2345,81 @@ class MortgageSettlementTests(unittest.TestCase):
         block = summary["properties"][0]
         self.assertNotIn("loan", summary["missing_categories"].get("p1", []))
         self.assertAlmostEqual(block["direct_expenses"], 5000.0, places=2)
+
+
+class UnitGrossIncomeTests(unittest.TestCase):
+    """The panel renders `gross - expenses = total` as three stacked figures.
+    That subtraction has to be true of the numbers actually emitted, so gross
+    is emitted rather than re-derived by the app from unscaled month rows."""
+
+    def _docs(self):
+        return [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u1"),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 600.0, "period_year": 2025},
+            ]}, unit_id="u1"),
+        ]
+
+    def _unit_at(self, share):
+        result = _summary(self._docs(), [_prop("p1", "Block", share=share)],
+                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
+        return result["properties"][0]["units"][0]
+
+    def test_gross_income_is_the_share_of_actual_plus_derived(self):
+        unit = self._unit_at(0.5)
+        # 12 derived months at 1000 = 12000 full; half is 6000.
+        self.assertAlmostEqual(unit["gross_income"], 6000.0, places=2)
+        self.assertAlmostEqual(unit["full_gross_income"], 12000.0, places=2)
+
+    def test_full_gross_income_is_absent_at_full_share(self):
+        # The absence of the field is how the app decides not to render a
+        # "your N% of" sub-label. Emitting it at 1.0 would show "your 100% of".
+        unit = self._unit_at(1.0)
+        self.assertAlmostEqual(unit["gross_income"], 12000.0, places=2)
+        self.assertNotIn("full_gross_income", unit)
+
+    def test_contribution_equals_gross_minus_landlord_paid_lines(self):
+        unit = self._unit_at(0.5)
+        landlord_paid = sum(l["amount"] for l in unit["expense_lines"]
+                            if l["paid_by_landlord"])
+        self.assertAlmostEqual(
+            unit["contribution"], unit["gross_income"] - landlord_paid, places=2
+        )
+
+    def test_statutory_equals_gross_minus_deductible_lines(self):
+        unit = self._unit_at(0.5)
+        deductible = sum(l["amount"] for l in unit["expense_lines"]
+                         if l["deductible"])
+        self.assertAlmostEqual(
+            unit["statutory_contribution"], unit["gross_income"] - deductible,
+            places=2
+        )
+
+    def test_the_rendered_subtraction_is_exact_on_a_half_cent(self):
+        # THE ROUNDING GATE. 3 months at 1000.01 = 3000.03; half is 1500.015,
+        # which rounds up to 1500.02 on its own but can land a cent lower when
+        # the whole `share * income - expenses` expression is rounded as one.
+        # A one-cent gap here means the panel renders 1500.02 - 200.00 =
+        # 1300.01 above a total that says 1300.00 — the same defect this plan
+        # removes, one cent wide. Reverting to the single-expression form
+        # breaks this and nothing else.
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": "2025-01"},
+                 unit_id="u1"),
+            _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": "2025-02"},
+                 unit_id="u1"),
+            _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": "2025-03"},
+                 unit_id="u1"),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 400.0, "period_year": 2025},
+            ]}, unit_id="u1"),
+        ]
+        result = _summary(docs, [_prop("p1", "Block", share=0.5)],
+                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
+        unit = result["properties"][0]["units"][0]
+        landlord_paid = sum(l["amount"] for l in unit["expense_lines"]
+                            if l["paid_by_landlord"])
+        self.assertEqual(
+            round(unit["gross_income"] - landlord_paid, 2), unit["contribution"]
+        )

@@ -1176,21 +1176,31 @@ def compute_finance_summary(
             # so this changes only what is displayed.
             if scope["unit_id"] is None and rented == 0 and units_by_property.get(pid):
                 continue
-            unit_blocks.append({
+            # Gross is rounded once, here, and both totals are built from the
+            # rounded value. Rounding `share * income - expenses` as a single
+            # expression instead lets the emitted gross and the emitted total
+            # disagree by a cent, which the app renders as a subtraction that
+            # does not work. `full_gross_income` follows _scaled_lines'
+            # convention: present only below full ownership, where it is a
+            # different number from `gross_income`.
+            gross_income = _round2(share * (actual_sum + derived_sum))
+            block: Dict[str, Any] = {
                 "unit_id": scope["unit_id"],
                 "label": scope["label"],
                 "rented_months": rented,
-                "contribution": _round2(
-                    share * (actual_sum + derived_sum) - display_landlord_scaled
-                ),
+                "gross_income": gross_income,
+                "contribution": _round2(gross_income - display_landlord_scaled),
                 "statutory_contribution": _round2(
-                    share * (actual_sum + derived_sum) - display_deductible_scaled
+                    gross_income - display_deductible_scaled
                 ),
                 "months": month_rows,
                 "missing_invoice_months": vacant,
                 "expense_lines": _scaled_lines(display_lines, share),
                 "loan_status": loan_status_by_unit.get(scope["unit_id"]),
-            })
+            }
+            if share < 1.0:
+                block["full_gross_income"] = _round2(actual_sum + derived_sum)
+            unit_blocks.append(block)
             if derived:
                 derived_notes.append(
                     f"{name} — {scope['label']}: "
