@@ -453,4 +453,129 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('your'), findsNothing);
   });
+
+  group('reconciliation at partial ownership share', () {
+    UnitFinance halfShareUnit({String? unitId = 'u1'}) => UnitFinance(
+          unitId: unitId,
+          label: unitId == null ? 'Whole property' : 'B-08-11',
+          rentedMonths: 8,
+          contribution: 9800.0,
+          statutoryContribution: 11800.0,
+          grossIncome: 12800.0,
+          fullGrossIncome: 25600.0,
+          months: [
+            MonthIncome(
+                month: 1, source: 'actual', amount: 1600.0, fullAmount: 3200.0),
+          ],
+          expenseLines: [
+            ExpenseLine(
+              docId: 'd1',
+              category: 'maintenance',
+              subtype: 'maintenance',
+              description: 'Strata management fee',
+              amount: 1000.0,
+              fullAmount: 2000.0,
+            ),
+            ExpenseLine(
+              docId: 'd2',
+              category: 'loan',
+              subtype: 'interest_statement',
+              description: 'Loan interest',
+              amount: 1000.0,
+            ),
+            ExpenseLine(
+              docId: 'd3',
+              category: 'loan_principal',
+              subtype: 'loan_principal',
+              description: 'Loan principal',
+              amount: 1000.0,
+              deductible: false,
+            ),
+          ],
+        );
+
+    testWidgets('gross renders the landlord share, not the invoiced total',
+        (tester) async {
+      await _pumpScreen(tester, 2026, halfShareUnit());
+      await tester.tap(find.text('Rental Profit/Loss').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('RM 12,800.00'), findsWidgets);
+      expect(find.text('RM 25,600.00'), findsNothing);
+    });
+
+    testWidgets('the sub-label names the share and the invoiced figure',
+        (tester) async {
+      await _pumpScreen(tester, 2026, halfShareUnit());
+      await tester.tap(find.text('Rental Profit/Loss').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('your 50% of RM 25,600.00'), findsOneWidget);
+    });
+
+    testWidgets('the statutory accordion scales its gross too', (tester) async {
+      await _pumpScreen(tester, 2026, halfShareUnit());
+      await tester.tap(find.text('Statutory income').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('your 50% of RM 25,600.00'), findsOneWidget);
+    });
+
+    testWidgets('the whole-property scope has the same treatment',
+        (tester) async {
+      // unitId == null goes through the identical code path and had the
+      // identical defect, so it gets its own gate.
+      await _pumpScreen(tester, 2026, halfShareUnit(unitId: null));
+      await tester.tap(find.text('Rental Profit/Loss').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('RM 12,800.00'), findsWidgets);
+      expect(find.text('your 50% of RM 25,600.00'), findsOneWidget);
+    });
+
+    testWidgets('full ownership shows no sub-label', (tester) async {
+      await _pumpScreen(
+        tester,
+        2026,
+        UnitFinance(
+          unitId: 'u1',
+          label: 'B-08-11',
+          rentedMonths: 8,
+          contribution: 22600.0,
+          grossIncome: 25600.0,
+          months: [
+            MonthIncome(month: 1, source: 'actual', amount: 3200.0),
+          ],
+        ),
+      );
+      await tester.tap(find.text('Rental Profit/Loss').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('RM 25,600.00'), findsWidgets);
+      expect(find.textContaining('your '), findsNothing);
+    });
+
+    testWidgets('the strip heading names the share', (tester) async {
+      await _pumpScreen(tester, 2026, halfShareUnit());
+      expect(find.text('Monthly income · your 50% share'), findsOneWidget);
+    });
+
+    testWidgets('the strip heading is bare at full ownership', (tester) async {
+      await _pumpScreen(
+        tester,
+        2026,
+        UnitFinance(
+          unitId: 'u1',
+          label: 'B-08-11',
+          rentedMonths: 8,
+          contribution: 22600.0,
+          grossIncome: 25600.0,
+          months: [
+            MonthIncome(month: 1, source: 'actual', amount: 3200.0),
+          ],
+        ),
+      );
+      expect(find.text('Monthly income'), findsOneWidget);
+    });
+  });
 }

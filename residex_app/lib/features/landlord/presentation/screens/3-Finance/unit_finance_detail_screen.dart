@@ -141,7 +141,8 @@ class _UnitFinanceDetailScreenState
           const SizedBox(height: 12),
           _buildStatutoryAccordion(context, _displayedUnit, _displayedYear),
           const SizedBox(height: 20),
-          Text('Monthly income', style: AppTextStyles.titleMedium),
+          Text(_monthStripHeading(_displayedUnit),
+              style: AppTextStyles.titleMedium),
           const SizedBox(height: 8),
           _buildMonthStrip(_displayedUnit),
           const SizedBox(height: 8),
@@ -153,16 +154,6 @@ class _UnitFinanceDetailScreenState
         ],
       ),
     );
-  }
-
-  double _grossIncome(UnitFinance unit) {
-    var total = 0.0;
-    for (final month in unit.months) {
-      if (month.source == 'actual' || month.source == 'derived') {
-        total += month.amount;
-      }
-    }
-    return total;
   }
 
   /// Rental Profit/Loss and Statutory income are two separate dropdowns (user
@@ -178,7 +169,8 @@ class _UnitFinanceDetailScreenState
       context,
       title: 'Rental Profit/Loss',
       total: unit.contribution,
-      gross: _grossIncome(unit),
+      gross: unit.grossIncome,
+      fullGross: unit.fullGrossIncome,
       expensesLabel: 'Direct expenses',
       expensesTotal: landlordPaidExpenseTotal(unit.expenseLines),
       lines: unit.expenseLines,
@@ -194,7 +186,8 @@ class _UnitFinanceDetailScreenState
       context,
       title: 'Statutory income',
       total: unit.statutoryContribution,
-      gross: _grossIncome(unit),
+      gross: unit.grossIncome,
+      fullGross: unit.fullGrossIncome,
       expensesLabel: 'Deductible expenses',
       expensesTotal: deductibleExpenseTotal(unit.expenseLines),
       lines: unit.expenseLines,
@@ -220,6 +213,7 @@ class _UnitFinanceDetailScreenState
     required String title,
     required double total,
     required double gross,
+    required double? fullGross,
     required String expensesLabel,
     required double expensesTotal,
     required List<ExpenseLine> lines,
@@ -269,17 +263,36 @@ class _UnitFinanceDetailScreenState
                     const Divider(height: 1, color: AppColors.hairline),
                     const SizedBox(height: 10),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: Text('Gross income', style: AppTextStyles.labelLarge),
                         ),
-                        Text(
-                          formatRM(gross),
-                          style: GoogleFonts.ibmPlexMono(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              formatRM(gross),
+                              style: GoogleFonts.ibmPlexMono(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            // Percentage derived from the figure pair, exactly
+                            // as the expense rows below do it — the panel never
+                            // reads an ownership-share field, so this stays
+                            // correct if share ever moves to the unit.
+                            if (fullGross != null && fullGross > 0) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'your ${((gross / fullGross) * 100).toStringAsFixed(0)}% '
+                                'of ${formatRM(fullGross)}',
+                                style: AppTextStyles.labelSmall
+                                    .copyWith(color: AppColors.textMuted),
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                     ),
@@ -482,6 +495,21 @@ class _UnitFinanceDetailScreenState
       default:
         return AppColors.hairline;
     }
+  }
+
+  /// "Monthly income", plus the share qualifier when the engine scaled these
+  /// rows. Cells render the scaled amount, so the heading is what tells the
+  /// landlord which figure they are looking at. The percentage comes from the
+  /// row's own figure pair, never from an ownership-share field.
+  String _monthStripHeading(UnitFinance unit) {
+    for (final month in unit.months) {
+      final full = month.fullAmount;
+      if (full != null && full > 0) {
+        final pct = ((month.amount / full) * 100).toStringAsFixed(0);
+        return 'Monthly income · your $pct% share';
+      }
+    }
+    return 'Monthly income';
   }
 
   Widget _buildMonthStrip(UnitFinance unit) {
