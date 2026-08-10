@@ -1158,14 +1158,6 @@ def compute_finance_summary(
                 unit_lines if scope["unit_id"] is not None
                 else lines_by_unit.get(None, [])
             )
-            display_deductible_scaled = sum(
-                _line_share(l, share) * l["amount"]
-                for l in display_lines if l["deductible"]
-            )
-            display_landlord_scaled = sum(
-                _line_share(l, share) * l["amount"]
-                for l in display_lines if l["paid_by_landlord"]
-            )
             prop_actual += actual_sum
             prop_derived += derived_sum
             # Suppress the synthetic whole-property scope from the rendered rows
@@ -1177,25 +1169,32 @@ def compute_finance_summary(
             if scope["unit_id"] is None and rented == 0 and units_by_property.get(pid):
                 continue
             # Gross is rounded once, here, and both totals are built from the
-            # rounded value. Rounding `share * income - expenses` as a single
-            # expression instead lets the emitted gross and the emitted total
-            # disagree by a cent, which the app renders as a subtraction that
-            # does not work. `full_gross_income` follows _scaled_lines'
-            # convention: present only below full ownership, where it is a
-            # different number from `gross_income`.
+            # rounded value AND from the rounded per-line amounts the panel
+            # actually displays (`scaled_lines`, computed once and reused as
+            # the `expense_lines` field). Subtracting the unrounded
+            # `share * amount` sums instead — as `_scaled_lines` itself
+            # rounds each line to `_round2(share * amount)` — let the emitted
+            # total disagree by a cent with what the panel gets by summing
+            # the emitted lines it was handed, because rounding a sum is not
+            # the same as summing rounded parts. Building the totals from the
+            # same rounded lines the app subtracts makes that subtraction
+            # exact by construction, not just by matching rounding order.
+            scaled_lines = _scaled_lines(display_lines, share)
             gross_income = _round2(share * (actual_sum + derived_sum))
             block: Dict[str, Any] = {
                 "unit_id": scope["unit_id"],
                 "label": scope["label"],
                 "rented_months": rented,
                 "gross_income": gross_income,
-                "contribution": _round2(gross_income - display_landlord_scaled),
-                "statutory_contribution": _round2(
-                    gross_income - display_deductible_scaled
-                ),
+                "contribution": _round2(gross_income - sum(
+                    l["amount"] for l in scaled_lines if l["paid_by_landlord"]
+                )),
+                "statutory_contribution": _round2(gross_income - sum(
+                    l["amount"] for l in scaled_lines if l["deductible"]
+                )),
                 "months": month_rows,
                 "missing_invoice_months": vacant,
-                "expense_lines": _scaled_lines(display_lines, share),
+                "expense_lines": scaled_lines,
                 "loan_status": loan_status_by_unit.get(scope["unit_id"]),
             }
             if share < 1.0:

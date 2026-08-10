@@ -2353,11 +2353,15 @@ class UnitGrossIncomeTests(unittest.TestCase):
     is emitted rather than re-derived by the app from unscaled month rows."""
 
     def _docs(self):
+        # The maintenance line is 600.01, not a round 600.00: half of it
+        # (300.005) does not land on a cent, so any test built on this
+        # fixture actually exercises the rounding boundary instead of
+        # agreeing by coincidence.
         return [
             _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
                                  "lease_end": "2025-12-31"}, unit_id="u1"),
             _doc("p1", "expenses", {"expense_lines": [
-                {"subtype": "maintenance", "amount": 600.0, "period_year": 2025},
+                {"subtype": "maintenance", "amount": 600.01, "period_year": 2025},
             ]}, unit_id="u1"),
         ]
 
@@ -2396,30 +2400,31 @@ class UnitGrossIncomeTests(unittest.TestCase):
             places=2
         )
 
-    def test_the_rendered_subtraction_is_exact_on_a_half_cent(self):
-        # THE ROUNDING GATE. 3 months at 1000.01 = 3000.03; half is 1500.015,
-        # which rounds up to 1500.02 on its own but can land a cent lower when
-        # the whole `share * income - expenses` expression is rounded as one.
-        # A one-cent gap here means the panel renders 1500.02 - 200.00 =
-        # 1300.01 above a total that says 1300.00 — the same defect this plan
-        # removes, one cent wide. Reverting to the single-expression form
-        # breaks this and nothing else.
-        docs = [
-            _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": "2025-01"},
-                 unit_id="u1"),
-            _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": "2025-02"},
-                 unit_id="u1"),
-            _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": "2025-03"},
-                 unit_id="u1"),
-            _doc("p1", "expenses", {"expense_lines": [
-                {"subtype": "maintenance", "amount": 400.0, "period_year": 2025},
-            ]}, unit_id="u1"),
-        ]
-        result = _summary(docs, [_prop("p1", "Block", share=0.5)],
-                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
-        unit = result["properties"][0]["units"][0]
+    def test_contribution_and_statutory_are_built_from_the_same_rounded_lines_the_panel_sums(self):
+        # THE GATE. The old defect was never the rounding order of
+        # `share * income - expenses` (that expression and rounding gross
+        # once before subtracting produce identical cents whenever the
+        # subtrahend is itself cent-aligned — there is no fixture that tells
+        # those two apart). The real defect was that `contribution` and
+        # `statutory_contribution` were built from an UNROUNDED sum of
+        # `share * line.amount`, while `expense_lines` — what the panel
+        # actually sums when it re-derives the same subtraction — carries
+        # the ROUNDED per-line amount. At this fixture's share (0.5) the
+        # maintenance line's scaled value is 300.005, which rounds to
+        # 300.00; subtracting the unrounded 300.005 from a rounded gross of
+        # 6000.00 lands on 5699.99, one cent off the 5700.00 the panel gets
+        # from summing the emitted 300.00 line. Building both totals from
+        # the same rounded `expense_lines` this test reads from removes that
+        # gap by construction: whatever `expense_lines` says is what the
+        # totals were computed from, not a shadow unrounded copy of it.
+        unit = self._unit_at(0.5)
         landlord_paid = sum(l["amount"] for l in unit["expense_lines"]
                             if l["paid_by_landlord"])
+        deductible = sum(l["amount"] for l in unit["expense_lines"]
+                         if l["deductible"])
         self.assertEqual(
             round(unit["gross_income"] - landlord_paid, 2), unit["contribution"]
+        )
+        self.assertEqual(
+            round(unit["gross_income"] - deductible, 2), unit["statutory_contribution"]
         )
