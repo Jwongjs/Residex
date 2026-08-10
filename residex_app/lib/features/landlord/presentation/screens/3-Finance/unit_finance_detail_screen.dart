@@ -597,6 +597,7 @@ class _UnitFinanceDetailScreenState
         month: _monthKey(_displayedYear, month.month), monthLabel: monthLabel,
         paymentState: month.paymentState ?? 'outstanding',
         reason: month.reason, billedAmount: month.billedAmount,
+        fullBilledAmount: month.fullBilledAmount,
       );
     } else {
       await showMarkUnpaidSheet(

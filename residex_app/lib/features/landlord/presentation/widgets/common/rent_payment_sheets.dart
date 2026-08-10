@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../providers/documind_provider.dart';
+import '../../providers/finance_logic.dart';
 import 'app_choice_chip.dart';
 
 /// Mark a month as no payment received, choosing outstanding (still being
@@ -104,6 +105,7 @@ Future<void> showManageUnpaidSheet(
   required String paymentState,
   String? reason,
   double? billedAmount,
+  double? fullBilledAmount,
 }) async {
   final action = await showModalBottomSheet<String>(
     context: context,
@@ -187,6 +189,7 @@ Future<void> showManageUnpaidSheet(
       context, ref,
       propertyId: propertyId, unitId: unitId, originalMonth: month, monthLabel: monthLabel,
       defaultAmount: billedAmount,
+      fullAmount: fullBilledAmount,
     );
   }
 }
@@ -199,6 +202,7 @@ Future<void> _showRecoverSheet(
   required String originalMonth,
   required String monthLabel,
   double? defaultAmount,
+  double? fullAmount,
 }) async {
   final amountController = TextEditingController(
     text: defaultAmount != null ? defaultAmount.toStringAsFixed(2) : '',
@@ -228,10 +232,26 @@ Future<void> _showRecoverSheet(
               style: AppTextStyles.bodySmall,
             ),
             const SizedBox(height: 12),
+            // The engine books this figure verbatim — it does not apply
+            // ownership share to recoveries. At a partial share the month tile
+            // already shows the landlord's half, so the field asks for that
+            // same half and names the invoiced figure it came from.
             TextField(
               controller: amountController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Amount received (RM)'),
+              decoration: InputDecoration(
+                labelText: fullAmount != null && fullAmount > 0
+                    ? 'Your share of the amount received (RM)'
+                    : 'Amount received from tenant (RM)',
+                helperText: fullAmount != null &&
+                        fullAmount > 0 &&
+                        defaultAmount != null
+                    ? 'Enter your '
+                        '${((defaultAmount / fullAmount) * 100).toStringAsFixed(0)}% share, '
+                        'not the full ${formatRM(fullAmount)} the tenant paid.'
+                    : null,
+                helperMaxLines: 2,
+              ),
             ),
             const SizedBox(height: 8),
             TextField(

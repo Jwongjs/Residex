@@ -940,6 +940,7 @@ class FinanceScreen extends ConsumerWidget {
               monthLabel: monthLabel,
               paymentState: month.paymentState ?? 'outstanding',
               reason: month.reason, billedAmount: month.billedAmount,
+              fullBilledAmount: month.fullBilledAmount,
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),

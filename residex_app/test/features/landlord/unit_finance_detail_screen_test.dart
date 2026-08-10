@@ -302,12 +302,119 @@ void main() {
 
     await tester.tap(find.text('Record a recovery'));
     await tester.pumpAndSettle();
-    expect(find.text('Amount received (RM)'), findsOneWidget);
+    expect(find.text('Amount received from tenant (RM)'), findsOneWidget);
 
     await tester.tap(find.text('Record recovery'));
     await tester.pumpAndSettle();
 
     expect(recorded?.amount, 3000.0);
     expect(recorded?.receivedYear, DateTime.now().year);
+  });
+
+  group('recovery sheet asks for the figure the engine will book', () {
+    // This file mounts the screen inline rather than through a helper
+    // (see the year-switching test at the top), so this group brings its own.
+    Future<void> pumpWithUnit(WidgetTester tester, UnitFinance unit) async {
+      final summary = FinanceSummary(
+        year: 2026,
+        totals: FinanceTotals(
+          receivedRent: 0.0, derivedRent: 0.0, directExpenses: 0.0,
+          netPl: 0.0, statutoryRentalIncome: 0.0, statutoryNote: '',
+        ),
+        properties: [
+          PropertyFinance(
+            propertyId: 'p1', name: 'Ayer 8',
+            receivedRent: 0.0, derivedRent: 0.0, directExpenses: 0.0,
+            rentalIncomeOrLoss: 0.0,
+            units: [unit],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            financeYearsProvider.overrideWith((ref) async => [2026]),
+            financeSummaryProvider.overrideWith((ref, y) async => summary),
+          ],
+          child: MaterialApp(
+            home: UnitFinanceDetailScreen(
+              propertyId: 'p1',
+              propertyName: 'Ayer 8',
+              unit: unit,
+              year: 2026,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('partial share asks for the landlord share', (tester) async {
+      await pumpWithUnit(
+        tester,
+        UnitFinance(
+          unitId: 'u1',
+          label: 'B-08-11',
+          rentedMonths: 1,
+          contribution: 0,
+          grossIncome: 0,
+          fullGrossIncome: 0,
+          months: [
+            MonthIncome(
+              month: 9,
+              source: 'unpaid',
+              amount: 0,
+              paymentState: 'written_off',
+              billedAmount: 1600.0,
+              fullBilledAmount: 3200.0,
+            ),
+          ],
+        ),
+      );
+
+      await tester.tap(find.text('WRITTEN OFF'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Record a recovery'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Your share of the amount received (RM)'), findsOneWidget);
+      expect(
+        find.text('Enter your 50% share, not the full RM 3,200.00 the tenant paid.'),
+        findsOneWidget,
+      );
+      expect(find.text('1600.00'), findsOneWidget);
+    });
+
+    testWidgets('full ownership asks for the whole invoiced amount',
+        (tester) async {
+      await pumpWithUnit(
+        tester,
+        UnitFinance(
+          unitId: 'u1',
+          label: 'B-08-11',
+          rentedMonths: 1,
+          contribution: 0,
+          grossIncome: 0,
+          months: [
+            MonthIncome(
+              month: 9,
+              source: 'unpaid',
+              amount: 0,
+              paymentState: 'written_off',
+              billedAmount: 3200.0,
+            ),
+          ],
+        ),
+      );
+
+      await tester.tap(find.text('WRITTEN OFF'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Record a recovery'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Amount received from tenant (RM)'), findsOneWidget);
+      expect(find.textContaining('Enter your'), findsNothing);
+      expect(find.text('3200.00'), findsOneWidget);
+    });
   });
 }
