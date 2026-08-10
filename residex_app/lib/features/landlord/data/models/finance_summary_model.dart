@@ -107,6 +107,9 @@ class FinanceSummaryModel {
       rentedMonths: (json['rented_months'] as num?)?.toInt() ?? 0,
       contribution: _d(json['contribution']),
       statutoryContribution: _d(json['statutory_contribution']),
+      grossIncome: _d(json['gross_income']),
+      fullGrossIncome:
+          json['full_gross_income'] == null ? null : _d(json['full_gross_income']),
       months: (json['months'] as List<dynamic>? ?? const [])
           .map((m) => m as Map<String, dynamic>)
           .map((m) => MonthIncome(
@@ -116,6 +119,10 @@ class FinanceSummaryModel {
                 reason: m['reason'] as String?,
                 paymentState: m['payment_state'] as String?,
                 billedAmount: m['billed_amount'] == null ? null : _d(m['billed_amount']),
+                fullAmount: m['full_amount'] == null ? null : _d(m['full_amount']),
+                fullBilledAmount: m['full_billed_amount'] == null
+                    ? null
+                    : _d(m['full_billed_amount']),
               ))
           .toList(),
       missingInvoiceMonths: (json['missing_invoice_months'] as List<dynamic>? ?? const [])

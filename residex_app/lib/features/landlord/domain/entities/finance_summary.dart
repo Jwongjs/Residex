@@ -138,6 +138,18 @@ class UnitFinance {
   final int rentedMonths;
   final double contribution;
   final double statutoryContribution;
+
+  /// The landlord's share of this unit's rent for the year — invoiced months
+  /// plus months priced from the tenancy agreement. Emitted by the engine so
+  /// the panel never re-derives it from the month rows, which are scaled by a
+  /// different code path.
+  final double grossIncome;
+
+  /// The whole property's gross before ownership share was applied, present
+  /// only when a share below 1.0 scaled [grossIncome]. Null means
+  /// [grossIncome] is the full figure.
+  final double? fullGrossIncome;
+
   final List<MonthIncome> months;
   final List<int> missingInvoiceMonths;
   final List<ExpenseLine> expenseLines;
@@ -149,6 +161,8 @@ class UnitFinance {
     required this.rentedMonths,
     required this.contribution,
     this.statutoryContribution = 0.0,
+    this.grossIncome = 0.0,
+    this.fullGrossIncome,
     this.months = const [],
     this.missingInvoiceMonths = const [],
     this.expenseLines = const [],
@@ -164,6 +178,14 @@ class MonthIncome {
   final String? paymentState; // outstanding | written_off, only when source == 'unpaid'
   final double? billedAmount;
 
+  /// The invoiced figure before ownership share was applied, present only
+  /// when a share below 1.0 scaled [amount].
+  final double? fullAmount;
+
+  /// The billed figure before ownership share was applied, present only when
+  /// a share below 1.0 scaled [billedAmount].
+  final double? fullBilledAmount;
+
   MonthIncome({
     required this.month,
     required this.source,
@@ -171,6 +193,8 @@ class MonthIncome {
     this.reason,
     this.paymentState,
     this.billedAmount,
+    this.fullAmount,
+    this.fullBilledAmount,
   });
 }
 

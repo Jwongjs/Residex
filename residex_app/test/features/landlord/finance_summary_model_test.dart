@@ -405,4 +405,84 @@ void main() {
     // Absent landlord_expenses must default, never crash the Finance tab.
     expect(summary.properties.single.landlordExpenses, 0.0);
   });
+
+  group('share-scaled unit figures', () {
+    Map<String, dynamic> summaryJson(Map<String, dynamic> unit) => {
+          'year': 2026,
+          'properties': [
+            {
+              'property_id': 'p1',
+              'name': 'Block',
+              'units': [unit],
+            }
+          ],
+        };
+
+    test('maps gross_income and full_gross_income when both are present', () {
+      final summary = FinanceSummaryModel.fromJson(summaryJson({
+        'unit_id': 'u1',
+        'label': 'A-1',
+        'gross_income': 12800.0,
+        'full_gross_income': 25600.0,
+      }));
+      final unit = summary.properties.first.units.first;
+      expect(unit.grossIncome, 12800.0);
+      expect(unit.fullGrossIncome, 25600.0);
+    });
+
+    test('full_gross_income absent leaves fullGrossIncome null', () {
+      final summary = FinanceSummaryModel.fromJson(summaryJson({
+        'unit_id': 'u1',
+        'label': 'A-1',
+        'gross_income': 25600.0,
+      }));
+      final unit = summary.properties.first.units.first;
+      expect(unit.grossIncome, 25600.0);
+      expect(unit.fullGrossIncome, isNull);
+    });
+
+    test('maps a month row full_amount and full_billed_amount', () {
+      final summary = FinanceSummaryModel.fromJson(summaryJson({
+        'unit_id': 'u1',
+        'label': 'A-1',
+        'gross_income': 1600.0,
+        'full_gross_income': 3200.0,
+        'months': [
+          {
+            'month': 1,
+            'source': 'actual',
+            'amount': 1600.0,
+            'full_amount': 3200.0,
+          },
+          {
+            'month': 3,
+            'source': 'unpaid',
+            'amount': 0.0,
+            'payment_state': 'written_off',
+            'billed_amount': 1600.0,
+            'full_billed_amount': 3200.0,
+          },
+        ],
+      }));
+      final months = summary.properties.first.units.first.months;
+      expect(months.first.amount, 1600.0);
+      expect(months.first.fullAmount, 3200.0);
+      expect(months.last.billedAmount, 1600.0);
+      expect(months.last.fullBilledAmount, 3200.0);
+    });
+
+    test('a month row without the full_ keys leaves them null', () {
+      final summary = FinanceSummaryModel.fromJson(summaryJson({
+        'unit_id': 'u1',
+        'label': 'A-1',
+        'gross_income': 3200.0,
+        'months': [
+          {'month': 1, 'source': 'actual', 'amount': 3200.0},
+        ],
+      }));
+      final month = summary.properties.first.units.first.months.first;
+      expect(month.fullAmount, isNull);
+      expect(month.fullBilledAmount, isNull);
+    });
+  });
 }
