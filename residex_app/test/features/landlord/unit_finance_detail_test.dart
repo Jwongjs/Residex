@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:residex_app/features/landlord/domain/entities/finance_summary.dart';
+import 'package:residex_app/features/landlord/presentation/providers/finance_logic.dart';
 import 'package:residex_app/features/landlord/presentation/providers/finance_providers.dart';
 import 'package:residex_app/features/landlord/presentation/screens/3-Finance/unit_finance_detail_screen.dart';
 
@@ -460,7 +461,9 @@ void main() {
           label: unitId == null ? 'Whole property' : 'B-08-11',
           rentedMonths: 8,
           contribution: 9800.0,
-          statutoryContribution: 11800.0,
+          // Deductible lines are maintenance (1000) + loan interest (1000);
+          // loan_principal is deductible: false. 12,800 − 2,000 = 10,800.
+          statutoryContribution: 10800.0,
           grossIncome: 12800.0,
           fullGrossIncome: 25600.0,
           months: [
@@ -519,6 +522,50 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('your 50% of RM 25,600.00'), findsOneWidget);
+    });
+
+    // The two tests below check that the rendered column actually adds up —
+    // gross minus the rendered expenses subtotal must equal the rendered
+    // total — rather than only checking that individual figures appear.
+    // `expensesTotal`/`reconciledTotal` are computed here with the same
+    // production functions the widget itself calls, so a fixture whose
+    // declared contribution/statutoryContribution doesn't reconcile (the
+    // defect this test group exists to catch) fails this assertion even
+    // though every individual figure is independently well-formed.
+    testWidgets(
+        'the rental accordion reconciles: gross minus direct expenses equals the total',
+        (tester) async {
+      final unit = halfShareUnit();
+      await _pumpScreen(tester, 2026, unit);
+      await tester.tap(find.text('Rental Profit/Loss').first);
+      await tester.pumpAndSettle();
+
+      final expensesTotal = landlordPaidExpenseTotal(unit.expenseLines);
+      final reconciledTotal = unit.grossIncome - expensesTotal;
+
+      expect(find.text(formatRM(unit.grossIncome)), findsWidgets);
+      expect(find.text('−${formatRM(expensesTotal)}'), findsOneWidget);
+      expect(find.text(formatRM(reconciledTotal)), findsWidgets);
+      // Belt-and-suspenders: the fixture's declared total must itself equal
+      // the reconciled figure, independent of rendering.
+      expect(unit.contribution, closeTo(reconciledTotal, 0.001));
+    });
+
+    testWidgets(
+        'the statutory accordion reconciles: gross minus deductible expenses equals the total',
+        (tester) async {
+      final unit = halfShareUnit();
+      await _pumpScreen(tester, 2026, unit);
+      await tester.tap(find.text('Statutory income').first);
+      await tester.pumpAndSettle();
+
+      final expensesTotal = deductibleExpenseTotal(unit.expenseLines);
+      final reconciledTotal = unit.grossIncome - expensesTotal;
+
+      expect(find.text(formatRM(unit.grossIncome)), findsWidgets);
+      expect(find.text('−${formatRM(expensesTotal)}'), findsOneWidget);
+      expect(find.text(formatRM(reconciledTotal)), findsWidgets);
+      expect(unit.statutoryContribution, closeTo(reconciledTotal, 0.001));
     });
 
     testWidgets('the whole-property scope has the same treatment',
