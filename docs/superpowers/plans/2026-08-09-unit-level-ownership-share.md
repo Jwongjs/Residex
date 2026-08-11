@@ -62,6 +62,56 @@
 > **C5 — in scope for this plan, newly:** `finance_screen.dart:322-332` and
 > `:387-390` do arithmetic on `block.ownershipShare`. Correct while share is
 > property-level; they break the moment a unit overrides it. Fix them here.
+>
+> ### ⚠ SECOND ROUND OF CORRECTIONS (added 2026-08-11, after `2a43534..4a1179f`)
+>
+> C1–C5 were written against plan 1's output. Three further commits landed after
+> them — the property-card reconciliation work (`2a43534`, `8bfec44`, `4a1179f`)
+> — and moved the same ground again.
+>
+> **C6 — `landlord_paid` and `direct` NO LONGER CALL `_line_share` AT ALL.**
+> Task 3 Step 4 item 3 quotes both as `sum(_line_share(l, share) * l["amount"]
+> for l in expense_lines ...)`. That is pre-`2a43534` code. The landed engine
+> builds `scaled_expense_lines = _scaled_lines(expense_lines, share)` **once**
+> (`finance_engine.py:1281`) and sums `l["amount"]` off that rounded list for
+> both `landlord_paid` (`:1285-1287`) and `direct` (`:1321-1323`) — the
+> property-level mirror of what plan 1 did inside the unit block. Rewriting them
+> as the plan says reinstates the unrounded round-the-sum totals and undoes all
+> three of those commits. **This is C1/C2's defect class for the third time.**
+>
+> The correct edit at those two sites is **none**. Change only
+> `_scaled_lines(expense_lines, share)` → `_scaled_lines(expense_lines,
+> share_for)` at `:1281` and both totals become per-line correct for free,
+> because they already sum the list `share_for` now weights.
+>
+> **The sites that DO still need the `share_for` swap** (each still passes the
+> scalar `share`): `:1178` (the unit-scope proration), `:1270` (the
+> property-level proration), `:1420-1422` (the `expense_breakdown`
+> accumulator), and `:1458` (`property_expense_lines`). Task 3 Step 4's items 1,
+> 2 and 4 are correct as written; only item 3 is superseded.
+>
+> **C7 — every line number in this plan is shifted by roughly +80.** The plan
+> was written against a tree five commits older. Actual positions at `4a1179f`:
+> `_line_share` `:437-441`, `_scaled_lines` `:444-466`, `_scaled_month_rows`
+> `:469`, the scopes list ~`:1140`, the unit block's `scaled_lines` /
+> `scaled_months` `:1217-1218`, `s_received` / `s_derived` / `s_outstanding`
+> `:1336-1338` (NOT `:1274-1276`), the caveat ~`:1390`. **Locate every edit by
+> reading the surrounding code, never by line number.**
+>
+> **C8 — Task 2 Step 6 must not disturb the round-once-then-subtract block.**
+> `s_received`/`s_derived`/`s_outstanding` are now immediately followed by
+> `r_received = _round2(s_received)` and siblings (`:1343-1360`), with a comment
+> explaining why `s_prorated` alone stays exact. Task 2 Step 6 replaces only the
+> three `s_*` assignments; everything below them stays exactly as it is.
+>
+> **C9 — accepted scope decision (human, 2026-08-11): the card-vs-unit rounding
+> gap stays deferred.** The property card's `received_rent` is round-the-sum of
+> raw scalars while each unit's `gross_income` is sum-the-rounded of its month
+> rows (at share 0.5, rent 1000.01×12: card 6000.06, units 6000.00). Task 2
+> makes `prop_actual`/`prop_derived` accumulate per-scope scaled scalars — still
+> not the rounded month rows — so the gap survives this plan **by design**. Do
+> not close it here; do not write a test that pins either side to the other.
+> The two figures are not co-displayed on any screen this plan touches.
 
 - **Manual precondition:** before Task 1, open a co-owned property in the running
   app and confirm plan 1 reconciles against **real** data — gross minus expenses
@@ -749,9 +799,15 @@ Four sites still pass the scalar `share`. Change each:
 
 1. The unit block's display lines, in the block Task 2 built:
 
-```python
-                "expense_lines": _scaled_lines(display_lines, share_for),
-```
+> **Adjusted per C1.** The landed engine does not call `_scaled_lines` inline in
+> the block literal; it computes `scaled_lines = _scaled_lines(display_lines,
+> share)` once at `finance_engine.py:1217` and emits that same list as
+> `"expense_lines": scaled_lines` (`:1236`). Change the argument at `:1217`, not
+> the block literal:
+>
+> ```python
+>             scaled_lines = _scaled_lines(display_lines, share_for)
+> ```
 
 2. The property-level proration, below the scope loop:
 
@@ -763,6 +819,18 @@ Four sites still pass the scalar `share`. Change each:
 ```
 
 3. `landlord_paid` and `direct` — both sum across every unit:
+
+> **SUPERSEDED — see correction C6.** Neither site calls `_line_share` any
+> more. Both sum `l["amount"]` off the single rounded `scaled_expense_lines`
+> list (`finance_engine.py:1281`, `:1285-1287`, `:1321-1323`). **Leave both
+> sums exactly as they are.** The only edit here is one argument:
+>
+> ```python
+>         scaled_expense_lines = _scaled_lines(expense_lines, share_for)
+> ```
+>
+> Writing the two blocks below instead reinstates unrounded round-the-sum
+> totals and undoes commits `2a43534`, `8bfec44` and `4a1179f`.
 
 ```python
         landlord_paid = sum(
@@ -792,10 +860,18 @@ Four sites still pass the scalar `share`. Change each:
             "property_expense_lines": _scaled_lines(property_level_lines, share_for),
 ```
 
+> **Adjusted per C6.** Only the second of those two is still a live call site.
+> The property block now emits `"expense_lines": scaled_expense_lines` (`:1457`)
+> — the list already built at `:1281`, which item 3 above swaps to `share_for`.
+> So the edit here is `"property_expense_lines": _scaled_lines(
+> property_level_lines, share_for)` (`:1458`) and nothing else.
+
 - [ ] **Step 5: Verify no scalar `_scaled_lines` call survives**
 
 Run: `cd backend && py -3.11 -m pytest tests/test_finance_engine.py -q`
-Then grep the file for any remaining site: `_scaled_lines(` must appear exactly four times as a call, each with `share_for` as the second argument. A missed one raises `TypeError: 'float' object is not callable` on the first partial-share fixture, so the suite catches it — but check anyway, because a site reached only by an untested branch would not.
+Then grep the file for any remaining site. At `4a1179f` there are exactly **three** `_scaled_lines(` call sites, not four — `:1217` (unit block), `:1281` (`scaled_expense_lines`), `:1458` (`property_expense_lines`) — plus the `def`. Each must pass `share_for` as its second argument. A missed one raises `TypeError: 'float' object is not callable` on the first partial-share fixture, so the suite catches it — but check anyway, because a site reached only by an untested branch would not.
+
+Also grep for `_line_share(`: after this task the only remaining call sites should be the `def` (`:437`), the one inside `_scaled_lines` (`:459`), and the two prorations (`:1178`, `:1270`) and the `expense_breakdown` accumulator (`:1420-1422`) — all three now resolving through `share_for(...)`. Any `_line_share(l, share)` left with the bare scalar is a mixed-share bug that a uniform fixture cannot catch.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
