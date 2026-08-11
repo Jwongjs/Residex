@@ -172,6 +172,8 @@ class MonthIncome(BaseModel):
     reason: Optional[str] = None
     payment_state: Optional[str] = None  # outstanding | written_off, only when source == 'unpaid'
     billed_amount: Optional[float] = None  # what the month would have been worth, when known
+    full_amount: Optional[float] = None  # invoiced face value when a share < 1.0 scaled `amount`
+    full_billed_amount: Optional[float] = None  # face value when a share < 1.0 scaled `billed_amount`
 
 
 class ExpenseLine(BaseModel):
@@ -196,6 +198,10 @@ class UnitFinance(BaseModel):
     unit_id: Optional[str] = None  # None = synthetic whole-property line
     label: str
     rented_months: int
+    gross_income: float = 0.0  # the landlord's share of the year's rent; the app
+    # renders it above the expense subtotal, so it must equal what `contribution`
+    # was actually built from rather than being re-derived from `months`
+    full_gross_income: Optional[float] = None  # whole-property gross when a share < 1.0 scaled it
     contribution: float  # income minus unit-scoped LANDLORD-PAID expenses (Net P/L)
     statutory_contribution: float  # income minus unit-scoped STATUTORY-deductible
     months: List[MonthIncome]
