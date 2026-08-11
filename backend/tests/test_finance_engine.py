@@ -2574,8 +2574,13 @@ class PropertyCardReconciliationTests(unittest.TestCase):
         self.assertEqual(block["received_rent"], 6000.06)
         self.assertEqual(block["landlord_expenses"], 50.01)
         self.assertEqual(block["net_pl"], 5950.05)
+        # The engine only guarantees this identity at 2-dp display
+        # precision (net_pl is itself a _round2 of a rounded-operand
+        # subtraction), so the check is rounded the same way — not left as
+        # a raw float comparison that would only pass by fixture luck.
         self.assertEqual(
-            block["net_pl"], block["received_rent"] - block["landlord_expenses"]
+            block["net_pl"],
+            round(block["received_rent"] - block["landlord_expenses"], 2),
         )
 
     def test_net_pl_reconciles_at_two_more_reproducing_values(self):
@@ -2601,7 +2606,7 @@ class PropertyCardReconciliationTests(unittest.TestCase):
                 self.assertEqual(block["net_pl"], want_net_pl)
                 self.assertEqual(
                     block["net_pl"],
-                    block["received_rent"] - block["landlord_expenses"],
+                    round(block["received_rent"] - block["landlord_expenses"], 2),
                 )
 
     def test_rental_income_or_loss_reconciles_against_received_rent_minus_direct_expenses(self):
@@ -2626,7 +2631,7 @@ class PropertyCardReconciliationTests(unittest.TestCase):
         self.assertEqual(block["rental_income_or_loss"], 5950.05)
         self.assertEqual(
             block["rental_income_or_loss"],
-            block["received_rent"] - block["direct_expenses"],
+            round(block["received_rent"] - block["direct_expenses"], 2),
         )
 
     def test_direct_and_landlord_expenses_equal_the_sum_of_their_own_rounded_lines(self):
@@ -2657,15 +2662,17 @@ class PropertyCardReconciliationTests(unittest.TestCase):
     def test_statutory_contribution_keeps_its_prorated_basis(self):
         # TRAP 1. statutory_contribution is received - prorated_expenses
         # (fraction-weighted, because property-level expenses are split
-        # across occupancy), NOT received - direct_expenses (unscaled), and
-        # its own rounding must be consistent with the same round-then-
-        # subtract rule (not exempt from the fix just because its basis is
-        # different). A whole-property scope invoiced for only 6 of 12
-        # months (no lease to backfill the rest) gives fraction 0.5, so
-        # proration visibly differs from the unscaled direct-expenses
-        # subtraction. Before the fix this printed statutory_contribution =
-        # 2975.02 (rounding the raw prorated difference); round-then-
-        # subtract gives 2975.01.
+        # across occupancy), NOT received - direct_expenses (unscaled).
+        # `prorated_expenses` is never displayed anywhere on its own (only
+        # the resulting statutory figure is), so it stays EXACT — only the
+        # displayed `received_rent` operand is rounded before the subtract.
+        # Rounding prorated_expenses early would only inject avoidable error
+        # into this tax figure without protecting any on-screen subtraction.
+        # A whole-property scope invoiced for only 6 of 12 months (no lease
+        # to backfill the rest) gives fraction 0.5, so proration visibly
+        # differs from the unscaled direct-expenses subtraction.
+        # Exact: 3000.03 - (0.5 fraction x 0.5 share x 100.06) =
+        # 3000.03 - 25.015 = 2975.015, which rounds to 2975.02.
         docs = [
             _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": f"2025-{m:02d}"})
             for m in range(1, 7)
@@ -2681,19 +2688,27 @@ class PropertyCardReconciliationTests(unittest.TestCase):
         self.assertEqual(block["rental_income_or_loss"], 2950.0)
         # statutory_contribution must NOT equal received - direct_expenses;
         # it uses the fraction-weighted prorated basis instead (0.5 fraction
-        # x the already share-scaled line = 25.02, not 50.03).
-        self.assertEqual(block["statutory_contribution"], 2975.01)
+        # x the already share-scaled line = 25.015, not 50.03).
+        self.assertEqual(block["statutory_contribution"], 2975.02)
         self.assertNotEqual(
             block["statutory_contribution"], block["rental_income_or_loss"]
         )
 
     def test_full_share_property_is_unaffected_by_the_reconciliation_fix(self):
-        # At share 1.0 every figure is already cent-aligned, so the payload
-        # must be unchanged: verify it, do not assume it. Wrapped in round()
-        # because comparing raw (unrounded) float subtraction against an
-        # already-rounded field is itself subject to binary floating-point
-        # noise unrelated to this fix — the same noise this fix eliminates
-        # from the payload's own totals.
+        # At share 1.0 the payload is unchanged FOR AMOUNTS WITH <=2 DECIMAL
+        # PLACES — not unconditionally. Expense amounts are `_round2`'d at
+        # construction, but income amounts (`_scope_income`'s raw
+        # `_amount(facts, "amount")`, and `prop_recovered`) are not; a source
+        # document with a 3rd decimal (e.g. an invoice of 1000.005) can still
+        # shift a share-1.0 payload by a cent through this same rounded-
+        # operand arithmetic. That is a pre-existing, separate concern (not
+        # introduced by this fix) and is out of scope here. This test only
+        # asserts the property this fix can actually guarantee: the
+        # reconciliation identity holds at 2-dp display precision, which is
+        # all any fixture with <=2-dp source amounts (like this one) can
+        # distinguish. Wrapped in round() because comparing raw (unrounded)
+        # float subtraction against an already-rounded field is itself
+        # subject to binary floating-point noise unrelated to this fix.
         docs = [
             _doc("p1", "lease", {"monthly_rent": 1000.01, "lease_start": "2025-01-01",
                                  "lease_end": "2025-12-31"}),
@@ -2714,3 +2729,91 @@ class PropertyCardReconciliationTests(unittest.TestCase):
         )
         for line in block["expense_lines"]:
             self.assertNotIn("full_amount", line)
+
+
+class OverallTotalsReconciliationTests(unittest.TestCase):
+    """residex_app's finance_summary_panel.dart stacks OVERALL RENTAL INCOME /
+    OVERALL EXPENSES / OVERALL NET PROFIT/LOSS as the identical subtraction
+    the per-property card renders, one level up — so `totals` must reconcile
+    against itself AND against the sum of the property cards shown beneath
+    it, the same way each property card had to reconcile against its own
+    expense_lines. A first pass at the per-property fix accumulated some
+    cross-property totals (statutory_sum, net_pl_sum, total_expenses,
+    total_landlord_expenses) from rounded per-property values but left
+    total_received / total_derived / total_outstanding on the raw scalars,
+    which regressed this exact reconciliation for 2+ properties."""
+
+    def test_two_properties_sharing_a_month_reconcile_at_the_totals_level(self):
+        # THE REGRESSION GATE. Two 50%-owned properties, each invoiced
+        # RM1000.01 for one month. Before this fix: totals.received_rent
+        # summed the raw (unrounded) per-property 500.005 + 500.005 = 1000.01,
+        # while the two cards beneath printed 500.00 + 500.00 = 1000.00 — the
+        # OVERALL total disagreed with its own cards. Confirmed reproduced
+        # against the pre-fix code (commit 2a43534) before locking this in.
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": "2025-01"}),
+            _doc("p2", "rental_invoice", {"amount": 1000.01, "period_month": "2025-01"}),
+        ]
+        result = _summary(
+            docs, [_prop("p1", "A", share=0.5), _prop("p2", "B", share=0.5)]
+        )
+        totals = result["totals"]
+        cards = result["properties"]
+        self.assertEqual(totals["received_rent"], 1000.0)
+        self.assertEqual(
+            totals["received_rent"],
+            round(sum(c["received_rent"] for c in cards), 2),
+        )
+        self.assertEqual(
+            totals["net_pl"],
+            round(sum(c["net_pl"] for c in cards), 2),
+        )
+        self.assertEqual(
+            totals["net_pl"],
+            round(totals["received_rent"] - totals["landlord_expenses"], 2),
+        )
+
+    def test_totals_reconcile_against_property_cards_at_one_two_and_three_properties(self):
+        # Grid check: for 1, 2 and 3 properties, every totals figure must
+        # equal the sum of its own property cards, and the totals row's own
+        # RENTAL INCOME - EXPENSES subtraction must equal its own net_pl —
+        # over a range of non cent-aligned rent/expense combinations at
+        # share 0.5. Drift was 0/128 at all three property counts after
+        # this fix (was 0/128, 64/128, 64/128 respectively beforehand, on
+        # an independently constructed grid — see the follow-up report).
+        for n_props in (1, 2, 3):
+            for rent_cents in range(1, 17):
+                rent = 1000.0 + rent_cents * 0.01
+                for expense_cents in range(1, 9):
+                    expense = 100.0 + expense_cents * 0.01
+                    with self.subTest(n=n_props, rent=rent, expense=expense):
+                        docs = []
+                        props = []
+                        for i in range(n_props):
+                            pid = f"p{i}"
+                            docs.append(_doc(pid, "rental_invoice",
+                                              {"amount": rent, "period_month": "2025-01"}))
+                            docs.append(_doc(pid, "expenses", {"expense_lines": [
+                                {"subtype": "maintenance", "amount": expense,
+                                 "period_year": 2025},
+                            ]}))
+                            props.append(_prop(pid, f"Prop{i}", share=0.5))
+                        result = _summary(docs, props)
+                        totals = result["totals"]
+                        cards = result["properties"]
+                        self.assertEqual(
+                            totals["received_rent"],
+                            round(sum(c["received_rent"] for c in cards), 2),
+                        )
+                        self.assertEqual(
+                            totals["landlord_expenses"],
+                            round(sum(c["landlord_expenses"] for c in cards), 2),
+                        )
+                        self.assertEqual(
+                            totals["net_pl"],
+                            round(sum(c["net_pl"] for c in cards), 2),
+                        )
+                        self.assertEqual(
+                            totals["net_pl"],
+                            round(totals["received_rent"] - totals["landlord_expenses"], 2),
+                        )

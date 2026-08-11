@@ -1345,19 +1345,34 @@ def compute_finance_summary(
         # property card renders `a` and `b` as its RENTAL INCOME / EXPENSES
         # mini-stats and the subtraction result beneath them, so the total
         # must be built from the same rounded figures the card displays,
-        # not re-derived from unrounded scalars. statutory_contribution
-        # keeps its own basis (received - prorated, fraction-weighted) —
-        # only its rounding is made consistent with the rule.
+        # not re-derived from unrounded scalars.
+        #
+        # `s_prorated` is the one exception: `prorated_expenses` never
+        # appears on screen anywhere (it only feeds the statutory-income tax
+        # figure below), so there is no displayed subtraction for rounding
+        # it early to protect. Rounding it early only injects avoidable
+        # error into that tax figure, so it stays exact and only the
+        # displayed operand (`r_received`) is rounded before the subtraction.
         r_received = _round2(s_received)
+        r_derived = _round2(s_derived)
+        r_outstanding = _round2(s_outstanding)
         r_direct = _round2(s_direct)
         r_landlord_paid = _round2(s_landlord_paid)
-        r_prorated = _round2(s_prorated)
 
-        # These per-property rounded figures are exactly what the card
-        # beneath the totals row shows, so the cross-property totals are
-        # built from them too — otherwise the totals row could silently
-        # drift from the sum of the cards shown beneath it.
-        statutory_sum += r_received - r_prorated
+        # These per-property rounded figures are exactly what the cards
+        # beneath the OVERALL totals row show (residex_app's
+        # finance_summary_panel.dart stacks OVERALL RENTAL INCOME / OVERALL
+        # EXPENSES / OVERALL NET PROFIT/LOSS as the identical subtraction,
+        # one level up from the per-property card), so every cross-property
+        # accumulator that feeds a displayed total is built from the
+        # rounded per-property values — never from the raw scalars —
+        # or the totals row can drift from the sum of the cards shown
+        # beneath it. `s_prorated` stays exact here too, matching the
+        # per-property statutory_contribution field below.
+        total_received += r_received
+        total_derived += r_derived
+        total_outstanding += r_outstanding
+        statutory_sum += r_received - s_prorated
         net_pl_sum += r_received - r_landlord_paid
         total_expenses += r_direct
         total_landlord_expenses += r_landlord_paid
@@ -1419,22 +1434,18 @@ def compute_finance_summary(
                 "— upload the renewal tenancy agreement if this was a renewal."
             )
 
-        total_received += s_received
-        total_derived += s_derived
-        total_outstanding += s_outstanding
-
         property_blocks.append({
             "property_id": pid,
             "name": name,
             "ownership_share": share,
             "received_rent": r_received,
-            "derived_rent": _round2(s_derived),
-            "outstanding_rent": _round2(s_outstanding),
+            "derived_rent": r_derived,
+            "outstanding_rent": r_outstanding,
             "direct_expenses": r_direct,
             "landlord_expenses": r_landlord_paid,
             "rental_income_or_loss": _round2(r_received - r_direct),
             "net_pl": _round2(r_received - r_landlord_paid),
-            "statutory_contribution": _round2(r_received - r_prorated),
+            "statutory_contribution": _round2(r_received - s_prorated),
             "units": unit_blocks,
             "expense_lines": scaled_expense_lines,
             "property_expense_lines": _scaled_lines(property_level_lines, share),
