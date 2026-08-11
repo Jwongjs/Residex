@@ -1272,11 +1272,18 @@ def compute_finance_summary(
             for l in property_level_lines if l["deductible"]
         )
 
+        # Every expense-shaped total this property card stacks — EXPENSES and
+        # the Net P/L / rental-income-or-loss beneath it — must reconcile
+        # with what's actually printed on screen. Build the scaled line list
+        # ONCE, exactly as it will be emitted below (`expense_lines` in the
+        # block), and derive every total by summing ITS rounded rows —
+        # mirrors the unit block's scaled_lines / scaled_months pattern.
+        scaled_expense_lines = _scaled_lines(expense_lines, share)
+
         # Net P/L uses the landlord's full cash out (not prorated by occupancy,
         # matching how direct/statutory `direct` is summed below).
         landlord_paid = sum(
-            _line_share(l, share) * l["amount"]
-            for l in expense_lines if l["paid_by_landlord"]
+            l["amount"] for l in scaled_expense_lines if l["paid_by_landlord"]
         )
 
         coverage_rows = _property_coverage(
@@ -1312,7 +1319,7 @@ def compute_finance_summary(
             unpaid_notes.append(f"{name}: recovered rent booked this year — {recovered_summary}")
 
         direct = sum(
-            _line_share(l, share) * l["amount"] for l in expense_lines if l["deductible"]
+            l["amount"] for l in scaled_expense_lines if l["deductible"]
         )
 
         # Ownership share is applied once, here, to every *income* figure this
@@ -1333,8 +1340,27 @@ def compute_finance_summary(
         s_landlord_paid = landlord_paid
         s_prorated = prorated_expenses
 
-        statutory_sum += s_received - s_prorated
-        net_pl_sum += s_received - s_landlord_paid
+        # Round once, then subtract — the same rule as scaled_expense_lines
+        # above. `_round2(a) - _round2(b)` is not `_round2(a - b)`; the
+        # property card renders `a` and `b` as its RENTAL INCOME / EXPENSES
+        # mini-stats and the subtraction result beneath them, so the total
+        # must be built from the same rounded figures the card displays,
+        # not re-derived from unrounded scalars. statutory_contribution
+        # keeps its own basis (received - prorated, fraction-weighted) —
+        # only its rounding is made consistent with the rule.
+        r_received = _round2(s_received)
+        r_direct = _round2(s_direct)
+        r_landlord_paid = _round2(s_landlord_paid)
+        r_prorated = _round2(s_prorated)
+
+        # These per-property rounded figures are exactly what the card
+        # beneath the totals row shows, so the cross-property totals are
+        # built from them too — otherwise the totals row could silently
+        # drift from the sum of the cards shown beneath it.
+        statutory_sum += r_received - r_prorated
+        net_pl_sum += r_received - r_landlord_paid
+        total_expenses += r_direct
+        total_landlord_expenses += r_landlord_paid
         if not complete:
             incomplete_notes.append(
                 f"{name}: {year} records are incomplete — this statutory figure is "
@@ -1396,23 +1422,21 @@ def compute_finance_summary(
         total_received += s_received
         total_derived += s_derived
         total_outstanding += s_outstanding
-        total_expenses += s_direct
-        total_landlord_expenses += s_landlord_paid
 
         property_blocks.append({
             "property_id": pid,
             "name": name,
             "ownership_share": share,
-            "received_rent": _round2(s_received),
+            "received_rent": r_received,
             "derived_rent": _round2(s_derived),
             "outstanding_rent": _round2(s_outstanding),
-            "direct_expenses": _round2(s_direct),
-            "landlord_expenses": _round2(s_landlord_paid),
-            "rental_income_or_loss": _round2(s_received - s_direct),
-            "net_pl": _round2(s_received - s_landlord_paid),
-            "statutory_contribution": _round2(s_received - s_prorated),
+            "direct_expenses": r_direct,
+            "landlord_expenses": r_landlord_paid,
+            "rental_income_or_loss": _round2(r_received - r_direct),
+            "net_pl": _round2(r_received - r_landlord_paid),
+            "statutory_contribution": _round2(r_received - r_prorated),
             "units": unit_blocks,
-            "expense_lines": _scaled_lines(expense_lines, share),
+            "expense_lines": scaled_expense_lines,
             "property_expense_lines": _scaled_lines(property_level_lines, share),
             "recovered_rent": recovered_lines,
             "complete": complete,

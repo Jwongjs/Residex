@@ -2543,3 +2543,174 @@ class RecoveryShareTests(unittest.TestCase):
         self.assertAlmostEqual(
             result["properties"][0]["received_rent"], 12900.0, places=2
         )
+
+
+class PropertyCardReconciliationTests(unittest.TestCase):
+    """The property card stacks a visible subtraction on screen: RENTAL
+    INCOME minus EXPENSES must equal the printed Net P/L, and gross minus
+    DIRECT expenses must equal rental_income_or_loss. Rounding each figure
+    independently from unrounded sums breaks that subtraction by a cent at
+    ordinary (non cent-aligned) values — round(a) - round(b) != round(a - b).
+    A fixture whose figures are already cent-aligned after scaling cannot
+    expose this, so every test here uses non cent-aligned reproducing
+    values (rent RM1000.0x/mo, expenses RM100.0x), each confirmed to fail
+    against the pre-fix code before being locked in here."""
+
+    def test_net_pl_reconciles_against_received_rent_minus_landlord_expenses(self):
+        # THE GATE. rent RM1000.01/mo x12, one landlord-paid deductible
+        # expense of RM100.01, share 0.5: received 6000.06, landlord 50.01.
+        # Before the fix this printed net_pl = 5950.06 (rounding the raw,
+        # unrounded difference); the card's own visible subtraction is
+        # 6000.06 - 50.01 = 5950.05.
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.01, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 100.01, "period_year": 2025},
+            ]}),
+        ]
+        result = _summary(docs, [_prop("p1", "House", share=0.5)])
+        block = result["properties"][0]
+        self.assertEqual(block["received_rent"], 6000.06)
+        self.assertEqual(block["landlord_expenses"], 50.01)
+        self.assertEqual(block["net_pl"], 5950.05)
+        self.assertEqual(
+            block["net_pl"], block["received_rent"] - block["landlord_expenses"]
+        )
+
+    def test_net_pl_reconciles_at_two_more_reproducing_values(self):
+        # Same gate, two more confirmed-to-fail rows so a single lucky
+        # rounding boundary cannot pass by coincidence.
+        rows = [
+            (1000.02, 100.01, 6000.12, 50.01, 5950.11),
+            (1000.01, 100.03, 6000.06, 50.02, 5950.04),
+        ]
+        for rent, expense, want_received, want_expense, want_net_pl in rows:
+            with self.subTest(rent=rent, expense=expense):
+                docs = [
+                    _doc("p1", "lease", {"monthly_rent": rent, "lease_start": "2025-01-01",
+                                         "lease_end": "2025-12-31"}),
+                    _doc("p1", "expenses", {"expense_lines": [
+                        {"subtype": "maintenance", "amount": expense, "period_year": 2025},
+                    ]}),
+                ]
+                result = _summary(docs, [_prop("p1", "House", share=0.5)])
+                block = result["properties"][0]
+                self.assertEqual(block["received_rent"], want_received)
+                self.assertEqual(block["landlord_expenses"], want_expense)
+                self.assertEqual(block["net_pl"], want_net_pl)
+                self.assertEqual(
+                    block["net_pl"],
+                    block["received_rent"] - block["landlord_expenses"],
+                )
+
+    def test_rental_income_or_loss_reconciles_against_received_rent_minus_direct_expenses(self):
+        # direct_expenses (maintenance only, deductible) diverges from
+        # landlord_expenses (maintenance + a non-deductible penalty, both
+        # landlord-paid) so rental_income_or_loss and net_pl are genuinely
+        # different figures, each reconciling against its own operand.
+        # Before the fix this printed rental_income_or_loss = 5950.06; the
+        # card's own visible subtraction is 6000.06 - 50.01 = 5950.05.
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.01, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 100.01, "period_year": 2025},
+                {"subtype": "late_penalty", "amount": 55.07, "period_year": 2025},
+            ]}),
+        ]
+        result = _summary(docs, [_prop("p1", "House", share=0.5)])
+        block = result["properties"][0]
+        self.assertEqual(block["received_rent"], 6000.06)
+        self.assertEqual(block["direct_expenses"], 50.01)
+        self.assertEqual(block["rental_income_or_loss"], 5950.05)
+        self.assertEqual(
+            block["rental_income_or_loss"],
+            block["received_rent"] - block["direct_expenses"],
+        )
+
+    def test_direct_and_landlord_expenses_equal_the_sum_of_their_own_rounded_lines(self):
+        # THE MULTI-LINE GATE. Two landlord-paid deductible lines of
+        # RM100.05 each at share 0.5: each individually scales to 50.025,
+        # which rounds to 50.02 (50.02 + 50.02 = 100.04). Rounding the raw
+        # combined sum instead — round(0.5 * (100.05 + 100.05)) = round(100.05)
+        # — gives 100.05, which disagrees with what the two rendered
+        # expense_lines actually sum to on screen.
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 100.05, "date": "2025-03-01"},
+                {"subtype": "maintenance", "amount": 100.05, "date": "2025-06-01"},
+            ]}),
+        ]
+        result = _summary(docs, [_prop("p1", "House", share=0.5)])
+        block = result["properties"][0]
+        deductible = [l for l in block["expense_lines"] if l["deductible"]]
+        landlord_paid = [l for l in block["expense_lines"] if l["paid_by_landlord"]]
+        self.assertEqual(len(deductible), 2)
+        self.assertEqual(block["direct_expenses"], sum(l["amount"] for l in deductible))
+        self.assertEqual(block["landlord_expenses"], sum(l["amount"] for l in landlord_paid))
+        self.assertEqual(block["direct_expenses"], 100.04)
+        self.assertEqual(block["landlord_expenses"], 100.04)
+
+    def test_statutory_contribution_keeps_its_prorated_basis(self):
+        # TRAP 1. statutory_contribution is received - prorated_expenses
+        # (fraction-weighted, because property-level expenses are split
+        # across occupancy), NOT received - direct_expenses (unscaled), and
+        # its own rounding must be consistent with the same round-then-
+        # subtract rule (not exempt from the fix just because its basis is
+        # different). A whole-property scope invoiced for only 6 of 12
+        # months (no lease to backfill the rest) gives fraction 0.5, so
+        # proration visibly differs from the unscaled direct-expenses
+        # subtraction. Before the fix this printed statutory_contribution =
+        # 2975.02 (rounding the raw prorated difference); round-then-
+        # subtract gives 2975.01.
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.01, "period_month": f"2025-{m:02d}"})
+            for m in range(1, 7)
+        ] + [
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 100.06, "period_year": 2025},
+            ]}),
+        ]
+        result = _summary(docs, [_prop("p1", "House", share=0.5)])
+        block = result["properties"][0]
+        self.assertEqual(block["received_rent"], 3000.03)
+        self.assertEqual(block["direct_expenses"], 50.03)
+        self.assertEqual(block["rental_income_or_loss"], 2950.0)
+        # statutory_contribution must NOT equal received - direct_expenses;
+        # it uses the fraction-weighted prorated basis instead (0.5 fraction
+        # x the already share-scaled line = 25.02, not 50.03).
+        self.assertEqual(block["statutory_contribution"], 2975.01)
+        self.assertNotEqual(
+            block["statutory_contribution"], block["rental_income_or_loss"]
+        )
+
+    def test_full_share_property_is_unaffected_by_the_reconciliation_fix(self):
+        # At share 1.0 every figure is already cent-aligned, so the payload
+        # must be unchanged: verify it, do not assume it. Wrapped in round()
+        # because comparing raw (unrounded) float subtraction against an
+        # already-rounded field is itself subject to binary floating-point
+        # noise unrelated to this fix — the same noise this fix eliminates
+        # from the payload's own totals.
+        docs = [
+            _doc("p1", "lease", {"monthly_rent": 1000.01, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 100.05, "period_year": 2025},
+                {"subtype": "late_penalty", "amount": 55.07, "period_year": 2025},
+            ]}),
+        ]
+        result = _summary(docs, [_prop("p1", "House", share=1.0)])
+        block = result["properties"][0]
+        self.assertEqual(
+            block["net_pl"],
+            round(block["received_rent"] - block["landlord_expenses"], 2),
+        )
+        self.assertEqual(
+            block["rental_income_or_loss"],
+            round(block["received_rent"] - block["direct_expenses"], 2),
+        )
+        for line in block["expense_lines"]:
+            self.assertNotIn("full_amount", line)
