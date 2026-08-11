@@ -2817,3 +2817,41 @@ class OverallTotalsReconciliationTests(unittest.TestCase):
                             totals["net_pl"],
                             round(totals["received_rent"] - totals["landlord_expenses"], 2),
                         )
+                        self.assertEqual(
+                            totals["statutory_rental_income"],
+                            round(
+                                sum(c["statutory_contribution"] for c in cards), 2
+                            ),
+                        )
+
+    def test_statutory_totals_reconcile_against_the_sum_of_the_cards(self):
+        # THE STATUTORY REGRESSION GATE. `statutory_sum` accumulates
+        # `r_received - s_prorated` where `s_prorated` is deliberately kept
+        # exact (fraction-weighted, never displayed on its own — see the
+        # per-property Trap-1 fix). Every sibling accumulator sums a value
+        # already rounded to 2dp; before this fix `statutory_sum` was the
+        # only one summing an UNROUNDED per-property difference, so it
+        # stopped landing on the same number as summing the cards'
+        # `statutory_contribution` fields, which ARE each individually
+        # rounded. Confirmed to reproduce against this exact fixture before
+        # the fix (see the follow-up report for the red/green output):
+        # 3 properties, share 0.25, rent RM1000.01/mo (single invoiced
+        # month), landlord-paid deductible expense RM100.04.
+        docs = []
+        props = []
+        for i in range(3):
+            pid = f"p{i}"
+            docs.append(_doc(pid, "rental_invoice",
+                              {"amount": 1000.01, "period_month": "2025-01"}))
+            docs.append(_doc(pid, "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 100.04, "period_year": 2025},
+            ]}))
+            props.append(_prop(pid, f"Prop{i}", share=0.25))
+        result = _summary(docs, props)
+        totals = result["totals"]
+        cards = result["properties"]
+        self.assertEqual(totals["statutory_rental_income"], 743.76)
+        self.assertEqual(
+            totals["statutory_rental_income"],
+            round(sum(c["statutory_contribution"] for c in cards), 2),
+        )

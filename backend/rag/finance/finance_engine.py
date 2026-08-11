@@ -1367,12 +1367,19 @@ def compute_finance_summary(
         # accumulator that feeds a displayed total is built from the
         # rounded per-property values — never from the raw scalars —
         # or the totals row can drift from the sum of the cards shown
-        # beneath it. `s_prorated` stays exact here too, matching the
-        # per-property statutory_contribution field below.
+        # beneath it. `s_prorated` itself still stays exact (see above —
+        # it is never displayed on its own), but the PER-PROPERTY
+        # statutory figure it produces (`r_received - s_prorated`) is
+        # displayed on the card, so — same as every sibling accumulator
+        # here — it is rounded to that displayed precision before being
+        # added into `statutory_sum`. Without this, `statutory_sum` would
+        # be the only accumulator summing an unrounded per-property
+        # difference, and the totals row would silently drift from the
+        # sum of the cards' own `statutory_contribution` values.
         total_received += r_received
         total_derived += r_derived
         total_outstanding += r_outstanding
-        statutory_sum += r_received - s_prorated
+        statutory_sum += _round2(r_received - s_prorated)
         net_pl_sum += r_received - r_landlord_paid
         total_expenses += r_direct
         total_landlord_expenses += r_landlord_paid
