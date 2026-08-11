@@ -879,6 +879,17 @@ The unit-level-share plan left `prop_actual += scope_share * actual_sum` and `pr
             prop_derived += derived_sum
 ```
 
+> **STALE PREMISE (noted 2026-08-11).** `gross_income` is **not**
+> `_round2(scope_share * (actual_sum + derived_sum))`. Plan 1 landed on 2026-08-10
+> with a corrected form: it sums the **rounded rendered rows** —
+> `_round2(sum(m["amount"] for m in scaled_months if m["source"] in ("actual","derived")))`
+> — because round-the-sum and sum-the-rounded disagree at ordinary values and the
+> month strip has to sum to the gross line above it. Rework this step against the
+> current code, keeping the sum-the-rounded form, and remember that any new payload
+> field must also be declared in `backend/models/documind_models.py` or FastAPI's
+> `response_model` will silently drop it. See plan 1's "Amendments during
+> execution" section.
+
 In the unit block, `gross_income` is already `_round2(scope_share * (actual_sum + derived_sum))`; with `actual_sum` / `derived_sum` now pre-scaled it becomes:
 
 ```python

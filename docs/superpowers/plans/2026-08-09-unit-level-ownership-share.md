@@ -12,6 +12,63 @@
 
 - **Source spec:** `docs/superpowers/specs/2026-08-09-unit-level-ownership-share-design.md`. Every design decision comes from there; do not re-litigate them.
 - **This plan assumes `docs/superpowers/plans/2026-08-09-unit-panel-share-reconciliation.md` is fully complete and committed.** It builds directly on that plan's output: the engine local `gross_income`, the emitted `gross_income` / `full_gross_income` keys, the `_scaled_month_rows` helper, `UnitFinance.grossIncome` / `fullGrossIncome`, and the recovery exemption in `s_received`. If any of those are missing, **stop and report** — do not implement them here.
+
+> ### ⚠ CORRECTIONS — read before writing any code (added 2026-08-11)
+>
+> Plan 1 **landed 2026-08-10** (`88b0088..d91b653`), but **not as its own text
+> specified** — four defects were found and fixed during execution. This plan was
+> written against plan 1's *text*, so several of its code blocks below quote
+> shapes that no longer exist. **Executing them verbatim would undo plan 1's
+> fixes.** See plan 1's "Amendments during execution" section for the full
+> reasoning.
+>
+> **C1 — `display_landlord_scaled` / `display_deductible_scaled` NO LONGER EXIST.**
+> They were deleted. This plan reinstates them at `:392-396` and subtracts them at
+> `:422-424`. Do not. The landed engine computes `scaled_lines = _scaled_lines(...)`
+> **once**, emits that same list as `expense_lines`, and builds both totals by
+> summing `l["amount"]` over it. Reinstating the unrounded sums reintroduces a
+> one-cent column that does not add up — the exact defect plan 1 existed to remove.
+>
+> **C2 — `gross_income` is NOT `_round2(share * (actual_sum + derived_sum))`.**
+> This plan uses that round-the-sum form at `:415`. The landed engine sums the
+> **rounded rendered rows**: `scaled_months = _scaled_month_rows(...)` computed
+> once, emitted as `months`, and `gross_income = _round2(sum(m["amount"] for m in
+> scaled_months if m["source"] in ("actual","derived")))`. `full_gross_income` is
+> built the same way from each row's `full_amount`. Round-the-sum and
+> sum-the-rounded disagree at ordinary values (rent 1000.01 x12 at share 0.5:
+> strip 6000.00 vs 6000.06), which renders a strip that does not sum to the
+> header above it. Keep the sum-the-rounded form when you swap `share` for
+> `scope_share`.
+>
+> **The general rule both corrections express: build every emitted total from the
+> same rounded list you emit.** Apply it to any new per-scope arithmetic here.
+>
+> **C3 — every new payload field must be added to `backend/models/documind_models.py`
+> in the same change.** `/documind/finance/summary` declares
+> `response_model=FinanceSummaryResponse`, so FastAPI **silently drops** any key the
+> schema does not declare. Plan 1 shipped four fields the app never received; the
+> panel rendered `Gross income RM 0.00` with both suites green. This plan's Task 5
+> already adds `ownership_share` there — good — but treat it as mandatory, not
+> incidental. `backend/tests/test_finance_response_contract.py` now fails if any
+> engine key is dropped, so you will be told; the running server must also be
+> restarted to pick up schema changes.
+>
+> **C4 — fixture blindness bit plan 1 three times, inside its own tests.** Before
+> accepting any test this plan hands you, ask "at these exact values, does this go
+> red if I revert the implementation?" and watch it fail. One of plan 1's gate
+> tests was *structurally* unfailable. This plan's own uniform-share warning below
+> is the same rule; apply it to rounding fixtures too, not just share fixtures.
+>
+> **C5 — in scope for this plan, newly:** `finance_screen.dart:322-332` and
+> `:387-390` do arithmetic on `block.ownershipShare`. Correct while share is
+> property-level; they break the moment a unit overrides it. Fix them here.
+
+- **Manual precondition:** before Task 1, open a co-owned property in the running
+  app and confirm plan 1 reconciles against **real** data — gross minus expenses
+  equals the rendered total, the sub-label reads `your N% of RM …`, and the strip
+  heading names the share. Plan 1's response-model defect was invisible to 631
+  backend tests, 321 Flutter tests and nine code reviews, and visible instantly on
+  screen. Do not build on an unverified base.
 - **Never run `git add -A` on this branch.** An unrelated fact-aware-answering / citation-precision workstream is live and uncommitted in the working tree, including hunks inside `backend/rag/documind_service.py` and `backend/tests/test_documind_service_flows.py`. Every commit step below names its exact files; add only those.
 - **Never touch** `backend/rexAI.txt` or `backend/scripts/{diagnose,fix}_ayer8_lease*.py`.
 - `residex_app/test/widget_test.dart` — "Counter increments smoke test" is a **pre-existing boilerplate failure** and must never be fixed. Flutter runs are green at **1 failed**, that one.
@@ -388,6 +445,11 @@ Then make these five edits inside the scope loop. Replace every `share` with `sc
 
 2. and 3. The two display sums:
 
+> **SUPERSEDED — see correction C1.** These two locals were **deleted** by plan 1.
+> Do not reinstate them. The landed engine sums the rounded amounts off the
+> emitted `scaled_lines` list instead. Take only the `share` → `scope_share`
+> substitution idea from this block, applied to the code that is actually there.
+
 ```python
             display_deductible_scaled = sum(
                 _line_share(l, scope_share) * l["amount"]
@@ -410,6 +472,15 @@ Then make these five edits inside the scope loop. Replace every `share` with `sc
 ```
 
 5. The unit block itself. Replace `share` with `scope_share` in the three places the previous plan left it, and add the new key:
+
+> **SUPERSEDED — see corrections C1 and C2.** The block below quotes plan 1's
+> *original* shape, not what landed. `gross_income` is now summed from the rounded
+> `scaled_months` rows (not `_round2(scope_share * (actual_sum + derived_sum))`),
+> and both totals are summed off the emitted `scaled_lines` (not
+> `display_*_scaled`). Apply the `share` → `scope_share` substitution to the
+> current code and keep both sum-the-rounded forms. `ownership_share` is the one
+> genuinely new key here — and it must also go into
+> `backend/models/documind_models.py` (correction C3).
 
 ```python
             gross_income = _round2(scope_share * (actual_sum + derived_sum))
