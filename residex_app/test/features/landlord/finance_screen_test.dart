@@ -1147,4 +1147,131 @@ void main() {
       findsOneWidget,
     );
   });
+
+  // Guards finance_summary.dart:167. The wire path always passes
+  // ownershipShare explicitly (finance_summary_model.dart defaults it to 1.0
+  // itself before construction), so nothing on that path exercises the
+  // constructor's own default — only fixtures built directly in code, like
+  // the ones below, would silently render a "0% share" badge if this default
+  // were ever changed. A previous review changed it to 0.0 and the entire
+  // 328-test suite stayed green.
+  test('UnitFinance built without ownershipShare defaults to full ownership',
+      () {
+    final unit = UnitFinance(
+      unitId: 'u1',
+      label: 'A-1',
+      rentedMonths: 12,
+      contribution: 6000.0,
+    );
+    expect(unit.ownershipShare, 1.0);
+  });
+
+  Future<void> pumpShares(WidgetTester tester, FinanceSummary summary) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financeYearsProvider.overrideWith((ref) async => [2026]),
+          financeSummaryProvider.overrideWith((ref, y) async => summary),
+          // Returns null: no property means no mortgage, so the loan figures
+          // row stays out of the way of these assertions. Overridden rather
+          // than left alone so the test never touches Firebase.
+          propertyByIdProvider.overrideWith((ref, id) async => null),
+        ],
+        child: const MaterialApp(home: FinanceScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  FinanceSummary summaryWithUnitShares(
+    int year, {
+    required double propertyShare,
+    required List<UnitFinance> units,
+  }) {
+    return FinanceSummary(
+      year: year,
+      totals: FinanceTotals(
+        receivedRent: 18000.0,
+        derivedRent: 0.0,
+        directExpenses: 0.0,
+        netPl: 18000.0,
+        statutoryRentalIncome: 18000.0,
+        statutoryNote: '',
+      ),
+      properties: [
+        PropertyFinance(
+          propertyId: 'p1',
+          name: 'Ayer 8',
+          ownershipShare: propertyShare,
+          receivedRent: 18000.0,
+          derivedRent: 0.0,
+          directExpenses: 0.0,
+          rentalIncomeOrLoss: 18000.0,
+          netPl: 18000.0,
+          statutoryContribution: 18000.0,
+          units: units,
+        ),
+      ],
+    );
+  }
+
+  testWidgets('uniform partial shares keep the single-percentage badge',
+      (tester) async {
+    await pumpShares(tester, summaryWithUnitShares(2026,
+        propertyShare: 0.5,
+        units: [
+          UnitFinance(unitId: 'u1', label: 'A-1', rentedMonths: 12,
+              contribution: 6000.0, ownershipShare: 0.5),
+          UnitFinance(unitId: 'u2', label: 'A-2', rentedMonths: 12,
+              contribution: 6000.0, ownershipShare: 0.5),
+        ]));
+
+    expect(find.text('50% share'), findsWidgets);
+    expect(find.textContaining('Shown at your 50% share.'), findsOneWidget);
+    expect(find.textContaining('share of each unit'), findsNothing);
+  });
+
+  testWidgets('mixed shares render a range badge and the per-unit footnote',
+      (tester) async {
+    await pumpShares(tester, summaryWithUnitShares(2026,
+        propertyShare: 1.0,
+        units: [
+          UnitFinance(unitId: 'u1', label: 'A-1', rentedMonths: 12,
+              contribution: 6000.0, ownershipShare: 0.5),
+          UnitFinance(unitId: 'u2', label: 'A-2', rentedMonths: 12,
+              contribution: 12000.0, ownershipShare: 1.0),
+        ]));
+
+    expect(find.text('50–100% share'), findsOneWidget);
+    expect(find.textContaining('Shown at your share of each unit.'),
+        findsOneWidget);
+  });
+
+  testWidgets('a co-owned unit row is badged and a wholly-owned one is not',
+      (tester) async {
+    await pumpShares(tester, summaryWithUnitShares(2026,
+        propertyShare: 1.0,
+        units: [
+          UnitFinance(unitId: 'u1', label: 'A-1', rentedMonths: 12,
+              contribution: 6000.0, ownershipShare: 0.5),
+          UnitFinance(unitId: 'u2', label: 'A-2', rentedMonths: 12,
+              contribution: 12000.0, ownershipShare: 1.0),
+        ]));
+
+    // One on the A-1 row; the property badge above reads '50–100% share'.
+    expect(find.text('50% share'), findsOneWidget);
+    expect(find.text('100% share'), findsNothing);
+  });
+
+  testWidgets('full ownership throughout renders no badge at all',
+      (tester) async {
+    await pumpShares(tester, summaryWithUnitShares(2026,
+        propertyShare: 1.0,
+        units: [
+          UnitFinance(unitId: 'u1', label: 'A-1', rentedMonths: 12,
+              contribution: 12000.0, ownershipShare: 1.0),
+        ]));
+
+    expect(find.textContaining('% share'), findsNothing);
+  });
 }

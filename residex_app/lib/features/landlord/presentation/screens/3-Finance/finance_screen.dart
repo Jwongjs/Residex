@@ -18,6 +18,7 @@ import '../../widgets/common/upload_source_sheet.dart';
 import '../../widgets/common/finance_summary_panel.dart';
 import '../../widgets/common/finance_year_picker.dart';
 import '../../widgets/common/rent_payment_sheets.dart';
+import '../../widgets/common/share_badge.dart';
 import '../../widgets/common/document_categories.dart' show isAllowedUploadFilename;
 import '../2-Documind/documind_upload_summary.dart';
 import 'unit_finance_detail_screen.dart';
@@ -304,6 +305,17 @@ class FinanceScreen extends ConsumerWidget {
     // Both loan routes are always available, so the panel row — the
     // discoverable manual route — is shown for any mortgaged property.
     final showManualLoan = property?.hasMortgage == true;
+    // Every share rendered under this card. The property's own is always in
+    // the set: it is what a building-wide loan or quit rent is scaled by, so
+    // a property at 50% whose units are all owned outright still says so.
+    final shares = <double>{
+      block.ownershipShare,
+      ...block.units.map((u) => u.ownershipShare),
+    };
+    final lowestShare = shares.reduce((a, b) => a < b ? a : b);
+    final highestShare = shares.reduce((a, b) => a > b ? a : b);
+    final sharesVary = lowestShare != highestShare;
+    final showShare = lowestShare < 1.0;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -319,19 +331,12 @@ class FinanceScreen extends ConsumerWidget {
             children: [
               Expanded(
                   child: Text(block.name, style: AppTextStyles.titleLarge)),
-              if (block.ownershipShare < 1.0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceLight,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.hairline),
-                  ),
-                  child: Text(
-                    '${(block.ownershipShare * 100).toStringAsFixed(0)}% share',
-                    style: AppTextStyles.labelSmall,
-                  ),
+              if (showShare)
+                ShareBadge(
+                  text: sharesVary
+                      ? '${(lowestShare * 100).toStringAsFixed(0)}–'
+                          '${(highestShare * 100).toStringAsFixed(0)}% share'
+                      : '${(lowestShare * 100).toStringAsFixed(0)}% share',
                 ),
             ],
           ),
@@ -384,11 +389,14 @@ class FinanceScreen extends ConsumerWidget {
               ),
             ],
           ),
-          if (block.ownershipShare < 1.0) ...[
+          if (showShare) ...[
             const SizedBox(height: 4),
             Text(
-              'Shown at your ${(block.ownershipShare * 100).toStringAsFixed(0)}% share. '
-              'Loan interest and principal are shown in full.',
+              sharesVary
+                  ? 'Shown at your share of each unit. Loan interest and '
+                      'principal are shown in full.'
+                  : 'Shown at your ${(lowestShare * 100).toStringAsFixed(0)}% '
+                      'share. Loan interest and principal are shown in full.',
               style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
             ),
           ],
@@ -426,6 +434,13 @@ class FinanceScreen extends ConsumerWidget {
                         Expanded(
                             child: Text(unit.label,
                                 style: AppTextStyles.titleMedium)),
+                        if (unit.ownershipShare < 1.0) ...[
+                          ShareBadge(
+                            text: '${(unit.ownershipShare * 100).toStringAsFixed(0)}'
+                                '% share',
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         Text(
                           '${unit.rentedMonths} mo rented',
                           style: AppTextStyles.bodySmall

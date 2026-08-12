@@ -33,6 +33,12 @@ FinanceSummary _fakeSummary(int year) {
             label: 'Unit A',
             rentedMonths: 12,
             contribution: 84000.0,
+            // Matches the property's ownershipShare (0.5) above: the engine
+            // resolves an un-overridden unit to its property's share, so it
+            // can never emit a co-owned property containing a unit resolved
+            // to full ownership. Leaving this unset (defaulting to 1.0) made
+            // the fixture describe a state the real backend cannot produce.
+            ownershipShare: 0.5,
             months: const [],
           ),
         ],
@@ -98,7 +104,12 @@ void main() {
     expect(find.textContaining('backfilled'), findsNothing);
     expect(find.textContaining('Records missing for'), findsOneWidget);
     expect(find.text('Unit A'), findsOneWidget);
-    expect(find.text('50% share'), findsOneWidget); // ownership badge (exact; the co-ownership caption also says "50%")
+    // Two badges by design: the property card states the scope's share, and the
+    // co-owned unit row repeats it. Same badge vocabulary at both levels — see
+    // the unit-level-ownership-share spec §4. find.text stays exact (not
+    // textContaining) because the co-ownership caption elsewhere also contains
+    // "50%".
+    expect(find.text('50% share'), findsNWidgets(2));
     expect(find.textContaining('1 document needed for'), findsOneWidget); // nudge banner
   });
 
