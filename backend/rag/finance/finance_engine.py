@@ -441,6 +441,27 @@ def _line_share(line: Dict[str, Any], share: float) -> float:
     return 1.0 if line.get("subtype") in _LOAN_EXEMPT_SUBTYPES else share
 
 
+def _share_for_unit(
+    unit_id: Optional[str],
+    unit_shares: Dict[str, float],
+    property_share: float,
+) -> float:
+    """The ownership share that applies to an income scope or an expense line.
+
+    A unit's own share wins. Anything not attributable to a unit — the
+    synthetic whole-property income scope, a building-wide loan or quit rent —
+    falls back to the property's own share, because it is not attributable to
+    any one unit's co-ownership arrangement.
+
+    A unit with no stored override is absent from `unit_shares` (not present
+    as 1.0), so it inherits. That distinction is the whole point: a 50%-owned
+    property whose units were never touched must stay at 50%.
+    """
+    if unit_id is None:
+        return property_share
+    return unit_shares.get(unit_id, property_share)
+
+
 def _scaled_lines(lines: List[Dict[str, Any]], share: float) -> List[Dict[str, Any]]:
     """Copy expense lines with amounts at the landlord's ownership share.
 
@@ -1136,6 +1157,24 @@ def compute_finance_summary(
         if has_property_wide_income or not scopes:
             scopes.append({"unit_id": None, "label": "Whole property"})
 
+        # Unit-level overrides for this property. Only units that actually
+        # store a share appear here — absence means "inherit `share`", which
+        # is why this is not a dict comprehension with a 1.0 default.
+        unit_shares: Dict[str, float] = {}
+        for u in units_by_property.get(pid, []):
+            raw = u.get("ownership_share")
+            if raw is None:
+                continue
+            try:
+                unit_shares[u["unit_id"]] = float(raw)
+            except (TypeError, ValueError):
+                continue
+
+        def share_for(unit_id: Optional[str]) -> float:
+            # Closes over this iteration's `unit_shares` and `share`, and is
+            # only ever called within this iteration.
+            return _share_for_unit(unit_id, unit_shares, share)
+
         expense_lines = _dedup_expense_lines(
             _expense_lines(prop_docs, year, prop.get("utilities_paid_by"))
         )
@@ -1166,6 +1205,7 @@ def compute_finance_summary(
             month_rows, rented, actual_sum, derived_sum, vacant, derived, unpaid = _scope_income(
                 prop_docs, scope["unit_id"], year, months, prop_exceptions
             )
+            scope_share = share_for(scope["unit_id"])
             fraction = (rented / len(months)) if months else 0.0
             fractions.append(fraction)
             unit_lines = (
@@ -1176,7 +1216,7 @@ def compute_finance_summary(
             # lines are prorated once, below, by avg_fraction — feeding them in
             # here as well would double-count them in the statutory total.
             prorated_expenses += fraction * sum(
-                _line_share(l, share) * l["amount"] for l in unit_lines if l["deductible"]
+                _line_share(l, scope_share) * l["amount"] for l in unit_lines if l["deductible"]
             )
             # Display lines: the synthetic whole-property scope shows the
             # property-level lines (a building-wide loan, quit rent) that belong
@@ -1188,8 +1228,11 @@ def compute_finance_summary(
                 unit_lines if scope["unit_id"] is not None
                 else lines_by_unit.get(None, [])
             )
-            prop_actual += actual_sum
-            prop_derived += derived_sum
+            # Scaled here, per scope, instead of once at the property level —
+            # each unit may carry its own share, so a total can no longer be
+            # correctly scaled after the fact.
+            prop_actual += scope_share * actual_sum
+            prop_derived += scope_share * derived_sum
             # Suppress the synthetic whole-property scope from the rendered rows
             # (and its would-be caveats) when it holds no income and the property
             # has real units — otherwise it shows as a confusing "Whole property
@@ -1215,7 +1258,7 @@ def compute_finance_summary(
             # numerator and denominator are sums of the same per-row
             # roundings, not a rounded sum paired with a summed round.
             scaled_lines = _scaled_lines(display_lines, share)
-            scaled_months = _scaled_month_rows(month_rows, share)
+            scaled_months = _scaled_month_rows(month_rows, scope_share)
             income_sources = ("actual", "derived")
             gross_income = _round2(sum(
                 m["amount"] for m in scaled_months if m["source"] in income_sources
@@ -1223,6 +1266,7 @@ def compute_finance_summary(
             block: Dict[str, Any] = {
                 "unit_id": scope["unit_id"],
                 "label": scope["label"],
+                "ownership_share": scope_share,
                 "rented_months": rented,
                 "gross_income": gross_income,
                 "contribution": _round2(gross_income - sum(
@@ -1236,7 +1280,7 @@ def compute_finance_summary(
                 "expense_lines": scaled_lines,
                 "loan_status": loan_status_by_unit.get(scope["unit_id"]),
             }
-            if share < 1.0:
+            if scope_share < 1.0:
                 block["full_gross_income"] = _round2(sum(
                     m.get("full_amount", m["amount"]) for m in scaled_months
                     if m["source"] in income_sources
@@ -1257,7 +1301,7 @@ def compute_finance_summary(
                 else:
                     note = f"No payment received for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
                     if billed:
-                        prop_outstanding += billed
+                        prop_outstanding += scope_share * billed
                 if reason:
                     note += f": {reason}"
                 unpaid_notes.append(note)
@@ -1322,20 +1366,13 @@ def compute_finance_summary(
             l["amount"] for l in scaled_expense_lines if l["deductible"]
         )
 
-        # Ownership share is applied once, here, to every *income* figure this
-        # property contributes; expense figures are already per-line weighted
-        # above (see _line_share), because loan interest and principal are not
-        # shared with co-owners. The already-scaled values then feed the
-        # cross-property totals. Each property carries its own share, so a
-        # total can never be correctly scaled after the fact.
-        # Recovered rent is exempt from the share multiply. Invoiced and
-        # lease-derived rent come off documents that state the whole
-        # property's figure; a recovery is typed in by the landlord, and the
-        # sheet asks a partial-share owner for their own share directly. It is
-        # already their money.
-        s_received = share * (prop_actual + prop_derived) + prop_recovered
-        s_derived = share * prop_derived
-        s_outstanding = share * prop_outstanding
+        # prop_actual / prop_derived / prop_outstanding arrive already scaled,
+        # each by its own scope's share. Recovered rent is exempt (it is typed
+        # in by the landlord at their own share — see the recovery sheet), so
+        # nothing here is multiplied again.
+        s_received = prop_actual + prop_derived + prop_recovered
+        s_derived = prop_derived
+        s_outstanding = prop_outstanding
         s_direct = direct
         s_landlord_paid = landlord_paid
         s_prorated = prorated_expenses

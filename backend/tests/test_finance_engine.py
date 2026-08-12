@@ -2855,3 +2855,102 @@ class OverallTotalsReconciliationTests(unittest.TestCase):
             totals["statutory_rental_income"],
             round(sum(c["statutory_contribution"] for c in cards), 2),
         )
+
+
+class UnitLevelShareIncomeTests(unittest.TestCase):
+    """Income is scaled per scope and summed, not summed and scaled once.
+    Every fixture here gives the two units DIFFERENT shares — at a uniform
+    share the old arithmetic and the new arithmetic agree exactly, so a
+    same-share fixture cannot fail against any of this."""
+
+    def _docs(self):
+        return [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u1"),
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u2"),
+        ]
+
+    def _units(self, u1_share=None, u2_share=None):
+        rows = [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]
+        if u1_share is not None:
+            rows[0]["ownership_share"] = u1_share
+        if u2_share is not None:
+            rows[1]["ownership_share"] = u2_share
+        return {"p1": rows}
+
+    def _blocks(self, property_share, u1_share=None, u2_share=None,
+                payment_exceptions=None):
+        result = _summary(
+            self._docs(), [_prop("p1", "Block", share=property_share)],
+            units=self._units(u1_share, u2_share),
+            payment_exceptions=payment_exceptions,
+        )
+        block = result["properties"][0]
+        by_id = {u["unit_id"]: u for u in block["units"]}
+        return block, by_id
+
+    def test_each_unit_uses_its_own_share_for_gross_income(self):
+        # u1 co-owned at 50%, u2 owned outright inside a property at 100%.
+        block, by_id = self._blocks(1.0, u1_share=0.5)
+        self.assertAlmostEqual(by_id["u1"]["gross_income"], 6000.0, places=2)
+        self.assertAlmostEqual(by_id["u2"]["gross_income"], 12000.0, places=2)
+
+    def test_received_rent_is_the_sum_of_the_scaled_units(self):
+        # NOT either share applied to the combined 24000. 6000 + 12000.
+        block, _ = self._blocks(1.0, u1_share=0.5)
+        self.assertAlmostEqual(block["received_rent"], 18000.0, places=2)
+
+    def test_unit_block_emits_its_resolved_share(self):
+        _, by_id = self._blocks(1.0, u1_share=0.5)
+        self.assertEqual(by_id["u1"]["ownership_share"], 0.5)
+        self.assertEqual(by_id["u2"]["ownership_share"], 1.0)
+
+    def test_a_unit_without_an_override_inherits_the_property_share(self):
+        # THE INHERIT GATE. Property at 50%, u1 explicitly owned outright,
+        # u2 untouched. Reading the stored share as
+        # `float(u.get("ownership_share") or 1.0)` gives u2 1.0 and makes this
+        # 24000 — and nothing else in this file notices.
+        block, by_id = self._blocks(0.5, u1_share=1.0)
+        self.assertEqual(by_id["u2"]["ownership_share"], 0.5)
+        self.assertAlmostEqual(by_id["u2"]["gross_income"], 6000.0, places=2)
+        self.assertAlmostEqual(by_id["u1"]["gross_income"], 12000.0, places=2)
+        self.assertAlmostEqual(block["received_rent"], 18000.0, places=2)
+
+    def test_full_gross_income_follows_the_units_own_share(self):
+        _, by_id = self._blocks(1.0, u1_share=0.5)
+        self.assertAlmostEqual(by_id["u1"]["full_gross_income"], 12000.0, places=2)
+        self.assertNotIn("full_gross_income", by_id["u2"])
+
+    def test_month_rows_are_scaled_by_the_units_own_share(self):
+        _, by_id = self._blocks(1.0, u1_share=0.5)
+        jan_u1 = next(m for m in by_id["u1"]["months"] if m["month"] == 1)
+        jan_u2 = next(m for m in by_id["u2"]["months"] if m["month"] == 1)
+        self.assertAlmostEqual(jan_u1["amount"], 500.0, places=2)
+        self.assertAlmostEqual(jan_u1["full_amount"], 1000.0, places=2)
+        self.assertAlmostEqual(jan_u2["amount"], 1000.0, places=2)
+        self.assertNotIn("full_amount", jan_u2)
+
+    def test_outstanding_rent_sums_each_units_scaled_outstanding(self):
+        # One unpaid month on the 50% unit and one on the 100% unit:
+        # 500 + 1000, not the property share applied to 2000.
+        block, _ = self._blocks(
+            1.0, u1_share=0.5,
+            payment_exceptions=[
+                _exception("p1", "2025-03", unit_id="u1"),
+                _exception("p1", "2025-04", unit_id="u2"),
+            ],
+        )
+        self.assertAlmostEqual(block["outstanding_rent"], 1500.0, places=2)
+
+    def test_whole_property_scope_uses_the_property_share(self):
+        # A landed house has no unit rows at all; the synthetic scope must
+        # still find the property's share.
+        docs = [_doc("p1", "lease", {"monthly_rent": 1000.0,
+                                     "lease_start": "2025-01-01",
+                                     "lease_end": "2025-12-31"})]
+        result = _summary(docs, [_prop("p1", "House", share=0.5)])
+        unit = result["properties"][0]["units"][0]
+        self.assertIsNone(unit["unit_id"])
+        self.assertEqual(unit["ownership_share"], 0.5)
+        self.assertAlmostEqual(unit["gross_income"], 6000.0, places=2)

@@ -197,6 +197,8 @@ class UnitFinance(BaseModel):
     """One unit's year: monthly income strip + its own expenses."""
     unit_id: Optional[str] = None  # None = synthetic whole-property line
     label: str
+    ownership_share: float = 1.0  # the resolved share this scope's income was
+    # scaled at: the unit's own override if it stored one, else the property's.
     rented_months: int
     gross_income: float = 0.0  # the landlord's share of the year's rent; the app
     # renders it above the expense subtotal, so it must equal what `contribution`
