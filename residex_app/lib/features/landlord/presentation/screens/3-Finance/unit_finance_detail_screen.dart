@@ -7,6 +7,7 @@ import '../../providers/finance_logic.dart';
 import '../../providers/finance_providers.dart';
 import '../../widgets/common/finance_year_picker.dart';
 import '../../widgets/common/rent_payment_sheets.dart';
+import '../../widgets/common/share_badge.dart';
 import '../2-Documind/document_viewer_screen.dart';
 import 'finance_screen.dart' show uploadDocumentForCategory;
 
@@ -135,7 +136,18 @@ class _UnitFinanceDetailScreenState
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text(widget.propertyName, style: AppTextStyles.bodyMedium),
+          Row(
+            children: [
+              Expanded(
+                child: Text(widget.propertyName, style: AppTextStyles.bodyMedium),
+              ),
+              if (_displayedUnit.ownershipShare < 1.0)
+                ShareBadge(
+                  text: '${(_displayedUnit.ownershipShare * 100).toStringAsFixed(0)}'
+                      '% share',
+                ),
+            ],
+          ),
           const SizedBox(height: 12),
           _buildNetContributionAccordion(context, _displayedUnit, _displayedYear),
           const SizedBox(height: 12),

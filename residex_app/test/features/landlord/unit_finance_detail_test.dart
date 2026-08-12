@@ -625,4 +625,49 @@ void main() {
       expect(find.text('Monthly income'), findsOneWidget);
     });
   });
+
+  testWidgets('a co-owned unit states its share beside the property name',
+      (tester) async {
+    await _pumpScreen(tester, 2026, UnitFinance(
+      unitId: 'u1', label: 'Unit 1', rentedMonths: 12,
+      ownershipShare: 0.5,
+      grossIncome: 12800.0, fullGrossIncome: 25600.0,
+      contribution: 12800.0, statutoryContribution: 12800.0,
+    ));
+
+    expect(find.text('50% share'), findsOneWidget);
+  });
+
+  testWidgets('a wholly-owned unit shows no badge', (tester) async {
+    await _pumpScreen(tester, 2026, UnitFinance(
+      unitId: 'u1', label: 'Unit 1', rentedMonths: 12,
+      grossIncome: 25600.0,
+      contribution: 25600.0, statutoryContribution: 25600.0,
+    ));
+
+    expect(find.textContaining('% share'), findsNothing);
+  });
+
+  testWidgets('the badge and the figure sub-label agree', (tester) async {
+    // The two come from different sources on purpose: the badge reads the
+    // emitted `ownership_share`, the sub-label divides gross by full gross.
+    // If they ever disagree it is a bug, and nothing else would catch it.
+    await _pumpScreen(tester, 2026, UnitFinance(
+      unitId: 'u1', label: 'Unit 1', rentedMonths: 12,
+      ownershipShare: 0.5,
+      grossIncome: 12800.0, fullGrossIncome: 25600.0,
+      contribution: 12800.0, statutoryContribution: 12800.0,
+    ));
+
+    // The badge sits on the always-visible header; the sub-label lives inside
+    // the Rental Profit/Loss accordion, so it has to be opened first — same
+    // pattern as the sub-label tests above.
+    expect(find.text('50% share'), findsOneWidget);
+    await tester.tap(find.text('Rental Profit/Loss').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('your 50% of'), findsWidgets);
+    // Still there once the accordion is open: the two readings of the same
+    // fact are visible side by side, which is the point of this test.
+    expect(find.text('50% share'), findsOneWidget);
+  });
 }
