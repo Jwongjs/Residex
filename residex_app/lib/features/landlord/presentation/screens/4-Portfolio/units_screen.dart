@@ -140,7 +140,6 @@ class UnitsScreen extends ConsumerWidget {
   Future<void> _editUnit(BuildContext context, WidgetRef ref, Unit unit,
       double propertyShare) async {
     final labelController = TextEditingController(text: unit.label);
-    final rentController = TextEditingController(text: unit.monthlyRent.toString());
     final initialShareText =
         ((unit.ownershipShare ?? propertyShare) * 100).toStringAsFixed(0);
     final shareController = TextEditingController(text: initialShareText);
@@ -167,19 +166,6 @@ class UnitsScreen extends ConsumerWidget {
                   controller: labelController,
                   decoration: const InputDecoration(labelText: 'Label'),
                   validator: (v) => v?.trim().isEmpty ?? true ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: rentController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Monthly Rent'),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    final parsed = double.tryParse(v);
-                    if (parsed == null) return 'Must be a number';
-                    if (parsed < 0) return 'Must be positive';
-                    return null;
-                  },
                 ),
                 const SizedBox(height: 12),
                 if (showShare)
@@ -243,7 +229,6 @@ class UnitsScreen extends ConsumerWidget {
       try {
         await controller.updateUnit(unit.copyWith(
           label: labelController.text.trim(),
-          monthlyRent: double.parse(rentController.text),
           // Only write a share the landlord actually edited. An untouched
           // field passes the existing value straight through, whatever it is.
           //
@@ -345,7 +330,7 @@ class UnitsScreen extends ConsumerWidget {
                             child: ListTile(
                               title: Text(unit.label, style: AppTextStyles.bodyLarge),
                               subtitle: Text(
-                                'RM ${unit.monthlyRent.toStringAsFixed(0)}/mo',
+                                '${(((unit.ownershipShare ?? propertyShare) * 100)).toStringAsFixed(0)}% share',
                                 style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
                               ),
                               onTap: () =>
