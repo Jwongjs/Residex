@@ -3164,6 +3164,16 @@ class UnitLevelShareCaveatTests(unittest.TestCase):
         self.assertFalse(any("Ownership share applied" in c
                              for c in self._caveats(1.0)))
 
+    def test_a_co_owned_property_whose_units_are_all_outright_still_warns(self):
+        # THE BACKEND TWIN of the Dart range-set gate. Keyed only on the unit
+        # blocks, this property is {1.0} and says nothing — while its
+        # building-wide quit rent and loan are still scaled to 50%. The
+        # property's own share has to be in the set, exactly as the app's
+        # property-card badge does it.
+        caveats = self._caveats(0.5, u1_share=1.0, u2_share=1.0)
+        note = next(c for c in caveats if "Ownership share applied" in c)
+        self.assertIn("50%–100%", note)
+
     def test_loan_wording_survives_both_branches(self):
         for caveats in (self._caveats(0.5), self._caveats(1.0, u1_share=0.5)):
             note = next(c for c in caveats if "Ownership share applied" in c)

@@ -1455,7 +1455,14 @@ def compute_finance_summary(
         # Keyed on the shares actually rendered, not on the property's own:
         # a property owned outright can now contain a single co-owned unit,
         # and that unit's figures still need the warning.
-        resolved_shares = {u["ownership_share"] for u in unit_blocks} or {share}
+        # The property's own share is always in the set, not just when there
+        # are no unit blocks: it is what a building-wide loan or quit rent is
+        # scaled by, so a property at 50% whose units are all owned outright
+        # still has scaled figures to warn about. Mirrors the app's
+        # property-card badge, which builds its range the same way
+        # (finance_screen.dart) — keyed only on the units, the two surfaces
+        # disagree about whether to say anything at all.
+        resolved_shares = {u["ownership_share"] for u in unit_blocks} | {share}
         if any(s < 1.0 for s in resolved_shares):
             if len(resolved_shares) == 1:
                 only = next(iter(resolved_shares))
