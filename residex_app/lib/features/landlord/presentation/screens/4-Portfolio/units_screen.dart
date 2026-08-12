@@ -4,6 +4,7 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../domain/entities/unit.dart';
 import '../../providers/unit_providers.dart';
 import '../../providers/documind_provider.dart';
+import '../../providers/property_providers.dart';
 
 /// Lists and manages the individual units within a property: each unit's
 /// label, monthly rent, and occupied/vacant status.
@@ -136,58 +137,100 @@ class UnitsScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _editUnit(BuildContext context, WidgetRef ref, Unit unit) async {
+  Future<void> _editUnit(BuildContext context, WidgetRef ref, Unit unit,
+      double propertyShare) async {
     final labelController = TextEditingController(text: unit.label);
     final rentController = TextEditingController(text: unit.monthlyRent.toString());
+    final shareController = TextEditingController(
+      text: ((unit.ownershipShare ?? propertyShare) * 100).toStringAsFixed(0),
+    );
+    // Shown up front when co-ownership is already in play here — either the
+    // property is co-owned, or this unit already carries its own share.
+    // Otherwise it stays behind an affordance so a landlord who owns
+    // everything outright never has to think about it.
+    var showShare = propertyShare < 1.0 || unit.ownershipShare != null;
     final formKey = GlobalKey<FormState>();
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Edit Unit', style: AppTextStyles.titleMedium),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: labelController,
-                decoration: const InputDecoration(labelText: 'Label'),
-                validator: (v) => v?.trim().isEmpty ?? true ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: rentController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Monthly Rent'),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Required';
-                  final parsed = double.tryParse(v);
-                  if (parsed == null) return 'Must be a number';
-                  if (parsed < 0) return 'Must be positive';
-                  return null;
-                },
-              ),
-            ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Edit Unit', style: AppTextStyles.titleMedium),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: labelController,
+                  decoration: const InputDecoration(labelText: 'Label'),
+                  validator: (v) => v?.trim().isEmpty ?? true ? 'Required' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: rentController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Monthly Rent'),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    final parsed = double.tryParse(v);
+                    if (parsed == null) return 'Must be a number';
+                    if (parsed < 0) return 'Must be positive';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (showShare)
+                  TextFormField(
+                    controller: shareController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'My share of this unit (%)',
+                      hintText: '100 if you own this unit outright',
+                    ),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Required';
+                      final parsed = double.tryParse(v);
+                      if (parsed == null) return 'Must be a number';
+                      if (parsed <= 0 || parsed > 100) return 'Between 1 and 100';
+                      return null;
+                    },
+                  )
+                else
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => setDialogState(() => showShare = true),
+                      child: Text(
+                        'Set a different share for this unit',
+                        style: AppTextStyles.labelLarge
+                            .copyWith(color: AppColors.registry),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel',
+                  style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(ctx, true);
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.registry),
+              child: Text('Save',
+                  style: AppTextStyles.labelLarge.copyWith(color: Colors.white)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(ctx, true);
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.registry),
-            child: Text('Save', style: AppTextStyles.labelLarge.copyWith(color: Colors.white)),
-          ),
-        ],
       ),
     );
 
@@ -197,6 +240,12 @@ class UnitsScreen extends ConsumerWidget {
         await controller.updateUnit(unit.copyWith(
           label: labelController.text.trim(),
           monthlyRent: double.parse(rentController.text),
+          // Untouched and hidden means untouched: passing the existing value
+          // back through copyWith leaves a never-set share unset, so the unit
+          // keeps inheriting the property's.
+          ownershipShare: showShare
+              ? double.parse(shareController.text) / 100.0
+              : unit.ownershipShare,
         ));
       } catch (e) {
         if (context.mounted) {
@@ -224,6 +273,10 @@ class UnitsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final unitsAsync = ref.watch(unitsForPropertyStreamProvider(propertyId));
+    // Watched, not read: the dialog needs this resolved when it opens, and
+    // this screen is otherwise the only thing that would ever load it.
+    final propertyShare =
+        ref.watch(propertyByIdProvider(propertyId)).value?.ownershipShare ?? 1.0;
 
     return Scaffold(
       backgroundColor: AppColors.paper,
@@ -280,7 +333,8 @@ class UnitsScreen extends ConsumerWidget {
                                 'RM ${unit.monthlyRent.toStringAsFixed(0)}/mo',
                                 style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
                               ),
-                              onTap: () => _editUnit(context, ref, unit),
+                              onTap: () =>
+                                  _editUnit(context, ref, unit, propertyShare),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
