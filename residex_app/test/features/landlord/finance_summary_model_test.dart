@@ -485,4 +485,37 @@ void main() {
       expect(month.fullBilledAmount, isNull);
     });
   });
+
+  group('unit resolved ownership share', () {
+    // Every map literal is explicitly <String, dynamic>: the parser casts
+    // nested maps with `as Map<String, dynamic>`, and an inferred
+    // Map<dynamic, dynamic> fails that cast at runtime.
+    Map<String, dynamic> summaryJson(Map<String, dynamic> unit) =>
+        <String, dynamic>{
+          'year': 2025,
+          'properties': [
+            <String, dynamic>{
+              'property_id': 'p1',
+              'name': 'Block',
+              'units': [unit],
+            },
+          ],
+        };
+
+    test('maps ownership_share off a unit block', () {
+      final summary = FinanceSummaryModel.fromJson(summaryJson(
+        <String, dynamic>{'unit_id': 'u1', 'label': 'A-1', 'ownership_share': 0.5},
+      ));
+
+      expect(summary.properties.first.units.first.ownershipShare, 0.5);
+    });
+
+    test('an absent ownership_share defaults to full ownership', () {
+      final summary = FinanceSummaryModel.fromJson(summaryJson(
+        <String, dynamic>{'unit_id': 'u1', 'label': 'A-1'},
+      ));
+
+      expect(summary.properties.first.units.first.ownershipShare, 1.0);
+    });
+  });
 }

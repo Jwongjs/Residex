@@ -104,6 +104,8 @@ class FinanceSummaryModel {
     return UnitFinance(
       unitId: json['unit_id'] as String?,
       label: json['label'] as String? ?? 'Unit',
+      ownershipShare:
+          json['ownership_share'] == null ? 1.0 : _d(json['ownership_share']),
       rentedMonths: (json['rented_months'] as num?)?.toInt() ?? 0,
       contribution: _d(json['contribution']),
       statutoryContribution: _d(json['statutory_contribution']),

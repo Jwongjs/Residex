@@ -12,6 +12,13 @@ class Unit {
   final String label;
   final double monthlyRent;
   final bool isOccupied;
+
+  /// This unit's own ownership share, 0–1. Null means "inherit the
+  /// property's" — the overwhelmingly common case. An explicit 1.0 is a
+  /// distinct, meaningful state: a unit owned outright inside a property
+  /// that is otherwise co-owned.
+  final double? ownershipShare;
+
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -21,6 +28,7 @@ class Unit {
     required this.label,
     required this.monthlyRent,
     required this.isOccupied,
+    this.ownershipShare,
     required this.createdAt,
     this.updatedAt,
   });
@@ -31,6 +39,7 @@ class Unit {
     String? label,
     double? monthlyRent,
     bool? isOccupied,
+    double? ownershipShare,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -40,6 +49,7 @@ class Unit {
       label: label ?? this.label,
       monthlyRent: monthlyRent ?? this.monthlyRent,
       isOccupied: isOccupied ?? this.isOccupied,
+      ownershipShare: ownershipShare ?? this.ownershipShare,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

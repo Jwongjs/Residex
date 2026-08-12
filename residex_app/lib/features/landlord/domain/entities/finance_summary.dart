@@ -135,6 +135,12 @@ class UnitFinance {
   /// Null = the synthetic "Whole property" income line.
   final String? unitId;
   final String label;
+
+  /// The share the engine actually applied to this unit's figures — its own
+  /// override, or the property's. A label for the scope; the panel's
+  /// "your N% of RM X" sub-labels stay derived from the figure pairs.
+  final double ownershipShare;
+
   final int rentedMonths;
   final double contribution;
   final double statutoryContribution;
@@ -158,6 +164,7 @@ class UnitFinance {
   UnitFinance({
     this.unitId,
     required this.label,
+    this.ownershipShare = 1.0,
     required this.rentedMonths,
     required this.contribution,
     this.statutoryContribution = 0.0,

@@ -11,6 +11,7 @@ class UnitModel extends Unit {
     required super.label,
     required super.monthlyRent,
     required super.isOccupied,
+    super.ownershipShare,
     required super.createdAt,
     super.updatedAt,
   });
@@ -23,6 +24,7 @@ class UnitModel extends Unit {
       label: unit.label,
       monthlyRent: unit.monthlyRent,
       isOccupied: unit.isOccupied,
+      ownershipShare: unit.ownershipShare,
       createdAt: unit.createdAt,
       updatedAt: unit.updatedAt,
     );
@@ -36,6 +38,11 @@ class UnitModel extends Unit {
       label: json['label'] as String,
       monthlyRent: _parseDouble(json['monthlyRent']),
       isOccupied: json['isOccupied'] as bool? ?? false,
+      // Snake_case deliberately: the backend reads 'ownership_share', matching
+      // the property document's own share field. See the plan's constraints.
+      ownershipShare: json['ownership_share'] == null
+          ? null
+          : _parseDouble(json['ownership_share']),
       createdAt: _parseTimestamp(json['createdAt']),
       updatedAt: json['updatedAt'] != null
           ? _parseTimestamp(json['updatedAt'])
@@ -51,6 +58,7 @@ class UnitModel extends Unit {
       'isOccupied': isOccupied,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
+      if (ownershipShare != null) 'ownership_share': ownershipShare,
     };
   }
 
