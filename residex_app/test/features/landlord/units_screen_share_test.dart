@@ -151,35 +151,67 @@ void main() {
     expect(repository.lastUpdated?.ownershipShare, isNull);
   });
 
-  // Not part of the brief's own test list. This documents a hazard the task
-  // spec flagged but explicitly said not to fix: on a co-owned property the
-  // share field is shown up front (propertyShare < 1.0) and prefilled to the
-  // property's own share, even for a unit that has never had a share set.
-  // Hitting Save without touching that field pins the unit at the property's
-  // *current* share explicitly — converting a unit that was inheriting into
-  // one that is pinned. If the property's share later changes, this unit
-  // will no longer follow. This test asserts the actual behaviour so the
-  // hazard is visible in the suite rather than silently unexercised.
-  testWidgets(
-      'an untouched unit on a co-owned property pins the property\'s '
-      'current share instead of staying unset (documents a known hazard)',
+  // The three tests below gate the "only write a share the landlord actually
+  // engaged with" rule. On a co-owned property the field is shown up front and
+  // prefilled with the property's share, so without this rule any Save — a
+  // rename, a rent correction — would pin an inheriting unit to the property's
+  // *current* share. That is invisible at the time and wrong later: when the
+  // property's share moves, the pinned unit stops following it, and copyWith
+  // cannot restore null from any screen in the app.
+  //
+  // The rule needs two clauses, and there is one test per clause below.
+
+  testWidgets('an untouched unit on a co-owned property stays inheriting',
       (tester) async {
     final repository = await _pumpUnits(tester,
         property: _property(ownershipShare: 0.5), unit: _unit());
 
     await tester.tap(find.text('A-1'));
     await tester.pumpAndSettle();
-    // The field is already shown (co-owned property) and prefilled to 50,
-    // matching the property's share — the landlord never touches it.
+    // Shown and prefilled to the property's 50 — the landlord never touches it.
     expect(find.text('My share of this unit (%)'), findsOneWidget);
     expect(find.text('50'), findsOneWidget);
 
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
-    // Documented hazard: this writes an explicit 0.5, not null. The unit is
-    // now pinned to the property's share at the moment of this save, and
-    // will not follow the property's share if it changes later.
-    expect(repository.lastUpdated?.ownershipShare, 0.5);
+    // Null, not 0.5: the unit keeps inheriting, so it still follows the
+    // property if that share later changes.
+    expect(repository.lastUpdated?.ownershipShare, isNull);
+  });
+
+  testWidgets('editing the field on a co-owned property still writes it',
+      (tester) async {
+    final repository = await _pumpUnits(tester,
+        property: _property(ownershipShare: 0.5), unit: _unit());
+
+    await tester.tap(find.text('A-1'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'My share of this unit (%)'), '60');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    // The other half of the rule: not writing an untouched field must not
+    // become not writing at all.
+    expect(repository.lastUpdated?.ownershipShare, 0.6);
+  });
+
+  testWidgets('an untouched save does not re-round a stored share',
+      (tester) async {
+    // 0.333 prefills as "33" — the field cannot represent it. Re-parsing an
+    // untouched field would write 0.33 and silently lose precision on an edit
+    // the landlord never made. Passing the stored value through avoids it.
+    final repository = await _pumpUnits(tester,
+        property: _property(ownershipShare: 0.5),
+        unit: _unit(ownershipShare: 0.333));
+
+    await tester.tap(find.text('A-1'));
+    await tester.pumpAndSettle();
+    expect(find.text('33'), findsOneWidget);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(repository.lastUpdated?.ownershipShare, 0.333);
   });
 }

@@ -141,9 +141,9 @@ class UnitsScreen extends ConsumerWidget {
       double propertyShare) async {
     final labelController = TextEditingController(text: unit.label);
     final rentController = TextEditingController(text: unit.monthlyRent.toString());
-    final shareController = TextEditingController(
-      text: ((unit.ownershipShare ?? propertyShare) * 100).toStringAsFixed(0),
-    );
+    final initialShareText =
+        ((unit.ownershipShare ?? propertyShare) * 100).toStringAsFixed(0);
+    final shareController = TextEditingController(text: initialShareText);
     // Shown up front when co-ownership is already in play here — either the
     // property is co-owned, or this unit already carries its own share.
     // Otherwise it stays behind an affordance so a landlord who owns
@@ -194,7 +194,11 @@ class UnitsScreen extends ConsumerWidget {
                       if (v == null || v.isEmpty) return 'Required';
                       final parsed = double.tryParse(v);
                       if (parsed == null) return 'Must be a number';
-                      if (parsed <= 0 || parsed > 100) return 'Between 1 and 100';
+                      // Message and rule agree: anything above 0 up to 100 is
+                      // accepted, so a fractional share like 0.5% is valid.
+                      if (parsed <= 0 || parsed > 100) {
+                        return 'Between 0 and 100';
+                      }
                       return null;
                     },
                   )
@@ -240,10 +244,21 @@ class UnitsScreen extends ConsumerWidget {
         await controller.updateUnit(unit.copyWith(
           label: labelController.text.trim(),
           monthlyRent: double.parse(rentController.text),
-          // Untouched and hidden means untouched: passing the existing value
-          // back through copyWith leaves a never-set share unset, so the unit
-          // keeps inheriting the property's.
-          ownershipShare: showShare
+          // Only write a share the landlord actually edited. An untouched
+          // field passes the existing value straight through, whatever it is.
+          //
+          // This matters most for a unit that has never had its own share: on
+          // a co-owned property the field is SHOWN and prefilled with the
+          // property's share, so writing it unconditionally would pin an
+          // inheriting unit to the property's CURRENT share on any unrelated
+          // edit — a rename, a rent correction. That is invisible at the time
+          // and wrong later, when the property's share moves and the pinned
+          // unit stops following it; copyWith cannot restore null from any
+          // screen in the app.
+          //
+          // It also preserves precision: a stored 0.333 prefills as "33", so
+          // re-parsing an untouched field would silently round it to 0.33.
+          ownershipShare: showShare && shareController.text != initialShareText
               ? double.parse(shareController.text) / 100.0
               : unit.ownershipShare,
         ));
