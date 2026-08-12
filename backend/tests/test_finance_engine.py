@@ -2954,3 +2954,168 @@ class UnitLevelShareIncomeTests(unittest.TestCase):
         self.assertIsNone(unit["unit_id"])
         self.assertEqual(unit["ownership_share"], 0.5)
         self.assertAlmostEqual(unit["gross_income"], 6000.0, places=2)
+
+
+class UnitLevelShareExpenseTests(unittest.TestCase):
+    """An expense line's share follows the unit it belongs to; a line with no
+    unit follows the property. Mixed shares throughout — a uniform-share
+    fixture cannot distinguish the per-line conversion from the old one."""
+
+    def _units(self, u1_share=None, u2_share=None):
+        rows = [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]
+        if u1_share is not None:
+            rows[0]["ownership_share"] = u1_share
+        if u2_share is not None:
+            rows[1]["ownership_share"] = u2_share
+        return {"p1": rows}
+
+    def _mixed(self):
+        # u1 co-owned at 50%, u2 outright, inside a property owned outright.
+        docs = [
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+            ]}, unit_id="u1"),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 2000.0, "period_year": 2025},
+            ]}, unit_id="u2"),
+        ]
+        result = _summary(docs, [_prop("p1", "Block", share=1.0)],
+                          units=self._units(u1_share=0.5))
+        return result, result["properties"][0]
+
+    def test_each_line_is_scaled_by_its_own_units_share(self):
+        _, block = self._mixed()
+        by_amount = sorted(l["amount"] for l in block["expense_lines"])
+        self.assertEqual(by_amount, [500.0, 2000.0])
+
+    def test_direct_expenses_reconciles_against_the_rendered_lines(self):
+        # THE GATE. `direct` sums across every unit at once. Left on the
+        # property share it reads 3000 while the lines beneath it read
+        # 500 + 2000, and no other assertion in this file notices.
+        _, block = self._mixed()
+        deductible = [l for l in block["expense_lines"] if l["deductible"]]
+        self.assertAlmostEqual(
+            block["direct_expenses"], sum(l["amount"] for l in deductible), places=2
+        )
+        self.assertAlmostEqual(block["direct_expenses"], 2500.0, places=2)
+
+    def test_landlord_expenses_reconciles_against_the_rendered_lines(self):
+        # A separate summation site from `direct` and it can regress alone.
+        _, block = self._mixed()
+        paid = [l for l in block["expense_lines"] if l["paid_by_landlord"]]
+        self.assertAlmostEqual(
+            block["landlord_expenses"], sum(l["amount"] for l in paid), places=2
+        )
+
+    def test_expense_breakdown_reconciles_against_the_rendered_lines(self):
+        # Asserted structurally rather than per named category, so it holds
+        # for whatever categories the subtypes map to.
+        result, block = self._mixed()
+        totals = {}
+        for line in block["expense_lines"]:
+            if line["deductible"]:
+                totals[line["category"]] = round(
+                    totals.get(line["category"], 0.0) + line["amount"], 2
+                )
+        self.assertEqual(result["expense_breakdown"], totals)
+
+    def test_a_line_carries_the_face_value_of_its_own_scaled_amount(self):
+        _, block = self._mixed()
+        scaled = next(l for l in block["expense_lines"] if l["amount"] == 500.0)
+        whole = next(l for l in block["expense_lines"] if l["amount"] == 2000.0)
+        self.assertAlmostEqual(scaled["full_amount"], 1000.0, places=2)
+        self.assertNotIn("full_amount", whole)
+
+    def test_property_level_line_uses_the_property_share_not_a_units(self):
+        # Property at 50%, its one unit owned outright. The building-wide
+        # line belongs to no unit, so it takes the property's 50%.
+        docs = [
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 800.0, "period_year": 2025},
+            ]}),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+            ]}, unit_id="u1"),
+        ]
+        result = _summary(docs, [_prop("p1", "Block", share=0.5)],
+                          units=self._units(u1_share=1.0))
+        block = result["properties"][0]
+        property_level = next(l for l in block["property_expense_lines"])
+        self.assertAlmostEqual(property_level["amount"], 400.0, places=2)
+        unit_line = next(l for l in block["expense_lines"]
+                         if l["unit_id"] == "u1")
+        self.assertAlmostEqual(unit_line["amount"], 1000.0, places=2)
+
+    def test_unit_block_lines_use_that_units_share(self):
+        _, block = self._mixed()
+        by_id = {u["unit_id"]: u for u in block["units"]}
+        self.assertAlmostEqual(by_id["u1"]["expense_lines"][0]["amount"], 500.0, places=2)
+        self.assertAlmostEqual(by_id["u2"]["expense_lines"][0]["amount"], 2000.0, places=2)
+
+    def test_loan_lines_are_unscaled_at_a_unit_share_inside_a_full_property(self):
+        # The exemption is unchanged and must survive the per-line rewrite in
+        # the combination the old code could not even express.
+        docs = [
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 1200.0, "principal_paid": 3000.0},
+                 unit_id="u1"),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+            ]}, unit_id="u1"),
+        ]
+        result = _summary(docs, [_prop("p1", "Block", share=1.0)],
+                          units=self._units(u1_share=0.5))
+        by_subtype = {l["subtype"]: l for l in result["properties"][0]["expense_lines"]}
+        self.assertEqual(by_subtype["interest_statement"]["amount"], 1200.0)
+        self.assertEqual(by_subtype["loan_principal"]["amount"], 3000.0)
+        self.assertEqual(by_subtype["maintenance"]["amount"], 500.0)
+        self.assertNotIn("full_amount", by_subtype["interest_statement"])
+
+    def test_unit_contribution_reconciles_under_mixed_shares(self):
+        # The unit-scope identity from the panel spec, re-asserted where the
+        # two units disagree about their share.
+        _, block = self._mixed()
+        for unit in block["units"]:
+            landlord_paid = sum(l["amount"] for l in unit["expense_lines"]
+                                if l["paid_by_landlord"])
+            self.assertAlmostEqual(
+                unit["contribution"], unit["gross_income"] - landlord_paid, places=2
+            )
+
+    def test_property_statutory_contribution_uses_each_units_own_share_for_proration(self):
+        # THE PRORATION GATE. `prorated_expenses` accumulates, per scope,
+        # `fraction * sum(_line_share(l, <the unit's own share>) * amount)`.
+        # A prior task switched the per-scope term to `scope_share` (already
+        # per-unit) but nothing in the suite noticed if it were reverted to
+        # the bare property `share` — both units are fully rented all year
+        # (fraction 1.0 for each), so this isolates the proration term
+        # itself rather than the rented-fraction weighting.
+        #
+        # u1 co-owned at 50%, u2 outright, property owned outright, both
+        # fully rented at 1000/mo for 12 months.
+        docs = [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": f"2025-{m:02d}"},
+                 unit_id="u1")
+            for m in range(1, 13)
+        ] + [
+            _doc("p1", "rental_invoice", {"amount": 1000.0, "period_month": f"2025-{m:02d}"},
+                 unit_id="u2")
+            for m in range(1, 13)
+        ] + [
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+            ]}, unit_id="u1"),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 2000.0, "period_year": 2025},
+            ]}, unit_id="u2"),
+        ]
+        result = _summary(docs, [_prop("p1", "Block", share=1.0)],
+                          units=self._units(u1_share=0.5))
+        block = result["properties"][0]
+        # received_rent = 0.5*12000 (u1) + 1.0*12000 (u2) = 18000
+        # prorated = 1.0*(0.5*1000) (u1) + 1.0*(1.0*2000) (u2) = 500 + 2000 = 2500
+        # statutory_contribution = 18000 - 2500 = 15500
+        # If the proration term is reverted to the bare property share
+        # (1.0) for both units, prorated becomes 1000 + 2000 = 3000 and
+        # this reads 15000.0 instead.
+        self.assertAlmostEqual(block["statutory_contribution"], 15500.0, places=2)

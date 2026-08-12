@@ -462,22 +462,28 @@ def _share_for_unit(
     return unit_shares.get(unit_id, property_share)
 
 
-def _scaled_lines(lines: List[Dict[str, Any]], share: float) -> List[Dict[str, Any]]:
-    """Copy expense lines with amounts at the landlord's ownership share.
+def _scaled_lines(
+    lines: List[Dict[str, Any]],
+    share_for: Callable[[Optional[str]], float],
+) -> List[Dict[str, Any]]:
+    """Copy expense lines with amounts at the share that applies to each line.
 
     Never mutates the input. The unscaled lines stay the basis for every
     property-level sum, so scaling is applied exactly once and no sum can be
-    scaled twice. At share 1.0 the lines are returned unchanged (no
-    `full_amount`), so the overwhelmingly common case is byte-identical to
-    before. Below 1.0 each scaled line also carries `full_amount`, the source
-    document's face value, so the app can show "your 50% of RM 1,200.00"
-    beside the scaled figure. Loan lines (see _line_share) are not scaled and
-    so carry no `full_amount` — there is no second figure to show."""
-    if share == 1.0:
-        return list(lines)
+    scaled twice. `share_for` maps a line's `unit_id` to its share — a unit's
+    own override, or the property's for a line belonging to no unit.
+
+    A line whose resolved share is 1.0 is copied through unchanged and carries
+    no `full_amount`, so a wholly-owned property's payload is content-identical
+    to before. Below 1.0 each scaled line also carries `full_amount`, the
+    source document's face value, so the app can show "your 50% of RM 1,200.00"
+    beside the scaled figure. Loan lines (see _line_share) resolve to 1.0 at
+    any share and so take the same unchanged path — there is no second figure
+    to show.
+    """
     out: List[Dict[str, Any]] = []
     for line in lines:
-        line_share = _line_share(line, share)
+        line_share = _line_share(line, share_for(line.get("unit_id")))
         if line_share == 1.0:
             out.append(dict(line))
             continue
@@ -1216,7 +1222,8 @@ def compute_finance_summary(
             # lines are prorated once, below, by avg_fraction — feeding them in
             # here as well would double-count them in the statutory total.
             prorated_expenses += fraction * sum(
-                _line_share(l, scope_share) * l["amount"] for l in unit_lines if l["deductible"]
+                _line_share(l, share_for(l.get("unit_id"))) * l["amount"]
+                for l in unit_lines if l["deductible"]
             )
             # Display lines: the synthetic whole-property scope shows the
             # property-level lines (a building-wide loan, quit rent) that belong
@@ -1257,7 +1264,7 @@ def compute_finance_summary(
             # derives as `gross / full_gross` stays internally coherent:
             # numerator and denominator are sums of the same per-row
             # roundings, not a rounded sum paired with a summed round.
-            scaled_lines = _scaled_lines(display_lines, share)
+            scaled_lines = _scaled_lines(display_lines, share_for)
             scaled_months = _scaled_month_rows(month_rows, scope_share)
             income_sources = ("actual", "derived")
             gross_income = _round2(sum(
@@ -1312,7 +1319,7 @@ def compute_finance_summary(
         property_level_lines = lines_by_unit.get(None, [])
         avg_fraction = (sum(fractions) / len(fractions)) if fractions else 0.0
         prorated_expenses += avg_fraction * sum(
-            _line_share(l, share) * l["amount"]
+            _line_share(l, share_for(l.get("unit_id"))) * l["amount"]
             for l in property_level_lines if l["deductible"]
         )
 
@@ -1322,7 +1329,7 @@ def compute_finance_summary(
         # ONCE, exactly as it will be emitted below (`expense_lines` in the
         # block), and derive every total by summing ITS rounded rows —
         # mirrors the unit block's scaled_lines / scaled_months pattern.
-        scaled_expense_lines = _scaled_lines(expense_lines, share)
+        scaled_expense_lines = _scaled_lines(expense_lines, share_for)
 
         # Net P/L uses the landlord's full cash out (not prorated by occupancy,
         # matching how direct/statutory `direct` is summed below).
@@ -1456,7 +1463,7 @@ def compute_finance_summary(
                 continue
             expense_breakdown[line["category"]] = _round2(
                 expense_breakdown.get(line["category"], 0.0)
-                + _line_share(line, share) * line["amount"]
+                + _line_share(line, share_for(line.get("unit_id"))) * line["amount"]
             )
 
         excluded = _round2(sum(
@@ -1492,7 +1499,7 @@ def compute_finance_summary(
             "statutory_contribution": _round2(r_received - s_prorated),
             "units": unit_blocks,
             "expense_lines": scaled_expense_lines,
-            "property_expense_lines": _scaled_lines(property_level_lines, share),
+            "property_expense_lines": _scaled_lines(property_level_lines, share_for),
             "recovered_rent": recovered_lines,
             "complete": complete,
             "coverage": coverage_rows,
