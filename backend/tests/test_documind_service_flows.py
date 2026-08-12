@@ -96,12 +96,18 @@ class _FakePropertyDoc:
 
 
 class _FakeUnitSnapshot:
-    def __init__(self, unit_id, label):
+    def __init__(self, unit_id, label, ownership_share=None):
         self.id = unit_id
         self._label = label
+        self._ownership_share = ownership_share
 
     def to_dict(self):
-        return {"label": self._label}
+        data = {"label": self._label}
+        # Absent, not null: a unit that has never had a share set stores no
+        # field at all, and `None` is what tells the engine to inherit.
+        if self._ownership_share is not None:
+            data["ownership_share"] = self._ownership_share
+        return data
 
 
 class _FakeUnitsCollection:
@@ -109,7 +115,10 @@ class _FakeUnitsCollection:
         self._units = units
 
     def stream(self):
-        return [_FakeUnitSnapshot(u["unit_id"], u["label"]) for u in self._units]
+        return [
+            _FakeUnitSnapshot(u["unit_id"], u["label"], u.get("ownership_share"))
+            for u in self._units
+        ]
 
 
 class _FakePropertyRef:
@@ -2797,6 +2806,45 @@ class FactContextInjectionTests(unittest.IsolatedAsyncioTestCase):
         extracted = [c for c in response.citations if c.source == "extracted_facts"]
         self.assertIn("661214055049", extracted[0].snippet)
         self.assertIn("[NRIC]", fake_llm.last_prompt)
+
+
+class UnitOwnershipShareLookupTests(unittest.IsolatedAsyncioTestCase):
+    """The unit override has to survive the Firestore read. `None` means
+    inherit the property's share — coercing it to 1.0 here would override a
+    partial property share for every untouched unit."""
+
+    async def test_stored_unit_share_is_returned(self):
+        fake_db = _FakeDB(units=[
+            {"unit_id": "u1", "label": "A-1", "ownership_share": 0.5},
+        ])
+        service = _build_service(fake_db, _FakeConversationStore(),
+                                 _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        rows = service._list_property_units("p1")
+        self.assertEqual(rows[0]["ownership_share"], 0.5)
+
+    async def test_absent_unit_share_is_none_not_one(self):
+        fake_db = _FakeDB(units=[{"unit_id": "u2", "label": "A-2"}])
+        service = _build_service(fake_db, _FakeConversationStore(),
+                                 _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        rows = service._list_property_units("p1")
+        self.assertIsNone(rows[0]["ownership_share"])
+
+    async def test_unparseable_unit_share_is_none(self):
+        fake_db = _FakeDB(units=[
+            {"unit_id": "u3", "label": "A-3", "ownership_share": "half"},
+        ])
+        service = _build_service(fake_db, _FakeConversationStore(),
+                                 _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        rows = service._list_property_units("p1")
+        self.assertIsNone(rows[0]["ownership_share"])
+
+    async def test_label_and_id_still_returned(self):
+        fake_db = _FakeDB(units=[{"unit_id": "u1", "label": "A-1"}])
+        service = _build_service(fake_db, _FakeConversationStore(),
+                                 _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        rows = service._list_property_units("p1")
+        self.assertEqual(rows[0]["unit_id"], "u1")
+        self.assertEqual(rows[0]["label"], "A-1")
 
 
 if __name__ == "__main__":

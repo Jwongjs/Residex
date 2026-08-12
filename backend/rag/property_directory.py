@@ -17,8 +17,15 @@ def get_property_name(db, property_id: str) -> str:
 
 
 def list_property_units(db, property_id: str) -> List[Dict]:
-    """Unit ids + labels for a property. Empty on lookup failure so a
-    units outage degrades to unscoped search instead of blocking."""
+    """Unit ids + labels + optional ownership share for a property. Empty on
+    lookup failure so a units outage degrades to unscoped search instead of
+    blocking.
+
+    `ownership_share` is None when the unit stores none, which means "inherit
+    the property's share". It is deliberately NOT defaulted to 1.0: a unit
+    that has never been touched inside a 50%-owned property must follow the
+    property, not silently claim full ownership.
+    """
     try:
         snapshots = (
             db.collection('properties')
@@ -26,13 +33,20 @@ def list_property_units(db, property_id: str) -> List[Dict]:
             .collection('units')
             .stream()
         )
-        return [
-            {
+        rows = []
+        for snap in snapshots:
+            data = snap.to_dict() or {}
+            raw = data.get('ownership_share')
+            try:
+                share = None if raw is None else float(raw)
+            except (TypeError, ValueError):
+                share = None
+            rows.append({
                 "unit_id": snap.id,
-                "label": (snap.to_dict() or {}).get('label') or snap.id,
-            }
-            for snap in snapshots
-        ]
+                "label": data.get('label') or snap.id,
+                "ownership_share": share,
+            })
+        return rows
     except Exception as e:
         print(f"⚠️ Unit lookup failed for property {property_id}: {e}")
         return []
