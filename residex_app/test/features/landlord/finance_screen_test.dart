@@ -1274,4 +1274,28 @@ void main() {
 
     expect(find.textContaining('% share'), findsNothing);
   });
+
+  // A co-owned building let as whole units the landlord holds outright: the
+  // property's own share (0.5) is the only thing below 1.0 anywhere in the
+  // fixture. None of the other share tests can catch a bug that drops
+  // block.ownershipShare from the range set — every one of them has
+  // propertyShare either equal to a unit share or already 1.0 — so this is
+  // the only fixture where the property's own share is observed
+  // independently of any unit's.
+  testWidgets(
+      "a property share below 1.0 still ranges even when every unit is owned outright",
+      (tester) async {
+    await pumpShares(tester, summaryWithUnitShares(2026,
+        propertyShare: 0.5,
+        units: [
+          UnitFinance(unitId: 'u1', label: 'A-1', rentedMonths: 12,
+              contribution: 6000.0, ownershipShare: 1.0),
+          UnitFinance(unitId: 'u2', label: 'A-2', rentedMonths: 12,
+              contribution: 6000.0, ownershipShare: 1.0),
+        ]));
+
+    expect(find.text('50–100% share'), findsOneWidget);
+    expect(find.textContaining('Shown at your share of each unit.'),
+        findsOneWidget);
+  });
 }
