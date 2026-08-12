@@ -1452,11 +1452,24 @@ def compute_finance_summary(
                     "figures may be incomplete."
                 )
 
-        if share < 1.0:
-            share_notes.append(
-                f"Ownership share applied: {name} at {share:.0%}. Loan interest "
-                "and principal are shown in full — they are your own borrowing."
-            )
+        # Keyed on the shares actually rendered, not on the property's own:
+        # a property owned outright can now contain a single co-owned unit,
+        # and that unit's figures still need the warning.
+        resolved_shares = {u["ownership_share"] for u in unit_blocks} or {share}
+        if any(s < 1.0 for s in resolved_shares):
+            if len(resolved_shares) == 1:
+                only = next(iter(resolved_shares))
+                share_notes.append(
+                    f"Ownership share applied: {name} at {only:.0%}. Loan interest "
+                    "and principal are shown in full — they are your own borrowing."
+                )
+            else:
+                lo, hi = min(resolved_shares), max(resolved_shares)
+                share_notes.append(
+                    f"Ownership share applied: {name} at {lo:.0%}–{hi:.0%} across "
+                    "its units. Loan interest and principal are shown in full — "
+                    "they are your own borrowing."
+                )
 
         for line in expense_lines:
             if not line["deductible"]:

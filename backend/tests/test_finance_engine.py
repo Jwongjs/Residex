@@ -3119,3 +3119,91 @@ class UnitLevelShareExpenseTests(unittest.TestCase):
         # (1.0) for both units, prorated becomes 1000 + 2000 = 3000 and
         # this reads 15000.0 instead.
         self.assertAlmostEqual(block["statutory_contribution"], 15500.0, places=2)
+
+
+class UnitLevelShareCaveatTests(unittest.TestCase):
+    def _docs(self):
+        return [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u1"),
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u2"),
+        ]
+
+    def _units(self, u1_share=None, u2_share=None):
+        rows = [{"unit_id": "u1", "label": "A-1"}, {"unit_id": "u2", "label": "A-2"}]
+        if u1_share is not None:
+            rows[0]["ownership_share"] = u1_share
+        if u2_share is not None:
+            rows[1]["ownership_share"] = u2_share
+        return {"p1": rows}
+
+    def _caveats(self, property_share, u1_share=None, u2_share=None):
+        result = _summary(self._docs(), [_prop("p1", "Block", share=property_share)],
+                          units=self._units(u1_share, u2_share))
+        return result["caveats"]
+
+    def test_uniform_partial_share_keeps_the_single_percentage_note(self):
+        note = next(c for c in self._caveats(0.5) if "Ownership share applied" in c)
+        self.assertIn("Block at 50%", note)
+        self.assertNotIn("–", note)
+
+    def test_mixed_shares_name_the_range_across_units(self):
+        note = next(c for c in self._caveats(1.0, u1_share=0.5)
+                    if "Ownership share applied" in c)
+        self.assertIn("50%–100%", note)
+        self.assertIn("across its units", note)
+
+    def test_a_co_owned_unit_inside_a_full_property_still_warns(self):
+        # THE GATE. Keyed on the property's own share this property is at
+        # 100% and says nothing, while half of one unit's figures are missing.
+        self.assertTrue(any("Ownership share applied" in c
+                            for c in self._caveats(1.0, u1_share=0.5)))
+
+    def test_full_ownership_throughout_says_nothing(self):
+        self.assertFalse(any("Ownership share applied" in c
+                             for c in self._caveats(1.0)))
+
+    def test_loan_wording_survives_both_branches(self):
+        for caveats in (self._caveats(0.5), self._caveats(1.0, u1_share=0.5)):
+            note = next(c for c in caveats if "Ownership share applied" in c)
+            self.assertIn("Loan interest and principal are shown in full", note)
+
+
+class UnitShareInheritanceEquivalenceTests(unittest.TestCase):
+    """A property whose units all inherit must be identical to the same
+    property before unit-level share existed — which is the same thing as
+    every unit storing the property's share explicitly."""
+
+    def _docs(self):
+        # doc_id AND uploaded are pinned so the two runs below build
+        # byte-identical documents — `_doc` derives both from a module-level
+        # counter that advances on every call.
+        stamp = datetime(2026, 1, 1)
+        return [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"}, unit_id="u1",
+                 uploaded=stamp, doc_id="lease-u1"),
+            _doc("p1", "expenses", {"expense_lines": [
+                {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+            ]}, unit_id="u1", uploaded=stamp, doc_id="exp-u1"),
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 1200.0},
+                 uploaded=stamp, doc_id="loan-p1"),
+        ]
+
+    def _block(self, rows):
+        return _summary(self._docs(), [_prop("p1", "Block", share=0.5)],
+                        units={"p1": rows})["properties"][0]
+
+    def test_inheriting_equals_storing_the_property_share(self):
+        inherited = self._block([{"unit_id": "u1", "label": "A-1"}])
+        explicit = self._block([{"unit_id": "u1", "label": "A-1",
+                                 "ownership_share": 0.5}])
+        self.assertEqual(inherited, explicit)
+
+    def test_inherited_figures_match_the_single_multiply(self):
+        block = self._block([{"unit_id": "u1", "label": "A-1"}])
+        self.assertAlmostEqual(block["received_rent"], 6000.0, places=2)
+        # 500 maintenance (halved) + 1200 loan interest (whole)
+        self.assertAlmostEqual(block["direct_expenses"], 1700.0, places=2)
