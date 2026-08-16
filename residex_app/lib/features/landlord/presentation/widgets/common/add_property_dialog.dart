@@ -224,12 +224,22 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       final unitsAsync = _readUnits();
       final String basisDefault;
       final Map<String, String> basisExceptions;
-      if (existing != null && unitsAsync.value == null) {
+      if (existing != null &&
+          unitsAsync.value == null &&
+          !_shareAppliesFor(unitsAsync)) {
         // The units stream has not delivered its first event yet — still
-        // loading, or an errored subscription — so we genuinely cannot tell
-        // whether a unit override makes a share apply here. Guessing "no"
-        // would silently discard whatever basis was already stored, so this
-        // save carries the existing answer through unchanged instead.
+        // loading, or an errored subscription — AND the property's own share
+        // alone (with no unit data) does not already trigger the question.
+        // That combination is the only case where the question genuinely
+        // could not have been shown or answered, so we cannot tell whether a
+        // unit override applies and this save carries the existing answer
+        // through unchanged rather than guessing "no" and discarding it.
+        //
+        // When the property's own share already makes the question
+        // answerable (propertyShare < 1.0), `_shareAppliesFor` is true even
+        // with no unit data, so this branch must NOT preserve — the landlord
+        // could have just tapped a fresh answer, and preserving here would
+        // silently discard it instead.
         basisDefault = existing.shareBasisDefault;
         basisExceptions = existing.shareBasisExceptions;
       } else {

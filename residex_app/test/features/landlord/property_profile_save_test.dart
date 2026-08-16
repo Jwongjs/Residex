@@ -694,4 +694,34 @@ void main() {
     expect(fakeRepo.lastUpdated!.shareBasisDefault, 'full');
     expect(fakeRepo.lastUpdated!.shareBasisExceptions, isEmpty);
   });
+
+  testWidgets(
+      'answering the question while units are unresolved still saves the '
+      'fresh answer',
+      (tester) async {
+    // Round-2 regression: the property's own share (0.5) already makes
+    // shareApplies true with no unit data at all, so the question is shown
+    // and answerable regardless of whether the units stream has resolved.
+    // The round-1 preservation branch fired on `unitsAsync.value == null`
+    // alone and discarded a fresh tap in exactly this window — it must only
+    // preserve when the question genuinely could not have been shown.
+    final fakeRepo = await _openEditDialog(
+      tester,
+      hasMortgage: true,
+      ownershipShare: 0.5,
+      shareBasisDefault: 'full',
+      unitsStreamUnresolved: true,
+    );
+
+    // Confirms this really is the "shown but units unresolved" case, not
+    // something else the fix could accidentally special-case away.
+    expect(find.text('How do your documents arrive?'), findsOneWidget);
+
+    await _tap(tester, find.text('Already split to my share'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Save changes'));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated!.shareBasisDefault, 'mine');
+  });
 }
