@@ -83,6 +83,8 @@ Property _property({
   PropertyStructureType? structureType,
   int? trackFromYear,
   double ownershipShare = 1.0,
+  String shareBasisDefault = 'full',
+  Map<String, String> shareBasisExceptions = const {},
 }) =>
     Property(
       id: 'p1',
@@ -99,6 +101,8 @@ Property _property({
       structureType: structureType,
       trackFromYear: trackFromYear,
       ownershipShare: ownershipShare,
+      shareBasisDefault: shareBasisDefault,
+      shareBasisExceptions: shareBasisExceptions,
       createdAt: DateTime(2026, 1, 1),
     );
 
@@ -114,6 +118,12 @@ Future<_FakePropertyRepository> _openEditDialog(
   List<Map<String, dynamic>>? loanEntries,
   double ownershipShare = 1.0,
   List<Unit> units = const [],
+  String shareBasisDefault = 'full',
+  Map<String, String> shareBasisExceptions = const {},
+  // Simulates a units subscription that never delivers a first event —
+  // covers both the loading window and an errored subscription (permission
+  // denied, offline cold start), neither of which ever populate `.value`.
+  bool unitsStreamUnresolved = false,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -126,6 +136,8 @@ Future<_FakePropertyRepository> _openEditDialog(
     structureType: structureType,
     trackFromYear: trackFromYear,
     ownershipShare: ownershipShare,
+    shareBasisDefault: shareBasisDefault,
+    shareBasisExceptions: shareBasisExceptions,
   );
   final fakeRepo = _FakePropertyRepository(property);
 
@@ -134,6 +146,10 @@ Future<_FakePropertyRepository> _openEditDialog(
       overrides: [
         propertyRepositoryProvider.overrideWithValue(fakeRepo),
         unitRepositoryProvider.overrideWithValue(_FakeUnitRepository(units)),
+        if (unitsStreamUnresolved)
+          unitsForPropertyStreamProvider.overrideWith(
+            (ref, propertyId) => const Stream<List<Unit>>.empty(),
+          ),
         currentFirebaseUserProvider.overrideWithValue(_FakeUser()),
         // Both loan-entry providers are faked, and the year-scoped one really
         // filters by year. That fidelity is what gives the prior-year test
@@ -618,5 +634,64 @@ void main() {
 
     expect(find.text('Loan statements'), findsNothing);
     expect(find.text('Assessment & quit rent'), findsOneWidget);
+  });
+
+  testWidgets(
+      'saving while the units stream has not resolved preserves the stored basis',
+      (tester) async {
+    // Finding 1 repro: the property's own share is 100%, so it was a
+    // co-owned unit that made `shareBasisDefault` get answered 'mine' in
+    // the first place. If the units stream simply has not delivered its
+    // first event by the time Save is tapped — still loading, or an errored
+    // subscription — the dialog cannot tell whether that unit override
+    // still applies. It must not guess "no share applies" and silently
+    // discard the landlord's stored answer.
+    final fakeRepo = await _openEditDialog(
+      tester,
+      hasMortgage: true,
+      ownershipShare: 1.0,
+      shareBasisDefault: 'mine',
+      shareBasisExceptions: const {'tax': 'full'},
+      unitsStreamUnresolved: true,
+    );
+
+    // The question is not shown either — with no unit data, the dialog
+    // genuinely does not know a share applies here, which is exactly why
+    // nothing may be silently reset on save.
+    expect(find.text('How do your documents arrive?'), findsNothing);
+
+    await _tap(tester, find.text('Save changes'));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated!.shareBasisDefault, 'mine');
+    expect(fakeRepo.lastUpdated!.shareBasisExceptions, {'tax': 'full'});
+  });
+
+  testWidgets('raising the share back to 100 clears an answered basis on save',
+      (tester) async {
+    // Finding 2: the "only save an answer when a share applies" guard
+    // (basisApplies ? ... : shareBasisFull) had no test of its own — the
+    // property was answered while co-owned, but by the time Save is tapped
+    // the share has been raised back to 100, so nothing must be written
+    // that the landlord can no longer see or act on.
+    final fakeRepo =
+        await _openEditDialog(tester, hasMortgage: true, ownershipShare: 0.5);
+
+    await _tap(tester, find.text('Already split to my share'));
+    await tester.pumpAndSettle();
+
+    final shareField =
+        find.widgetWithText(TextFormField, 'My share of this property (%)');
+    await tester.ensureVisible(shareField);
+    await tester.enterText(shareField, '100');
+    await tester.pumpAndSettle();
+
+    expect(find.text('How do your documents arrive?'), findsNothing);
+
+    await _tap(tester, find.text('Save changes'));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated!.shareBasisDefault, 'full');
+    expect(fakeRepo.lastUpdated!.shareBasisExceptions, isEmpty);
   });
 }

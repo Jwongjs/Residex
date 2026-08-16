@@ -221,14 +221,27 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       // property where no share applies keeps the defaults rather than
       // recording an answer nobody was asked for. `_readUnits`, not
       // `_watchUnits`: watching outside build throws.
-      final basisApplies = _shareAppliesFor(_readUnits());
-      final basisDefault = basisApplies ? _shareBasisDefault : shareBasisFull;
-      final basisExceptions = basisApplies
-          ? {
-              for (final entry in _shareBasisExceptions.entries)
-                if (entry.value != basisDefault) entry.key: entry.value,
-            }
-          : const <String, String>{};
+      final unitsAsync = _readUnits();
+      final String basisDefault;
+      final Map<String, String> basisExceptions;
+      if (existing != null && unitsAsync.value == null) {
+        // The units stream has not delivered its first event yet — still
+        // loading, or an errored subscription — so we genuinely cannot tell
+        // whether a unit override makes a share apply here. Guessing "no"
+        // would silently discard whatever basis was already stored, so this
+        // save carries the existing answer through unchanged instead.
+        basisDefault = existing.shareBasisDefault;
+        basisExceptions = existing.shareBasisExceptions;
+      } else {
+        final basisApplies = _shareAppliesFor(unitsAsync);
+        basisDefault = basisApplies ? _shareBasisDefault : shareBasisFull;
+        basisExceptions = basisApplies
+            ? {
+                for (final entry in _shareBasisExceptions.entries)
+                  if (entry.value != basisDefault) entry.key: entry.value,
+              }
+            : const <String, String>{};
+      }
 
       final controller = ref.read(propertyControllerProvider);
 
