@@ -1324,9 +1324,9 @@ def compute_finance_summary(
                 unit_lines if scope["unit_id"] is not None
                 else lines_by_unit.get(None, [])
             )
-            # Scaled here, per scope, instead of once at the property level —
-            # each unit may carry its own share, so a total can no longer be
-            # correctly scaled after the fact.
+            # `actual_sum` / `derived_sum` are already scaled (per scope, per
+            # basis — see above), so this is a plain accumulation, not a
+            # second scaling.
             prop_actual += actual_sum
             prop_derived += derived_sum
             # Suppress the synthetic whole-property scope from the rendered rows

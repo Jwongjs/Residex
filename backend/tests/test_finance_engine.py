@@ -3400,6 +3400,32 @@ class DocumentShareBasisIncomeTests(unittest.TestCase):
         _, _, unit = self._summary_at(invoice_basis="mine")
         self.assertAlmostEqual(unit["full_gross_income"], 12000.0, places=2)
 
+    def test_full_gross_income_sums_the_rounded_rows_not_a_rounded_raw_sum(self):
+        # Every other fixture in this class uses round-number rents (1000.0),
+        # where round-the-sum and sum-the-rounded happen to agree by
+        # coincidence. This fixture is chosen so they do not: 11 derived
+        # months at monthly_rent 1000.004 (each row rounds to 1000.00) plus
+        # one 'mine' invoice at 777.006 (rounds to 777.01).
+        # Sum-the-rounded (correct, what's shipped): 11*1000.00 + 777.01 =
+        # 11777.01 — matches what the rendered `months` strip actually adds
+        # up to. Round-the-sum of the raw unrounded scalars
+        # (`_round2(actual_full + actual_mine + derived_full + derived_mine)`
+        # = `_round2(11*1000.004 + 777.006)`), the brief's literal — and
+        # wrong — formula, would instead give 11777.05.
+        docs = [
+            _basis_doc("p1", "lease",
+                       {"monthly_rent": 1000.004, "lease_start": "2025-01-01",
+                        "lease_end": "2025-12-31"},
+                       basis="full", unit_id="u1"),
+            _basis_doc("p1", "rental_invoice",
+                       {"amount": 777.006, "period_month": "2025-06"},
+                       basis="mine", unit_id="u1"),
+        ]
+        result = _summary(docs, [_basis_prop("p1", "Block", share=0.5)],
+                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
+        unit = result["properties"][0]["units"][0]
+        self.assertAlmostEqual(unit["full_gross_income"], 11777.01, places=2)
+
     def test_an_all_mine_unit_emits_no_full_gross_income(self):
         # Nothing was scaled, so there is no second figure and the panel must
         # not render "your 50% of" beneath a figure that was never halved.
