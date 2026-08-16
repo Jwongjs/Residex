@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
+import '../../../domain/entities/property.dart';
+import '../../../domain/share_basis.dart';
 import '../../providers/documind_provider.dart';
 import '../../providers/finance_logic.dart' show formatRM;
+import '../../providers/property_providers.dart';
+import '../../providers/unit_providers.dart';
+import 'app_choice_chip.dart';
 
 /// Display labels for the expense-line subtypes. Keys mirror the backend's
 /// EXPENSE_SUBTYPE_CATEGORY whitelist exactly — every stored subtype must have
@@ -37,6 +42,7 @@ const Map<String, String> expenseSubtypeLabels = {
 Future<void> showExpenseLinesReviewSheet(
   BuildContext context, {
   required String docId,
+  required String propertyId,
   required List<Map<String, dynamic>> initialLines,
 }) {
   return showModalBottomSheet<void>(
@@ -48,6 +54,7 @@ Future<void> showExpenseLinesReviewSheet(
     ),
     builder: (_) => ExpenseLinesReviewSheet(
       docId: docId,
+      propertyId: propertyId,
       initialLines: initialLines,
     ),
   );
@@ -55,11 +62,13 @@ Future<void> showExpenseLinesReviewSheet(
 
 class ExpenseLinesReviewSheet extends ConsumerStatefulWidget {
   final String docId;
+  final String propertyId;
   final List<Map<String, dynamic>> initialLines;
 
   const ExpenseLinesReviewSheet({
     super.key,
     required this.docId,
+    required this.propertyId,
     required this.initialLines,
   });
 
@@ -73,6 +82,74 @@ class _ExpenseLinesReviewSheetState
   late List<Map<String, dynamic>> _lines;
   bool _dirty = false;
   bool _saving = false;
+
+  /// Null until the property resolves. Once set it is the chip's selection,
+  /// and it starts at the resolved default so the landlord confirms rather
+  /// than answers.
+  String? _basis;
+  bool _savingBasis = false;
+
+  Future<void> _setBasis(String basis) async {
+    if (basis == _basis) return; // confirming the pre-set answer writes nothing
+    final previous = _basis;
+    setState(() {
+      _basis = basis;
+      _savingBasis = true;
+    });
+    try {
+      await ref.read(setDocumentShareBasisActionProvider)(
+        docId: widget.docId,
+        shareBasis: basis,
+      );
+      if (mounted) setState(() => _savingBasis = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _basis = previous;
+          _savingBasis = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saving failed: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildBasisChip(Property property) {
+    // 'expenses': this sheet only ever opens for an expenses upload (see the
+    // gate in uploadDocumentForCategory), and that category is not one a
+    // landlord can except — so it resolves to the property default, which is
+    // exactly why this per-document answer exists.
+    _basis ??= resolveShareBasis(property: property, category: 'expenses');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Text('These amounts are:',
+            style: AppTextStyles.bodySmall.copyWith(color: AppColors.slate)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          children: [
+            AppChoiceChip(
+              label: 'At the full property amount',
+              selected: _basis == shareBasisFull,
+              onSelected: (_) {
+                if (!_savingBasis) _setBasis(shareBasisFull);
+              },
+            ),
+            AppChoiceChip(
+              label: 'Already split to my share',
+              selected: _basis == shareBasisMine,
+              onSelected: (_) {
+                if (!_savingBasis) _setBasis(shareBasisMine);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
   @override
   void initState() {
@@ -177,6 +254,21 @@ class _ExpenseLinesReviewSheetState
             style: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate),
           ),
           const SizedBox(height: 12),
+          Builder(builder: (context) {
+            final property =
+                ref.watch(propertyByIdProvider(widget.propertyId)).value;
+            if (property == null) return const SizedBox.shrink();
+            final unitShares = (ref
+                        .watch(unitsForPropertyStreamProvider(widget.propertyId))
+                        .value ??
+                    const [])
+                .map((u) => u.ownershipShare);
+            if (!shareApplies(
+                propertyShare: property.ownershipShare, unitShares: unitShares)) {
+              return const SizedBox.shrink();
+            }
+            return _buildBasisChip(property);
+          }),
           Flexible(
             child: ListView.separated(
               shrinkWrap: true,

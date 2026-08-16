@@ -1314,6 +1314,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
           await showExpenseLinesReviewSheet(
             context,
             docId: uploaded.docId,
+            propertyId: _selectedPropertyId!,
             initialLines: [
               for (final line in lines)
                 if (line is Map) Map<String, dynamic>.from(line),

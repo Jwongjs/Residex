@@ -246,6 +246,28 @@ final updateExpenseLinesActionProvider = Provider<Future<void> Function({
   };
 });
 
+/// Record one document's share basis. The figures depend on it, so the
+/// finance fold and its year options are invalidated alongside the document
+/// list — exactly as an expense-line edit does.
+final setDocumentShareBasisActionProvider = Provider<Future<void> Function({
+  required String docId,
+  required String shareBasis,
+})>((ref) {
+  return ({
+    required String docId,
+    required String shareBasis,
+  }) async {
+    final dataSource = ref.read(documindRemoteDataSourceProvider);
+    await dataSource.setDocumentShareBasis(
+      docId: docId,
+      shareBasis: shareBasis,
+    );
+    ref.invalidate(documindDocumentsProvider);
+    ref.invalidate(financeSummaryProvider);
+    ref.invalidate(financeYearsProvider);
+  };
+});
+
 /// Rename a document's display filename. Returns the cleaned name the
 /// backend stored (trimmed). Invalidates the document list for [propertyId]
 /// so the new label shows immediately.

@@ -333,6 +333,24 @@ class DocuMindRemoteDataSource {
     return decoded['filename'] as String? ?? filename;
   }
 
+  /// Record whether one document states the whole property's figures
+  /// ('full') or is already split to the landlord's share ('mine').
+  Future<void> setDocumentShareBasis({
+    required String docId,
+    required String shareBasis,
+  }) async {
+    final uri = Uri.parse(
+        '${ApiConstants.baseUrl}${ApiConstants.documindShareBasis(docId)}');
+    final response = await httpClient.patch(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'share_basis': shareBasis}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to set share basis: ${response.body}');
+    }
+  }
+
   /// Mark one month as "no payment received". Excludes that month from
   /// Received Rent, Net P/L, and Statutory Rental Income. [state] is
   /// 'outstanding' (still being chased, default) or 'written_off' (given

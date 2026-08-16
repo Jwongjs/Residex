@@ -61,6 +61,7 @@ Future<bool> uploadDocumentForCategory(
         await showExpenseLinesReviewSheet(
           context,
           docId: uploaded.docId,
+          propertyId: propertyId,
           initialLines: [
             for (final line in lines)
               if (line is Map) Map<String, dynamic>.from(line),
