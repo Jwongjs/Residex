@@ -390,6 +390,7 @@ class DocuMindService:
                 "unit_id": data.get("unit_id"),
                 "unit_label": data.get("unit_label"),
                 "category": normalize_category(data.get("category")),
+                "share_basis": data.get("share_basis"),
                 "extracted_facts": data.get("extracted_facts"),
                 "uploaded_at": data.get("uploaded_at"),
             })

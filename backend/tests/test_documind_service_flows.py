@@ -1959,6 +1959,57 @@ class FinanceSummaryServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(u1.loan_status, "complete")
         self.assertEqual(u2.loan_status, "incomplete")
 
+    async def test_get_finance_summary_reads_the_property_basis_default(self):
+        statement = {
+            "doc_id": "exp-1", "landlord_id": "l1", "property_id": "p1",
+            "category": "expenses", "filename": "feb.pdf",
+            "uploaded_at": datetime(2025, 2, 10),
+            "extracted_facts": {"expense_lines": [
+                {"subtype": "maintenance", "amount": 800.00, "date": "2025-02-01"},
+            ]},
+        }
+        fake_db = _FakeDB(docs=[statement])
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "Ayer8",
+             "ownership_share": 0.5, "share_basis_default": "mine"},
+        ]
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        # Already split by the agent: booked whole, not halved a second time.
+        self.assertEqual(summary.totals.direct_expenses, 800.00)
+
+    async def test_get_finance_summary_reads_the_documents_own_basis(self):
+        # THE PLUMBING GATE. The engine handles `share_basis` on a document,
+        # but this method builds its document dicts by naming keys — a missing
+        # name here leaves the review sheet's chip writing to a field nothing
+        # ever reads, with every engine test still green.
+        statement = {
+            "doc_id": "exp-1", "landlord_id": "l1", "property_id": "p1",
+            "category": "expenses", "filename": "feb.pdf",
+            "uploaded_at": datetime(2025, 2, 10),
+            "share_basis": "full",
+            "extracted_facts": {"expense_lines": [
+                {"subtype": "maintenance", "amount": 800.00, "date": "2025-02-01"},
+            ]},
+        }
+        fake_db = _FakeDB(docs=[statement])
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "Ayer8",
+             "ownership_share": 0.5, "share_basis_default": "mine"},
+        ]
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+
+        summary = await service.get_finance_summary("l1", 2025)
+
+        # The document says otherwise, and the document wins.
+        self.assertEqual(summary.totals.direct_expenses, 400.00)
+
 
 def _fake_finance_summary():
     return FinanceSummaryResponse(
