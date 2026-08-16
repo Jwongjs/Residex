@@ -221,6 +221,34 @@ class DocuMindDocumentsApiTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 400)
 
+    def test_set_share_basis_returns_200_and_calls_service(self):
+        with patch(
+            "api.rex_routes.documind_service.set_document_share_basis",
+            new=AsyncMock(return_value={"doc_id": "doc-1", "share_basis": "mine"}),
+        ) as mocked:
+            response = self.client.patch(
+                "/api/rex/documind/documents/doc-1/share-basis",
+                json={"share_basis": "mine"},
+            )
+            call_kwargs = mocked.await_args.kwargs
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["share_basis"], "mine")
+        self.assertEqual(call_kwargs["doc_id"], "doc-1")
+        self.assertEqual(call_kwargs["landlord_id"], "landlord_123")  # token uid, not any wire value
+        self.assertEqual(call_kwargs["share_basis"], "mine")
+
+    def test_set_share_basis_returns_400_on_an_unknown_value(self):
+        with patch(
+            "api.rex_routes.documind_service.set_document_share_basis",
+            new=AsyncMock(side_effect=ValueError("Unknown share basis.")),
+        ):
+            response = self.client.patch(
+                "/api/rex/documind/documents/doc-1/share-basis",
+                json={"share_basis": "sometimes"},
+            )
+        self.assertEqual(response.status_code, 400)
+
     def test_get_document_view_url_returns_200(self):
         with patch(
             "api.rex_routes.documind_service.get_document_view_url",

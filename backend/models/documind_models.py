@@ -315,6 +315,17 @@ class DocumentRenameResponse(BaseModel):
     filename: str
 
 
+class ShareBasisUpdateRequest(BaseModel):
+    share_basis: str = Field(
+        ..., description="'full' (states the whole property's amount) or "
+                         "'mine' (already split to this landlord's share)")
+
+
+class ShareBasisUpdateResponse(BaseModel):
+    doc_id: str
+    share_basis: str
+
+
 # ========== PAYMENT EXCEPTION MODELS ==========
 
 class PaymentExceptionRequest(BaseModel):

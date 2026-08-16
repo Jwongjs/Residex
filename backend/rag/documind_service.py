@@ -312,6 +312,11 @@ class DocuMindService:
     async def rename_document(self, doc_id, landlord_id, filename):
         return await self._document_lifecycle.rename_document(doc_id, landlord_id, filename)
 
+    async def set_document_share_basis(self, doc_id, landlord_id, share_basis):
+        return await self._document_lifecycle.set_document_share_basis(
+            doc_id, landlord_id, share_basis
+        )
+
     async def set_payment_exception(self, *, landlord_id, property_id, month, unit_id=None, reason=None, state="outstanding"):
         return await self._finance_overrides.set_payment_exception(
             landlord_id=landlord_id, property_id=property_id, month=month,

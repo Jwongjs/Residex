@@ -12,8 +12,9 @@ from rag.finance.finance_engine import document_tags
 
 class DocumentLifecycleService:
     """Document metadata lifecycle: listing, deletion, renaming, unit
-    reassignment, expense-line edits, and signed view URLs. Distinct from
-    ingestion (which creates a document) and ask (which reads chunks)."""
+    reassignment, expense-line edits, share-basis answers, and signed view
+    URLs. Distinct from ingestion (which creates a document) and ask (which
+    reads chunks)."""
 
     def __init__(self, db, storage_bucket_getter):
         self._db = db
@@ -76,6 +77,29 @@ class DocumentLifecycleService:
         batch.commit()
 
         return {"doc_id": doc_id, "filename": cleaned}
+
+    async def set_document_share_basis(
+        self, doc_id: str, landlord_id: str, share_basis: str
+    ) -> Dict[str, Any]:
+        """Record whether one document states the whole property's figures or
+        this landlord's share of them. Ownership-scoped: a doc that isn't the
+        landlord's is reported as not found, never written.
+
+        Validated against the two legal values rather than stored as given —
+        anything else would read as 'full' downstream, silently discarding the
+        landlord's answer instead of rejecting it.
+        """
+        if share_basis not in ("full", "mine"):
+            raise ValueError("Share basis must be 'full' or 'mine'.")
+        doc_ref = self._db.collection('documind_docs').document(doc_id)
+        snapshot = doc_ref.get()
+        if not snapshot.exists:
+            raise ValueError("Document not found.")
+        data = snapshot.to_dict() or {}
+        if data.get("landlord_id") != landlord_id:
+            raise ValueError("Document not found.")
+        doc_ref.update({"share_basis": share_basis})
+        return {"doc_id": doc_id, "share_basis": share_basis}
 
     async def list_documents(
         self,

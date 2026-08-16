@@ -4,7 +4,7 @@ import json
 from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from api.auth import verify_firebase_token, current_landlord_id
-from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, DocumentRenameRequest, DocumentRenameResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse, UnitLoanExemptionRequest
+from models.documind_models import DocUploadResponse, AskRequest, AskResponse, DocListResponse, UnassignUnitRequest, FinanceSummaryResponse, FactsUpdateRequest, FactsUpdateResponse, DocumentRenameRequest, DocumentRenameResponse, ShareBasisUpdateRequest, ShareBasisUpdateResponse, PaymentExceptionRequest, PaymentExceptionResponse, DocumentExceptionRequest, DocumentExceptionResponse, RentRecoveryRequest, RentRecoveryResponse, ManualLoanEntryRequest, ManualLoanEntryResponse, ManualLoanEntryListResponse, UnitLoanExemptionRequest
 from rag.documind_service import documind_service
 
 router = APIRouter(
@@ -142,6 +142,31 @@ async def rename_document(
             filename=payload.filename,
         )
         return DocumentRenameResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/documind/documents/{doc_id}/share-basis",
+              response_model=ShareBasisUpdateResponse)
+async def set_document_share_basis(
+    doc_id: str,
+    payload: ShareBasisUpdateRequest,
+    landlord_id: str = Depends(current_landlord_id),
+):
+    """
+    Record whether this document states the whole property's figures ('full')
+    or is already split to the landlord's share ('mine').
+
+    Any other value returns 400 and the stored document is untouched; a doc
+    that isn't the landlord's is reported as not found.
+    """
+    try:
+        result = await documind_service.set_document_share_basis(
+            doc_id=doc_id,
+            landlord_id=landlord_id,
+            share_basis=payload.share_basis,
+        )
+        return ShareBasisUpdateResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

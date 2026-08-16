@@ -240,6 +240,11 @@ class _FakeDocDocRef:
             return _FakePropertyDoc(exists=True, data=self._db.docs[index])
         return _FakePropertyDoc(exists=False, data={})
 
+    def update(self, fields):
+        index = self._find_index()
+        if index is not None:
+            self._db.docs[index].update(fields)
+
     def delete(self):
         index = self._find_index()
         if index is not None:
@@ -2946,6 +2951,47 @@ class PropertyShareBasisLookupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0]["ownership_share"], 0.5)
         self.assertEqual(rows[0]["utilities_paid_by"], "landlord")
         self.assertEqual(rows[0]["name"], "Block")
+
+
+class SetDocumentShareBasisTests(unittest.IsolatedAsyncioTestCase):
+    def _service(self, docs):
+        return _build_service(_FakeDB(docs=docs), _FakeConversationStore(),
+                              _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+
+    async def test_stores_the_basis_on_the_document(self):
+        docs = [{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1",
+                 "category": "expenses"}]
+        service = self._service(docs)
+
+        result = await service.set_document_share_basis(
+            doc_id="d1", landlord_id="l1", share_basis="mine")
+
+        self.assertEqual(result, {"doc_id": "d1", "share_basis": "mine"})
+        self.assertEqual(docs[0]["share_basis"], "mine")
+
+    async def test_rejects_an_unknown_basis(self):
+        docs = [{"doc_id": "d1", "landlord_id": "l1", "property_id": "p1"}]
+        service = self._service(docs)
+
+        with self.assertRaises(ValueError):
+            await service.set_document_share_basis(
+                doc_id="d1", landlord_id="l1", share_basis="sometimes")
+        self.assertNotIn("share_basis", docs[0])
+
+    async def test_another_landlords_document_is_reported_as_not_found(self):
+        docs = [{"doc_id": "d1", "landlord_id": "someone-else", "property_id": "p1"}]
+        service = self._service(docs)
+
+        with self.assertRaises(ValueError):
+            await service.set_document_share_basis(
+                doc_id="d1", landlord_id="l1", share_basis="mine")
+        self.assertNotIn("share_basis", docs[0])
+
+    async def test_a_missing_document_is_reported_as_not_found(self):
+        service = self._service([])
+        with self.assertRaises(ValueError):
+            await service.set_document_share_basis(
+                doc_id="nope", landlord_id="l1", share_basis="mine")
 
 
 if __name__ == "__main__":
