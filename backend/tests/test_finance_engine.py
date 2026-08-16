@@ -3366,3 +3366,126 @@ class DocumentShareBasisExpenseTests(unittest.TestCase):
         for unit in block["units"]:
             for line in unit["expense_lines"]:
                 self.assertNotIn("share_basis", line)
+
+
+class DocumentShareBasisIncomeTests(unittest.TestCase):
+    """Income at 'mine' basis is already the landlord's money. Every fixture
+    is at share 0.5 — basis cannot change a figure at 1.0."""
+
+    def _summary_at(self, invoice_basis=None, lease_basis=None, **prop_kwargs):
+        docs = [
+            _basis_doc("p1", "lease",
+                       {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                        "lease_end": "2025-12-31"},
+                       basis=lease_basis, unit_id="u1"),
+            _basis_doc("p1", "rental_invoice",
+                       {"amount": 1000.0, "period_month": "2025-03"},
+                       basis=invoice_basis, unit_id="u1"),
+        ]
+        result = _summary(docs, [_basis_prop("p1", "Block", share=0.5, **prop_kwargs)],
+                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
+        return result, result["properties"][0], result["properties"][0]["units"][0]
+
+    def test_mine_income_is_not_scaled_and_full_income_beside_it_is(self):
+        # March arrives as an already-split invoice; the other 11 months are
+        # derived from a whole-property lease. 1000 + 0.5 * 11000 = 6500.
+        _, block, _ = self._summary_at(invoice_basis="mine")
+        self.assertAlmostEqual(block["received_rent"], 6500.0, places=2)
+
+    def test_the_unit_gross_income_uses_the_same_split(self):
+        _, _, unit = self._summary_at(invoice_basis="mine")
+        self.assertAlmostEqual(unit["gross_income"], 6500.0, places=2)
+
+    def test_full_gross_income_is_the_unscaled_total(self):
+        _, _, unit = self._summary_at(invoice_basis="mine")
+        self.assertAlmostEqual(unit["full_gross_income"], 12000.0, places=2)
+
+    def test_an_all_mine_unit_emits_no_full_gross_income(self):
+        # Nothing was scaled, so there is no second figure and the panel must
+        # not render "your 50% of" beneath a figure that was never halved.
+        _, _, unit = self._summary_at(invoice_basis="mine", lease_basis="mine")
+        self.assertAlmostEqual(unit["gross_income"], 12000.0, places=2)
+        self.assertNotIn("full_gross_income", unit)
+
+    def test_month_rows_follow_their_own_source_documents_basis(self):
+        _, _, unit = self._summary_at(invoice_basis="mine")
+        march = next(m for m in unit["months"] if m["month"] == 3)
+        january = next(m for m in unit["months"] if m["month"] == 1)
+        self.assertAlmostEqual(march["amount"], 1000.0, places=2)
+        self.assertNotIn("full_amount", march)
+        self.assertAlmostEqual(january["amount"], 500.0, places=2)
+        self.assertAlmostEqual(january["full_amount"], 1000.0, places=2)
+
+    def test_month_rows_never_carry_the_internal_basis_marker(self):
+        _, _, unit = self._summary_at(invoice_basis="mine")
+        for row in unit["months"]:
+            self.assertNotIn("share_basis", row)
+
+    def test_outstanding_rent_follows_the_billing_documents_basis(self):
+        # The unpaid month is billed by the 'mine' invoice, so its outstanding
+        # figure is already the landlord's — 1000, not 500.
+        docs = [
+            _basis_doc("p1", "rental_invoice",
+                       {"amount": 1000.0, "period_month": "2025-03"},
+                       basis="mine", unit_id="u1"),
+        ]
+        result = _summary(docs, [_basis_prop("p1", "Block", share=0.5)],
+                          units={"p1": [{"unit_id": "u1", "label": "A-1"}]},
+                          payment_exceptions=[_exception("p1", "2025-03", unit_id="u1")])
+        self.assertAlmostEqual(result["properties"][0]["outstanding_rent"], 1000.0,
+                               places=2)
+
+    def test_a_lease_category_exception_reaches_derived_months(self):
+        # Derived income comes from the lease document, so a 'lease' exception
+        # is what governs a backfilled month.
+        _, block, _ = self._summary_at(exceptions={"lease": "mine"})
+        # 11 derived months whole + March's invoice halved.
+        self.assertAlmostEqual(block["received_rent"], 11500.0, places=2)
+
+    def test_derived_rent_reports_the_scaled_derived_part(self):
+        _, block, _ = self._summary_at(exceptions={"lease": "mine"})
+        self.assertAlmostEqual(block["derived_rent"], 11000.0, places=2)
+
+    def test_a_rental_invoice_exception_reaches_actual_months(self):
+        _, block, _ = self._summary_at(exceptions={"rental_invoice": "mine"})
+        self.assertAlmostEqual(block["received_rent"], 6500.0, places=2)
+
+
+class ShareBasisEquivalenceTests(unittest.TestCase):
+    """Spec §7: nothing moves on the day this ships. A stored answer that
+    matches what the engine already assumed, and a partial-share property
+    with no answer at all, must both produce exactly today's payload."""
+
+    def _docs(self):
+        # doc_id AND uploaded are pinned so repeated runs build byte-identical
+        # documents — `_doc` derives both from a module-level counter that
+        # advances on every call.
+        stamp = datetime(2026, 1, 1)
+        return [
+            _doc("p1", "lease", {"monthly_rent": 1000.0, "lease_start": "2025-01-01",
+                                 "lease_end": "2025-12-31"},
+                 unit_id="u1", uploaded=stamp, doc_id="lease-u1"),
+            _doc("p1", "maintenance", {"amount": 800.0, "period_start": "2025-02-01"},
+                 unit_id="u1", uploaded=stamp, doc_id="maint-u1"),
+            _doc("p1", "loan", {"subtype": "interest_statement", "period_year": 2025,
+                                "interest_paid": 1200.0},
+                 uploaded=stamp, doc_id="loan-p1"),
+        ]
+
+    def _summary_for(self, prop):
+        return _summary(self._docs(), [prop],
+                        units={"p1": [{"unit_id": "u1", "label": "A-1"}]})
+
+    def test_an_explicit_full_default_equals_no_answer_at_all(self):
+        answered = self._summary_for(
+            _basis_prop("p1", "Block", share=0.5, default="full", exceptions={}))
+        unanswered = self._summary_for(_prop("p1", "Block", share=0.5))
+        self.assertEqual(answered, unanswered)
+
+    def test_a_mine_default_at_full_ownership_equals_no_answer_at_all(self):
+        # Scaling by 1.0 is identity either way, so the two payloads must be
+        # byte-identical — including the absence of any internal marker.
+        answered = self._summary_for(
+            _basis_prop("p1", "Block", share=1.0, default="mine"))
+        unanswered = self._summary_for(_prop("p1", "Block", share=1.0))
+        self.assertEqual(answered, unanswered)

@@ -110,15 +110,20 @@ def _scope_income(
     year: int,
     months: List[int],
     exceptions: List[Dict[str, Any]],
+    prop: Optional[Dict[str, Any]] = None,
 ):
     """Income rows for one scope (unit_id None = property-wide documents).
 
     Precedence per month: exception (marked unpaid) > invoice (actual) >
     lease coverage (derived) > vacant. A marked month still counts toward
     `rented` — the tenant occupied and expenses were incurred, only the
-    income is excluded. Returns (month_rows, rented, actual_sum,
-    derived_sum, vacant_months, derived_months, unpaid_months) where
-    unpaid_months is a list of (month, reason, state, billed_amount)."""
+    income is excluded.
+
+    Returns (month_rows, rented, actual_full, actual_mine, derived_full,
+    derived_mine, vacant_months, derived_months, unpaid_months). Income is
+    split by the source document's share basis — a 'mine' figure is already
+    the landlord's portion and must not be scaled again — and unpaid_months
+    entries are (month, reason, state, billed_amount, basis)."""
     exception_by_month: Dict[int, Dict[str, Any]] = {}
     for exc in exceptions:
         if not isinstance(exc, dict) or exc.get("unit_id") != unit_id:
@@ -131,7 +136,7 @@ def _scope_income(
             "state": exc.get("state") or "outstanding",
         }
 
-    invoice_by_month: Dict[int, float] = {}
+    invoice_by_month: Dict[int, Tuple[float, str]] = {}
     for doc in sorted(
         (d for d in prop_docs
          if d.get("category") == "rental_invoice" and d.get("unit_id") == unit_id),
@@ -142,9 +147,11 @@ def _scope_income(
         ym = _ym(facts.get("period_month"))
         if amount is None or ym is None or ym[0] != year:
             continue
-        invoice_by_month[ym[1]] = amount  # ascending sort: later upload wins
+        # ascending sort: later upload wins, and brings its own basis with it
+        invoice_by_month[ym[1]] = (amount, _document_share_basis(doc, prop or {}))
 
     lease_facts: Optional[Dict[str, Any]] = None
+    lease_basis = "full"
     for doc in sorted(
         (d for d in prop_docs
          if d.get("category") == "lease" and d.get("unit_id") == unit_id),
@@ -157,52 +164,67 @@ def _scope_income(
             and _ym(facts.get("lease_end"))
         ):
             lease_facts = facts  # most recent valid lease wins
+            lease_basis = _document_share_basis(doc, prop or {})
 
     month_rows: List[Dict[str, Any]] = []
     rented = 0
-    actual_sum = 0.0
-    derived_sum = 0.0
+    actual_full = 0.0
+    actual_mine = 0.0
+    derived_full = 0.0
+    derived_mine = 0.0
     vacant_months: List[int] = []
     derived_months: List[int] = []
-    unpaid_months: List[Tuple[int, Optional[str], str, Optional[float]]] = []
+    unpaid_months: List[Tuple[int, Optional[str], str, Optional[float], str]] = []
     for month in months:
         if month in exception_by_month:
             info = exception_by_month[month]
             reason, state = info["reason"], info["state"]
-            billed = invoice_by_month.get(month)
-            if billed is None and lease_facts is not None and (
+            billed, billed_basis = None, "full"
+            if month in invoice_by_month:
+                billed, billed_basis = invoice_by_month[month]
+            elif lease_facts is not None and (
                 _ym(lease_facts["lease_start"]) <= (year, month) <= _ym(lease_facts["lease_end"])
             ):
-                billed = _amount(lease_facts, "monthly_rent")
+                billed, billed_basis = _amount(lease_facts, "monthly_rent"), lease_basis
             row: Dict[str, Any] = {
                 "month": month, "source": "unpaid", "amount": 0.0, "payment_state": state,
             }
             if billed is not None:
                 row["billed_amount"] = _round2(billed)
+                row["share_basis"] = billed_basis
             if reason:
                 row["reason"] = reason
             month_rows.append(row)
             rented += 1
-            unpaid_months.append((month, reason, state, billed))
+            unpaid_months.append((month, reason, state, billed, billed_basis))
             continue
         if month in invoice_by_month:
-            amount = invoice_by_month[month]
-            month_rows.append({"month": month, "source": "actual", "amount": _round2(amount)})
-            actual_sum += amount
+            amount, basis = invoice_by_month[month]
+            month_rows.append({"month": month, "source": "actual",
+                               "amount": _round2(amount), "share_basis": basis})
+            if basis == "mine":
+                actual_mine += amount
+            else:
+                actual_full += amount
             rented += 1
             continue
         if lease_facts is not None and (
             _ym(lease_facts["lease_start"]) <= (year, month) <= _ym(lease_facts["lease_end"])
         ):
             amount = _amount(lease_facts, "monthly_rent")
-            month_rows.append({"month": month, "source": "derived", "amount": _round2(amount)})
-            derived_sum += amount
+            month_rows.append({"month": month, "source": "derived",
+                               "amount": _round2(amount), "share_basis": lease_basis})
+            if lease_basis == "mine":
+                derived_mine += amount
+            else:
+                derived_full += amount
             rented += 1
             derived_months.append(month)
             continue
         month_rows.append({"month": month, "source": "vacant", "amount": 0.0})
         vacant_months.append(month)
-    return month_rows, rented, actual_sum, derived_sum, vacant_months, derived_months, unpaid_months
+    return (month_rows, rented, actual_full, actual_mine, derived_full, derived_mine,
+            vacant_months, derived_months, unpaid_months)
 
 
 def _renewal_years(prop_docs: List[Dict[str, Any]]) -> set:
@@ -558,31 +580,29 @@ def _scaled_lines(
 
 
 def _scaled_month_rows(rows: List[Dict[str, Any]], share: float) -> List[Dict[str, Any]]:
-    """Copy month rows with amounts at the landlord's ownership share.
+    """Copy month rows with amounts at the share that applies to each row.
 
-    Mirrors _scaled_lines: never mutates the input, returns the rows unchanged
-    at share 1.0 so the common payload is byte-identical, and below 1.0 carries
-    the source figure in `full_amount` / `full_billed_amount` so the app can
-    show "your 50% of RM 1,000.00". Zero-amount rows (vacant, outstanding) are
-    left alone — they render a state, not a figure.
+    Mirrors _scaled_lines: never mutates the input, and below the applicable
+    share carries the source figure in `full_amount` / `full_billed_amount` so
+    the app can show "your 50% of RM 1,200.00" beside the scaled figure. A row
+    whose source document is at basis 'mine' is already the landlord's figure
+    and is copied through unscaled with no face value beside it.
 
-    Only the *rendered* rows are scaled. `_scope_income`'s scalar returns
-    (actual_sum, derived_sum) and its `unpaid_months` tuples stay at face
-    value: those feed the property-level received and outstanding sums, which
-    are scaled separately at the property level. Scaling them here as well
-    would scale them twice, and no property-level assertion would notice.
+    `share_basis` is internal and is removed from every copy, so a property
+    with a stored basis answer renders a payload identical to one without
+    wherever the figures are identical.
     """
-    if share == 1.0:
-        return list(rows)
     out: List[Dict[str, Any]] = []
     for row in rows:
-        scaled = dict(row)
-        if row.get("amount"):
-            scaled["amount"] = _round2(share * row["amount"])
-            scaled["full_amount"] = _round2(row["amount"])
-        if row.get("billed_amount"):
-            scaled["billed_amount"] = _round2(share * row["billed_amount"])
-            scaled["full_billed_amount"] = _round2(row["billed_amount"])
+        row_share = _basis_share(row.get("share_basis"), share)
+        scaled = {k: v for k, v in row.items() if k != "share_basis"}
+        if row_share != 1.0:
+            if row.get("amount"):
+                scaled["amount"] = _round2(row_share * row["amount"])
+                scaled["full_amount"] = _round2(row["amount"])
+            if row.get("billed_amount"):
+                scaled["billed_amount"] = _round2(row_share * row["billed_amount"])
+                scaled["full_billed_amount"] = _round2(row["billed_amount"])
         out.append(scaled)
     return out
 
@@ -1272,10 +1292,15 @@ def compute_finance_summary(
         prorated_expenses = 0.0
 
         for scope in scopes:
-            month_rows, rented, actual_sum, derived_sum, vacant, derived, unpaid = _scope_income(
-                prop_docs, scope["unit_id"], year, months, prop_exceptions
+            (month_rows, rented, actual_full, actual_mine, derived_full, derived_mine,
+             vacant, derived, unpaid) = _scope_income(
+                prop_docs, scope["unit_id"], year, months, prop_exceptions, prop
             )
             scope_share = share_for(scope["unit_id"])
+            # Scaled here, per scope and per basis, then summed. `actual_sum`
+            # and `derived_sum` are the landlord's own figures from here down.
+            actual_sum = scope_share * actual_full + actual_mine
+            derived_sum = scope_share * derived_full + derived_mine
             fraction = (rented / len(months)) if months else 0.0
             fractions.append(fraction)
             unit_lines = (
@@ -1302,8 +1327,8 @@ def compute_finance_summary(
             # Scaled here, per scope, instead of once at the property level —
             # each unit may carry its own share, so a total can no longer be
             # correctly scaled after the fact.
-            prop_actual += scope_share * actual_sum
-            prop_derived += scope_share * derived_sum
+            prop_actual += actual_sum
+            prop_derived += derived_sum
             # Suppress the synthetic whole-property scope from the rendered rows
             # (and its would-be caveats) when it holds no income and the property
             # has real units — otherwise it shows as a confusing "Whole property
@@ -1351,11 +1376,16 @@ def compute_finance_summary(
                 "expense_lines": scaled_lines,
                 "loan_status": loan_status_by_unit.get(scope["unit_id"]),
             }
-            if scope_share < 1.0:
-                block["full_gross_income"] = _round2(sum(
-                    m.get("full_amount", m["amount"]) for m in scaled_months
-                    if m["source"] in income_sources
-                ))
+            # Emitted whenever it differs — i.e. whenever something really was
+            # scaled. A unit whose income is entirely at basis 'mine' has no
+            # second figure to show even at a partial share, and a unit with no
+            # income at all has nothing to compare.
+            full_gross_income = _round2(sum(
+                m.get("full_amount", m["amount"]) for m in scaled_months
+                if m["source"] in income_sources
+            ))
+            if full_gross_income != gross_income:
+                block["full_gross_income"] = full_gross_income
             unit_blocks.append(block)
             if derived:
                 derived_notes.append(
@@ -1366,13 +1396,13 @@ def compute_finance_summary(
                 vacant_notes.append(
                     f"No invoice recorded for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
                 )
-            for m, reason, state, billed in unpaid:
+            for m, reason, state, billed, billed_basis in unpaid:
                 if state == "written_off":
                     note = f"Written off as unrecoverable for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
                 else:
                     note = f"No payment received for {MONTH_NAMES[m - 1]} — {scope['label']} ({name})"
                     if billed:
-                        prop_outstanding += scope_share * billed
+                        prop_outstanding += _basis_share(billed_basis, scope_share) * billed
                 if reason:
                     note += f": {reason}"
                 unpaid_notes.append(note)
