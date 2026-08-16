@@ -27,6 +27,87 @@
 - Flutter suite: `cd residex_app && flutter test` → **1 failed** (the boilerplate one above).
 - Analyzer: `cd residex_app && flutter analyze` → **0 errors** (warnings/infos are pre-existing and fine).
 
+> ### ⚠ CORRECTIONS — read before writing any code (added 2026-08-16)
+>
+> This plan was written 2026-08-09 against the tree *before* the unit-level-share
+> plan (spec 3) landed underneath it. Its Task 3 already carries one
+> `STALE PREMISE` marker (2026-08-11) about `gross_income`; verifying the plan
+> against the code now landed at `4ccce80` found the marker is correct, and one
+> further instance of the same defect class the marker warns about, one line
+> below it.
+>
+> **D1 — Task 3 Step 5's `prop_actual += actual_sum` / `prop_derived += derived_sum`
+> rewrite is CORRECT, not stale.** Verified against `finance_engine.py:1241-1242`
+> (currently `prop_actual += scope_share * actual_sum`) and `:1380`
+> (`s_received = prop_actual + prop_derived + prop_recovered`, already
+> no-re-multiply). The plan's target shape — pre-scale into `actual_sum`/
+> `derived_sum` inside the scope loop, then accumulate those verbatim — matches
+> what's landed exactly. No change needed to this part of Step 5.
+>
+> **D2 — the `STALE PREMISE` marker on `gross_income` is correct: leave the line
+> alone.** The landed `gross_income` line (`:1270-1272`) already reads
+> `_round2(sum(m["amount"] for m in scaled_months if m["source"] in
+> income_sources))` — sum-the-rounded from `scaled_months`, which Task 3 Step 4
+> makes basis-aware internally (each row resolves `_basis_share(row.get(
+> "share_basis"), share)`). Once Step 4 lands, this line is *already correct
+> for basis* with **zero edits** — do not replace it with
+> `_round2(actual_sum + derived_sum)` as the plan's own Step 5 text still shows
+> a few lines below the marker. Delete that replacement; keep the existing line.
+>
+> **D3 — NEW, same defect class: the `full_gross_income` replacement in Step 5
+> reintroduces round-the-sum.** The plan's proposed
+> `full_gross = _round2(actual_full + actual_mine + derived_full + derived_mine)`
+> sums four *raw, unrounded* scalars — exactly the pattern C1/C2/the Task-3
+> marker all warn about. The currently-landed line (`:1290-1294`,
+> `_round2(sum(m.get("full_amount", m["amount"]) for m in scaled_months if
+> m["source"] in income_sources))`) already sums the *rounded rendered rows*,
+> consistent with `gross_income` above it. **Keep that computation verbatim;
+> only change the guard** from `if scope_share < 1.0:` to a value comparison,
+> so a unit whose basis makes nothing scale (`test_an_all_mine_unit_emits_no_
+> full_gross_income`) correctly omits the key even at a partial share:
+>
+> ```python
+>             full_gross_income = _round2(sum(
+>                 m.get("full_amount", m["amount"]) for m in scaled_months
+>                 if m["source"] in income_sources
+>             ))
+>             if full_gross_income != gross_income:
+>                 block["full_gross_income"] = full_gross_income
+> ```
+>
+> **Why the plan's own fixtures wouldn't have caught D3:** every Step-5 income
+> fixture uses whole-number amounts (1000.0), where round-the-sum and
+> sum-the-rounded agree by coincidence — both forms give exactly 12000.0 on
+> `test_full_gross_income_is_the_unscaled_total`. This is the same fixture-
+> blindness pattern C4/the workstream's "fixture rule" names elsewhere. Whoever
+> implements Task 3 should mutation-test this specific line with a fractional
+> fixture (e.g. rent 1000.01×12 at a partial share) and confirm round-the-sum
+> and sum-the-rounded disagree, then confirm the shipped form matches the
+> `months` strip actually rendered — not just that the named tests go green.
+>
+> **D4 — the `unpaid` accumulation loop.** The plan's Step 5 snippet for the
+> `for m, reason, state, billed, billed_basis in unpaid:` loop only shows the
+> `else` branch's body; the surrounding `if reason: note += ...` and
+> `unpaid_notes.append(note)` lines (landed at `:1312-1314`) are not repeated in
+> the excerpt. They must be preserved — this is an excerpt-trimming risk, not a
+> code error in the plan (see the workstream's plan-content-verification
+> lesson: verbatim-move snippets silently drop surrounding lines when copied by
+> eye rather than diffed).
+>
+> No further drift found: `_scope_income`'s pre-Task-3 signature/return shape,
+> `_expense_lines`'s three emission points, `_line_share`, `_scaled_lines`
+> (callable `share_for`), `_scaled_month_rows`'s current `share==1.0` early-out,
+> `property_directory.py:list_landlord_properties`'s loop, `documind_service.py:
+> get_finance_summary`'s document-dict loop, and `document_lifecycle_service.py:
+> rename_document` all match the plan's quoted "before" shapes (content-verified;
+> line numbers in the plan are stale by roughly +14, per this workstream's C7
+> lesson — locate every edit by reading the surrounding code, never by line
+> number). `expense_breakdown` (`:1484-1487`) calls `_line_share` directly on the
+> unscaled per-line dicts, which still carry `share_basis` at that point (only
+> `_scaled_lines`/`_scaled_month_rows` strip it) — so it inherits basis
+> correctness for free from Task 2, exactly as the plan's "eight call sites"
+> claim promises, with no code change required there.
+
 ## File Structure
 
 | File | Responsibility in this plan |
