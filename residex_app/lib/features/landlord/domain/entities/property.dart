@@ -167,6 +167,20 @@ class Property {
   final DateTime createdAt;
   final DateTime? updatedAt;
 
+  /// 'full' (default) | 'mine' — whether this landlord's documents state the
+  /// whole property's figures or their own portion already. 'full' is what
+  /// the finance engine has always assumed, so it is the value for every
+  /// property that has never answered, and a stored 'full' and an absent
+  /// field mean exactly the same thing.
+  final String shareBasisDefault;
+
+  /// Category -> basis, holding only the categories that differ from
+  /// [shareBasisDefault]. A category absent from this map inherits the
+  /// default, so one added to the taxonomy later is never silently unset.
+  /// Never contains 'loan': loan figures are the landlord's own borrowing and
+  /// are not scaled by ownership share at all.
+  final Map<String, String> shareBasisExceptions;
+
   Property({
     required this.id,
     required this.landlordId,
@@ -189,6 +203,8 @@ class Property {
     this.photos = const [],
     required this.createdAt,
     this.updatedAt,
+    this.shareBasisDefault = 'full',
+    this.shareBasisExceptions = const {},
   });
 
   /// Calculate property appreciation
@@ -229,6 +245,8 @@ class Property {
     List<String>? photos,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? shareBasisDefault,
+    Map<String, String>? shareBasisExceptions,
   }) {
     return Property(
       id: id ?? this.id,
@@ -252,6 +270,8 @@ class Property {
       photos: photos ?? this.photos,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      shareBasisDefault: shareBasisDefault ?? this.shareBasisDefault,
+      shareBasisExceptions: shareBasisExceptions ?? this.shareBasisExceptions,
     );
   }
 
@@ -283,6 +303,8 @@ class Property {
         photos: photos,
         createdAt: createdAt,
         updatedAt: updatedAt,
+        shareBasisDefault: shareBasisDefault,
+        shareBasisExceptions: shareBasisExceptions,
       );
 
   @override

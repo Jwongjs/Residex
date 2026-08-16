@@ -28,6 +28,8 @@ class PropertyModel extends Property {
     super.photos,
     required super.createdAt,
     super.updatedAt,
+    super.shareBasisDefault = 'full',
+    super.shareBasisExceptions = const {},
   });
 
   /// Create PropertyModel from domain entity
@@ -54,6 +56,8 @@ class PropertyModel extends Property {
       photos: property.photos,
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,
+      shareBasisDefault: property.shareBasisDefault,
+      shareBasisExceptions: property.shareBasisExceptions,
     );
   }
 
@@ -81,6 +85,8 @@ class PropertyModel extends Property {
       photos: photos,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      shareBasisDefault: shareBasisDefault,
+      shareBasisExceptions: shareBasisExceptions,
     );
   }
 
@@ -128,6 +134,12 @@ class PropertyModel extends Property {
       updatedAt: json['updatedAt'] != null
           ? _parseTimestamp(json['updatedAt'])
           : null,
+      // Anything other than the two legal values reads as 'full' — the safe
+      // direction, and the same defence the backend applies on read.
+      shareBasisDefault: json['share_basis_default'] == 'mine' ? 'mine' : 'full',
+      shareBasisExceptions: (json['share_basis_exceptions'] as Map<String, dynamic>?)
+              ?.map((k, v) => MapEntry(k, v as String)) ??
+          const {},
     );
   }
 
@@ -160,6 +172,8 @@ class PropertyModel extends Property {
       'photos': photos,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
+      'share_basis_default': shareBasisDefault,
+      'share_basis_exceptions': shareBasisExceptions,
     };
   }
 
