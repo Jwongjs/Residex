@@ -3299,6 +3299,22 @@ class DocumentShareBasisExpenseTests(unittest.TestCase):
         line = result["properties"][0]["expense_lines"][0]
         self.assertAlmostEqual(line["amount"], 500.0, places=2)
 
+    def test_a_stray_expenses_key_in_exceptions_is_never_matched(self):
+        # 'expenses' is not one of the six categories the UI ever offers a
+        # landlord to except, so share_basis_exceptions should never carry
+        # that key in practice — but the engine must not trust that by
+        # omission. A bundled statement's own category IS literally
+        # 'expenses', so if the dict ever carries that key anyway (a future
+        # UI bug, a direct Firestore edit), it must still fall through to
+        # the property default rather than accidentally matching itself.
+        docs = [_basis_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+        ]})]
+        result = _summary(docs, [_basis_prop("p1", "Block", share=0.5,
+                                             exceptions={"expenses": "mine"})])
+        line = result["properties"][0]["expense_lines"][0]
+        self.assertAlmostEqual(line["amount"], 500.0, places=2)
+
     def test_a_bundled_statement_does_follow_its_own_override(self):
         docs = [_basis_doc("p1", "expenses", {"expense_lines": [
             {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},

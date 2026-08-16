@@ -451,12 +451,18 @@ def _document_share_basis(doc: Dict[str, Any], prop: Dict[str, Any]) -> str:
     statement — whose category is not one of the six a landlord can except —
     only ever takes step 1 or step 3. That is deliberate: a combined statement
     can mix bases, and the per-document answer is how it gets corrected.
+
+    Step 2 is skipped entirely for a bundled 'expenses' document, even if
+    `share_basis_exceptions` happens to carry an 'expenses' key (it never
+    legitimately should, since the UI only ever writes the six offered
+    categories, but the engine does not trust that and enforces it
+    directly).
     """
     own = doc.get("share_basis")
     if own in _SHARE_BASES:
         return own
     exceptions = prop.get("share_basis_exceptions")
-    if isinstance(exceptions, dict):
+    if isinstance(exceptions, dict) and doc.get("category") != "expenses":
         by_category = exceptions.get(doc.get("category"))
         if by_category in _SHARE_BASES:
             return by_category
