@@ -8,6 +8,7 @@ import '../../providers/finance_logic.dart';
 import '../../providers/property_providers.dart';
 import '../../providers/unit_providers.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
+import '../../../domain/share_basis.dart';
 import 'app_choice_chip.dart';
 import 'registration_document_steps_sheet.dart';
 
@@ -45,6 +46,9 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
   PropertyStructureType? _selectedStructureType;
   bool? _hasMortgage;
   int? _trackFromYear;
+  String _shareBasisDefault = shareBasisFull;
+  Map<String, String> _shareBasisExceptions = {};
+  bool _showBasisExceptions = false;
 
   /// House/apartment/condo imply their structure; commercial varies too much
   /// to guess, so it stays null and [_buildStructureTypeSelector] asks.
@@ -80,10 +84,18 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       _selectedStructureType = property.structureType;
       _hasMortgage = property.hasMortgage;
       _trackFromYear = property.trackFromYear;
+      _shareBasisDefault = property.shareBasisDefault;
+      _shareBasisExceptions = Map<String, String>.from(property.shareBasisExceptions);
+      _showBasisExceptions = _shareBasisExceptions.isNotEmpty;
     } else {
       _selectedStructureType = _structureForType(_selectedType);
     }
+    // The question appears and disappears as the landlord types a share, so
+    // the form has to rebuild on every keystroke in that one field.
+    _ownershipShareController.addListener(_onShareChanged);
   }
+
+  void _onShareChanged() => setState(() {});
 
   @override
   void dispose() {
@@ -94,6 +106,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
     _zipCodeController.dispose();
     _purchasePriceController.dispose();
     _currentValueController.dispose();
+    _ownershipShareController.removeListener(_onShareChanged);
     _ownershipShareController.dispose();
     _totalUnitsController.dispose();
     super.dispose();
@@ -204,6 +217,19 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
       final ownershipShare =
           double.parse(_ownershipShareController.text) / 100.0;
 
+      // Only the categories that actually differ are stored (spec §2), and a
+      // property where no share applies keeps the defaults rather than
+      // recording an answer nobody was asked for. `_readUnits`, not
+      // `_watchUnits`: watching outside build throws.
+      final basisApplies = _shareAppliesFor(_readUnits());
+      final basisDefault = basisApplies ? _shareBasisDefault : shareBasisFull;
+      final basisExceptions = basisApplies
+          ? {
+              for (final entry in _shareBasisExceptions.entries)
+                if (entry.value != basisDefault) entry.key: entry.value,
+            }
+          : const <String, String>{};
+
       final controller = ref.read(propertyControllerProvider);
 
       if (existing != null) {
@@ -232,6 +258,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           hasMortgage: _hasMortgage,
           trackFromYear: _trackFromYear,
           utilitiesPaidBy: existing.utilitiesPaidBy,
+          shareBasisDefault: basisDefault,
+          shareBasisExceptions: basisExceptions,
           loanInputCadence: existing.loanInputCadence,
           nextSetupStep: existing.nextSetupStep,
           foldersEnabled: existing.foldersEnabled,
@@ -252,6 +280,8 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           purchasePrice: double.parse(_purchasePriceController.text),
           currentValue: double.parse(_currentValueController.text),
           ownershipShare: ownershipShare,
+          shareBasisDefault: basisDefault,
+          shareBasisExceptions: basisExceptions,
           photos: [],
           createdAt: DateTime.now(),
           structureType: _selectedStructureType,
@@ -474,6 +504,10 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                         keyboardType: TextInputType.number,
                         validator: _validateSharePercent,
                       ),
+                      if (_shareAppliesFor(_watchUnits())) ...[
+                        const SizedBox(height: 16),
+                        _buildShareBasisQuestion(),
+                      ],
                       const SizedBox(height: 20),
 
                       Text(
@@ -724,6 +758,120 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
         ),
       ],
     );
+  }
+
+  /// The typed share, not the stored one: the landlord may be lowering it
+  /// right now, and the question has to appear as they do it.
+  double get _typedPropertyShare {
+    final typed = double.tryParse(_ownershipShareController.text);
+    return typed == null ? 1.0 : typed / 100.0;
+  }
+
+  /// The units whose overrides the §3a predicate has to consider.
+  ///
+  /// Split into a watch and a read on purpose: `ref.watch` is only legal
+  /// during build, and `_handleSubmit` needs the same answer from outside it.
+  /// At registration no units exist yet, so the predicate reduces to the
+  /// property's own share.
+  AsyncValue<List<Unit>> _watchUnits() {
+    final property = widget.property;
+    if (property == null) return AsyncValue<List<Unit>>.data(const []);
+    return ref.watch(unitsForPropertyStreamProvider(property.id));
+  }
+
+  AsyncValue<List<Unit>> _readUnits() {
+    final property = widget.property;
+    if (property == null) return AsyncValue<List<Unit>>.data(const []);
+    return ref.read(unitsForPropertyStreamProvider(property.id));
+  }
+
+  bool _shareAppliesFor(AsyncValue<List<Unit>> unitsAsync) => shareApplies(
+        propertyShare: _typedPropertyShare,
+        unitShares: (unitsAsync.value ?? const <Unit>[])
+            .map((u) => u.ownershipShare),
+      );
+
+  Widget _buildShareBasisQuestion() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('How do your documents arrive?',
+            style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 4),
+        Text(
+          'Bills for a co-owned property come either way. This decides whether '
+          'we apply your share to them, or take them as already yours.',
+          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            AppChoiceChip(
+              label: 'At the full property amount',
+              selected: _shareBasisDefault == shareBasisFull,
+              onSelected: (_) => _setShareBasisDefault(shareBasisFull),
+            ),
+            AppChoiceChip(
+              label: 'Already split to my share',
+              selected: _shareBasisDefault == shareBasisMine,
+              onSelected: (_) => _setShareBasisDefault(shareBasisMine),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (!_showBasisExceptions)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() => _showBasisExceptions = true),
+              child: Text('Any exceptions?',
+                  style: AppTextStyles.labelLarge
+                      .copyWith(color: AppColors.registry)),
+            ),
+          )
+        else ...[
+          Text('Tap any category that arrives the other way.',
+              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final entry in shareBasisCategories.entries)
+                AppChoiceChip(
+                  label: entry.value,
+                  selected: _shareBasisExceptions.containsKey(entry.key),
+                  onSelected: (_) => _toggleBasisException(entry.key),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// An exception means "this category differs from the default", so moving
+  /// the default has to move every exception with it — otherwise each one
+  /// silently becomes a duplicate of the default and stops meaning anything.
+  void _setShareBasisDefault(String basis) {
+    setState(() {
+      _shareBasisDefault = basis;
+      final flipped = oppositeShareBasis(basis);
+      _shareBasisExceptions = {
+        for (final key in _shareBasisExceptions.keys) key: flipped,
+      };
+    });
+  }
+
+  void _toggleBasisException(String category) {
+    setState(() {
+      if (_shareBasisExceptions.containsKey(category)) {
+        _shareBasisExceptions.remove(category);
+      } else {
+        _shareBasisExceptions[category] = oppositeShareBasis(_shareBasisDefault);
+      }
+    });
   }
 
   /// Styled like [_buildTextField] but opens a bottom sheet of years instead

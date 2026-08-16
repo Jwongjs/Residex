@@ -57,10 +57,11 @@ class _FakePropertyRepository implements PropertyRepository {
   Stream<List<Property>> streamPropertiesByLandlord(String landlordId) => const Stream.empty();
 }
 
-/// Every method beyond `createUnit` is unreachable here — the create-mode
-/// coverage tests below only exercise the dialog's unit-creation loop, never
-/// read units back — but the interface requires them.
 class _FakeUnitRepository implements UnitRepository {
+  _FakeUnitRepository([this.units = const []]);
+
+  final List<Unit> units;
+
   @override
   Future<String> createUnit(Unit unit) async => 'u1';
   @override
@@ -68,11 +69,12 @@ class _FakeUnitRepository implements UnitRepository {
   @override
   Future<void> deleteUnit(String propertyId, String unitId) async {}
   @override
-  Future<List<Unit>> getUnitsForProperty(String propertyId) async => [];
+  Future<List<Unit>> getUnitsForProperty(String propertyId) async => units;
   @override
   Future<void> updateUnit(Unit unit) async {}
   @override
-  Stream<List<Unit>> streamUnitsForProperty(String propertyId) => const Stream.empty();
+  Stream<List<Unit>> streamUnitsForProperty(String propertyId) =>
+      Stream.value(units);
 }
 
 Property _property({
@@ -80,6 +82,7 @@ Property _property({
   PropertyType type = PropertyType.condo,
   PropertyStructureType? structureType,
   int? trackFromYear,
+  double ownershipShare = 1.0,
 }) =>
     Property(
       id: 'p1',
@@ -95,6 +98,7 @@ Property _property({
       hasMortgage: hasMortgage,
       structureType: structureType,
       trackFromYear: trackFromYear,
+      ownershipShare: ownershipShare,
       createdAt: DateTime(2026, 1, 1),
     );
 
@@ -108,6 +112,8 @@ Future<_FakePropertyRepository> _openEditDialog(
   PropertyStructureType? structureType,
   int? trackFromYear,
   List<Map<String, dynamic>>? loanEntries,
+  double ownershipShare = 1.0,
+  List<Unit> units = const [],
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -119,6 +125,7 @@ Future<_FakePropertyRepository> _openEditDialog(
     type: type,
     structureType: structureType,
     trackFromYear: trackFromYear,
+    ownershipShare: ownershipShare,
   );
   final fakeRepo = _FakePropertyRepository(property);
 
@@ -126,6 +133,7 @@ Future<_FakePropertyRepository> _openEditDialog(
     ProviderScope(
       overrides: [
         propertyRepositoryProvider.overrideWithValue(fakeRepo),
+        unitRepositoryProvider.overrideWithValue(_FakeUnitRepository(units)),
         currentFirebaseUserProvider.overrideWithValue(_FakeUser()),
         // Both loan-entry providers are faked, and the year-scoped one really
         // filters by year. That fidelity is what gives the prior-year test
@@ -495,5 +503,120 @@ void main() {
       find.textContaining('RM 1,500.00 of ${thisYear - 2}–$thisYear loan figures'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('a wholly-owned property is never asked about share basis',
+      (tester) async {
+    await _openEditDialog(tester, hasMortgage: true, ownershipShare: 1.0);
+
+    expect(find.text('How do your documents arrive?'), findsNothing);
+    expect(find.text('Already split to my share'), findsNothing);
+  });
+
+  testWidgets('a co-owned property is asked, and defaults to the full amount',
+      (tester) async {
+    await _openEditDialog(tester, hasMortgage: true, ownershipShare: 0.5);
+
+    expect(find.text('How do your documents arrive?'), findsOneWidget);
+    final full = tester.widget<AppChoiceChip>(
+      find.widgetWithText(AppChoiceChip, 'At the full property amount'),
+    );
+    expect(full.selected, isTrue);
+  });
+
+  testWidgets('lowering the share on an existing property raises the question',
+      (tester) async {
+    // Spec §4: a property that already has documents must be asked at the
+    // moment its share is set, because the answer changes existing figures.
+    // The question is inline, so it has to appear as the field is typed —
+    // which only works if the form rebuilds on that controller.
+    await _openEditDialog(tester, hasMortgage: true, ownershipShare: 1.0);
+    expect(find.text('How do your documents arrive?'), findsNothing);
+
+    final shareField =
+        find.widgetWithText(TextFormField, 'My share of this property (%)');
+    await tester.ensureVisible(shareField);
+    await tester.enterText(shareField, '50');
+    await tester.pumpAndSettle();
+
+    expect(find.text('How do your documents arrive?'), findsOneWidget);
+  });
+
+  testWidgets('a property at 100% with one co-owned unit is still asked',
+      (tester) async {
+    // THE §3a GATE. Keyed on the property's own share this property is at
+    // 100% and says nothing, while that unit's documents still need a basis.
+    await _openEditDialog(
+      tester,
+      hasMortgage: true,
+      ownershipShare: 1.0,
+      units: [
+        Unit(
+          id: 'u1', propertyId: 'p1', label: 'A-1', monthlyRent: 1200,
+          isOccupied: true, ownershipShare: 0.5, createdAt: DateTime(2026, 1, 1),
+        ),
+      ],
+    );
+
+    expect(find.text('How do your documents arrive?'), findsOneWidget);
+  });
+
+  testWidgets('answering "already split" saves the default', (tester) async {
+    final fakeRepo =
+        await _openEditDialog(tester, hasMortgage: true, ownershipShare: 0.5);
+
+    await _tap(tester, find.text('Already split to my share'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Save changes'));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated!.shareBasisDefault, 'mine');
+    expect(fakeRepo.lastUpdated!.shareBasisExceptions, isEmpty);
+  });
+
+  testWidgets('an exception stores the opposite of the default', (tester) async {
+    final fakeRepo =
+        await _openEditDialog(tester, hasMortgage: true, ownershipShare: 0.5);
+
+    await _tap(tester, find.text('Any exceptions?'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Assessment & quit rent'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Save changes'));
+    await tester.pumpAndSettle();
+
+    // Default is 'full', so an excepted category is 'mine'.
+    expect(fakeRepo.lastUpdated!.shareBasisExceptions, {'tax': 'mine'});
+  });
+
+  testWidgets('flipping the default flips every stored exception',
+      (tester) async {
+    // An exception means "this category differs". If the default moves and
+    // the exceptions do not, every one of them silently becomes a no-op
+    // duplicate of the default.
+    final fakeRepo =
+        await _openEditDialog(tester, hasMortgage: true, ownershipShare: 0.5);
+
+    await _tap(tester, find.text('Any exceptions?'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Assessment & quit rent'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Already split to my share'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Save changes'));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.lastUpdated!.shareBasisDefault, 'mine');
+    expect(fakeRepo.lastUpdated!.shareBasisExceptions, {'tax': 'full'});
+  });
+
+  testWidgets('loan is never offered as an exception', (tester) async {
+    await _openEditDialog(tester, hasMortgage: true, ownershipShare: 0.5);
+
+    await _tap(tester, find.text('Any exceptions?'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Loan statements'), findsNothing);
+    expect(find.text('Assessment & quit rent'), findsOneWidget);
   });
 }
