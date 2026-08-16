@@ -3217,3 +3217,136 @@ class UnitShareInheritanceEquivalenceTests(unittest.TestCase):
         self.assertAlmostEqual(block["received_rent"], 6000.0, places=2)
         # 500 maintenance (halved) + 1200 loan interest (whole)
         self.assertAlmostEqual(block["direct_expenses"], 1700.0, places=2)
+
+
+def _basis_doc(pid, category, facts, basis=None, **kwargs):
+    """A document with an explicit per-document share basis. `None` leaves the
+    field off entirely, which is how every stored document looks today."""
+    doc = _doc(pid, category, facts, **kwargs)
+    if basis is not None:
+        doc["share_basis"] = basis
+    return doc
+
+
+def _basis_prop(pid, name, share=1.0, default=None, exceptions=None):
+    prop = _prop(pid, name, share=share)
+    if default is not None:
+        prop["share_basis_default"] = default
+    if exceptions is not None:
+        prop["share_basis_exceptions"] = exceptions
+    return prop
+
+
+class DocumentShareBasisExpenseTests(unittest.TestCase):
+    """A 'mine' document already states the landlord's portion, so scaling it
+    again files a quarter of the truth at half ownership. Every fixture here
+    is at share 0.5 — at 1.0 basis cannot change any figure, so a fixture at
+    full ownership cannot fail against any of this."""
+
+    def _lines_at(self, doc_basis=None, **prop_kwargs):
+        docs = [
+            _basis_doc("p1", "maintenance",
+                       {"amount": 1000.0, "period_start": "2025-02-01"},
+                       basis=doc_basis),
+            _doc("p1", "upkeep", {"amount": 400.0, "service_date": "2025-03-04"}),
+        ]
+        result = _summary(docs, [_basis_prop("p1", "Block", share=0.5, **prop_kwargs)])
+        block = result["properties"][0]
+        by_category = {l["category"]: l for l in block["expense_lines"]}
+        return result, block, by_category
+
+    def test_a_mine_line_is_not_scaled_and_a_full_line_beside_it_is(self):
+        _, _, by_category = self._lines_at(doc_basis="mine")
+        self.assertAlmostEqual(by_category["maintenance"]["amount"], 1000.0, places=2)
+        self.assertAlmostEqual(by_category["upkeep"]["amount"], 200.0, places=2)
+
+    def test_a_mine_line_carries_no_full_amount(self):
+        # Matching the loan-line rule: there is no second figure to show.
+        _, _, by_category = self._lines_at(doc_basis="mine")
+        self.assertNotIn("full_amount", by_category["maintenance"])
+        self.assertAlmostEqual(by_category["upkeep"]["full_amount"], 400.0, places=2)
+
+    def test_the_document_override_beats_a_category_exception(self):
+        _, _, by_category = self._lines_at(
+            doc_basis="mine", exceptions={"maintenance": "full"}, default="full")
+        self.assertAlmostEqual(by_category["maintenance"]["amount"], 1000.0, places=2)
+
+    def test_a_category_exception_beats_the_default(self):
+        _, _, by_category = self._lines_at(
+            exceptions={"maintenance": "mine"}, default="full")
+        self.assertAlmostEqual(by_category["maintenance"]["amount"], 1000.0, places=2)
+        self.assertAlmostEqual(by_category["upkeep"]["amount"], 200.0, places=2)
+
+    def test_the_default_beats_nothing_at_all(self):
+        _, _, by_category = self._lines_at(default="mine")
+        self.assertAlmostEqual(by_category["maintenance"]["amount"], 1000.0, places=2)
+        self.assertAlmostEqual(by_category["upkeep"]["amount"], 400.0, places=2)
+
+    def test_no_answer_anywhere_resolves_to_full(self):
+        _, _, by_category = self._lines_at()
+        self.assertAlmostEqual(by_category["maintenance"]["amount"], 500.0, places=2)
+        self.assertAlmostEqual(by_category["upkeep"]["amount"], 200.0, places=2)
+
+    def test_a_bundled_expenses_statement_ignores_category_exceptions(self):
+        # Its category is 'expenses', which is not one of the six offered, so
+        # a maintenance exception cannot reach its maintenance line. The
+        # per-document chip is what answers a combined statement.
+        docs = [_basis_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+        ]})]
+        result = _summary(docs, [_basis_prop("p1", "Block", share=0.5,
+                                             exceptions={"maintenance": "mine"})])
+        line = result["properties"][0]["expense_lines"][0]
+        self.assertAlmostEqual(line["amount"], 500.0, places=2)
+
+    def test_a_bundled_statement_does_follow_its_own_override(self):
+        docs = [_basis_doc("p1", "expenses", {"expense_lines": [
+            {"subtype": "maintenance", "amount": 1000.0, "period_year": 2025},
+        ]}, basis="mine")]
+        result = _summary(docs, [_basis_prop("p1", "Block", share=0.5)])
+        line = result["properties"][0]["expense_lines"][0]
+        self.assertAlmostEqual(line["amount"], 1000.0, places=2)
+
+    def test_direct_expenses_reconciles_against_the_rendered_lines(self):
+        # THE EXISTING RECONCILIATION GATE, under a mixed basis. `direct` sums
+        # across every line at once; left unaware of basis it reads 700.00
+        # while the lines beneath it read 1000 + 200.
+        _, block, _ = self._lines_at(doc_basis="mine")
+        deductible = [l for l in block["expense_lines"] if l["deductible"]]
+        self.assertAlmostEqual(
+            block["direct_expenses"], sum(l["amount"] for l in deductible), places=2)
+        self.assertAlmostEqual(block["direct_expenses"], 1200.0, places=2)
+
+    def test_expense_breakdown_reconciles_against_the_rendered_lines(self):
+        result, block, _ = self._lines_at(doc_basis="mine")
+        totals = {}
+        for line in block["expense_lines"]:
+            if line["deductible"]:
+                totals[line["category"]] = round(
+                    totals.get(line["category"], 0.0) + line["amount"], 2)
+        self.assertEqual(result["expense_breakdown"], totals)
+
+    def test_a_loan_document_is_unaffected_by_every_basis_setting(self):
+        # Including a property whose default is 'mine'. The loan exemption
+        # wins first: interest is the landlord's own borrowing, and basis is a
+        # claim about what a statement shows, not about who owes the money.
+        docs = [_basis_doc("p1", "loan",
+                           {"subtype": "interest_statement", "period_year": 2025,
+                            "interest_paid": 1200.0, "principal_paid": 3000.0},
+                           basis="mine")]
+        result = _summary(docs, [_basis_prop("p1", "Block", share=0.5, default="mine")])
+        by_subtype = {l["subtype"]: l for l in result["properties"][0]["expense_lines"]}
+        self.assertAlmostEqual(by_subtype["interest_statement"]["amount"], 1200.0, places=2)
+        self.assertAlmostEqual(by_subtype["loan_principal"]["amount"], 3000.0, places=2)
+        self.assertNotIn("full_amount", by_subtype["interest_statement"])
+
+    def test_rendered_lines_never_carry_the_internal_basis_marker(self):
+        # share_basis is engine bookkeeping. Leaking it would make a property
+        # with a stored default differ from one without at share 1.0, where
+        # every figure is identical — see the equivalence test in task 3.
+        _, block, _ = self._lines_at(doc_basis="mine")
+        for line in block["expense_lines"] + block["property_expense_lines"]:
+            self.assertNotIn("share_basis", line)
+        for unit in block["units"]:
+            for line in unit["expense_lines"]:
+                self.assertNotIn("share_basis", line)

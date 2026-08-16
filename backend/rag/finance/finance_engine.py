@@ -260,6 +260,7 @@ def _expense_lines(
     prop_docs: List[Dict[str, Any]],
     year: int,
     utilities_paid_by: Optional[str] = None,
+    prop: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Deductible expense lines allocated to the target year.
 
@@ -272,12 +273,17 @@ def _expense_lines(
     lease_start's year. Combined 'expenses' documents contribute one line
     per validated item, mapped to its finance category via
     EXPENSE_SUBTYPE_CATEGORY; a line belongs to the year when its
-    period_year matches or its date falls in the year."""
+    period_year matches or its date falls in the year.
+
+    Every emitted line carries `share_basis`, copied from its source document
+    (see _document_share_basis). It is internal bookkeeping — _scaled_lines
+    strips it from everything the payload renders."""
     letting_deductible = year in _renewal_years(prop_docs)
     lines: List[Dict[str, Any]] = []
     for doc in prop_docs:
         facts = doc["extracted_facts"]
         category = doc.get("category")
+        basis = _document_share_basis(doc, prop or {})
         if category == "expenses":
             for item in (facts.get("expense_lines") or []):
                 if not isinstance(item, dict):
@@ -297,6 +303,7 @@ def _expense_lines(
                     "amount": _round2(amount),
                     "date": item.get("date") or str(item.get("period_year") or year),
                     "unit_id": doc.get("unit_id"),
+                    "share_basis": basis,
                     "deductible": _line_deductible(
                         subtype, utilities_paid_by, letting_deductible
                     ),
@@ -322,6 +329,7 @@ def _expense_lines(
                         "amount": _round2(principal),
                         "date": str(year),
                         "unit_id": doc.get("unit_id"),
+                        "share_basis": basis,
                         "deductible": _line_deductible(
                             "loan_principal", utilities_paid_by, letting_deductible
                         ),
@@ -370,6 +378,7 @@ def _expense_lines(
                 "amount": _round2(amount),
                 "date": when,
                 "unit_id": doc.get("unit_id"),
+                "share_basis": basis,
                 "deductible": _line_deductible(
                     facts.get("subtype"), utilities_paid_by, letting_deductible
                 ),
@@ -424,6 +433,44 @@ def _dedup_expense_lines(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return deduped
 
 
+# The two ways a document can state an amount. 'full' is what the engine has
+# always assumed and is the default at every step of the resolution below, so
+# a landlord who never answers sees no change.
+_SHARE_BASES = ("full", "mine")
+
+
+def _document_share_basis(doc: Dict[str, Any], prop: Dict[str, Any]) -> str:
+    """Which basis applies to one document (spec §3), first match wins:
+
+    1. the document's own `share_basis` (set from the upload review sheet)
+    2. the property's exception for that document's category
+    3. the property's default
+    4. 'full'
+
+    Step 2 keys on the *document's* category, so a bundled 'expenses'
+    statement — whose category is not one of the six a landlord can except —
+    only ever takes step 1 or step 3. That is deliberate: a combined statement
+    can mix bases, and the per-document answer is how it gets corrected.
+    """
+    own = doc.get("share_basis")
+    if own in _SHARE_BASES:
+        return own
+    exceptions = prop.get("share_basis_exceptions")
+    if isinstance(exceptions, dict):
+        by_category = exceptions.get(doc.get("category"))
+        if by_category in _SHARE_BASES:
+            return by_category
+    default = prop.get("share_basis_default")
+    return default if default in _SHARE_BASES else "full"
+
+
+def _basis_share(basis: Optional[str], share: float) -> float:
+    """The share that applies to one figure. A figure already stated at the
+    landlord's portion is used verbatim; anything else is the whole
+    property's and scales."""
+    return 1.0 if basis == "mine" else share
+
+
 # A typed loan document's interest line takes its subtype straight from the
 # extracted facts ('interest_statement'); its principal line is hardcoded to
 # 'loan_principal'. A bundled 'expenses' statement uses 'loan_interest' /
@@ -436,9 +483,15 @@ _LOAN_EXEMPT_SUBTYPES = {"interest_statement", "loan_interest", "loan_principal"
 
 def _line_share(line: Dict[str, Any], share: float) -> float:
     """Loan interest and principal are the landlord's own borrowing, not a cost
-    shared with co-owners, so they are never scaled by ownership share. Every
-    other expense line scales normally."""
-    return 1.0 if line.get("subtype") in _LOAN_EXEMPT_SUBTYPES else share
+    shared with co-owners, so they are never scaled by ownership share — and
+    that beats basis, because basis is a claim about what a statement shows,
+    not about who owes the money. A line from a document declared 'mine'
+    already states the landlord's portion, so scaling it again would file a
+    quarter of the truth at half ownership. Every other expense line scales
+    normally."""
+    if line.get("subtype") in _LOAN_EXEMPT_SUBTYPES:
+        return 1.0
+    return _basis_share(line.get("share_basis"), share)
 
 
 def _share_for_unit(
@@ -473,23 +526,28 @@ def _scaled_lines(
     scaled twice. `share_for` maps a line's `unit_id` to its share — a unit's
     own override, or the property's for a line belonging to no unit.
 
+    `share_basis` is internal and is removed from every copy, so a property
+    with a stored basis answer renders a payload identical to one without
+    wherever the figures are identical.
+
     A line whose resolved share is 1.0 is copied through unchanged and carries
     no `full_amount`, so a wholly-owned property's payload is content-identical
     to before. Below 1.0 each scaled line also carries `full_amount`, the
     source document's face value, so the app can show "your 50% of RM 1,200.00"
-    beside the scaled figure. Loan lines (see _line_share) resolve to 1.0 at
-    any share and so take the same unchanged path — there is no second figure
-    to show.
+    beside the scaled figure. Loan lines and lines already stated at the
+    landlord's share (see _line_share) resolve to 1.0 and so take the same
+    unchanged path — there is no second figure to show.
     """
     out: List[Dict[str, Any]] = []
     for line in lines:
         line_share = _line_share(line, share_for(line.get("unit_id")))
+        rendered = {k: v for k, v in line.items() if k != "share_basis"}
         if line_share == 1.0:
-            out.append(dict(line))
+            out.append(rendered)
             continue
-        out.append({**line,
-                    "amount": _round2(line_share * line["amount"]),
-                    "full_amount": _round2(line["amount"])})
+        rendered["amount"] = _round2(line_share * line["amount"])
+        rendered["full_amount"] = _round2(line["amount"])
+        out.append(rendered)
     return out
 
 
@@ -1182,7 +1240,7 @@ def compute_finance_summary(
             return _share_for_unit(unit_id, unit_shares, share)
 
         expense_lines = _dedup_expense_lines(
-            _expense_lines(prop_docs, year, prop.get("utilities_paid_by"))
+            _expense_lines(prop_docs, year, prop.get("utilities_paid_by"), prop)
         )
         prop_manual_entries = [
             e for e in (manual_loan_entries or [])
