@@ -52,10 +52,16 @@ def list_property_units(db, property_id: str) -> List[Dict]:
         return []
 
 
+_SHARE_BASES = ("full", "mine")
+
+
 def list_landlord_properties(db, landlord_id: str) -> List[Dict]:
-    """Property ids/names/ownership shares for a landlord. The properties
-    collection is Flutter-owned (field 'landlordId'); ownership_share is
-    optional and defaults to 1.0. Empty on lookup failure."""
+    """Property ids/names/ownership shares/document-basis answers for a
+    landlord. The properties collection is Flutter-owned (field 'landlordId');
+    ownership_share is optional and defaults to 1.0. share_basis_default is
+    None and share_basis_exceptions is {} unless the landlord answered — both
+    resolve to 'full', which is what the engine has always assumed. Empty on
+    lookup failure."""
     try:
         snapshots = (
             db.collection('properties')
@@ -69,6 +75,17 @@ def list_landlord_properties(db, landlord_id: str) -> List[Dict]:
                 share = float(data.get('ownership_share') or 1.0)
             except (TypeError, ValueError):
                 share = 1.0
+            basis_default = data.get('share_basis_default')
+            if basis_default not in _SHARE_BASES:
+                basis_default = None
+            raw_exceptions = data.get('share_basis_exceptions')
+            # Sanitised per entry, not all-or-nothing: one junk value must not
+            # discard a category the landlord did answer correctly.
+            basis_exceptions = {
+                str(category): basis
+                for category, basis in (raw_exceptions or {}).items()
+                if basis in _SHARE_BASES
+            } if isinstance(raw_exceptions, dict) else {}
             results.append({
                 "property_id": snap.id,
                 "name": data.get('name') or snap.id,
@@ -79,6 +96,8 @@ def list_landlord_properties(db, landlord_id: str) -> List[Dict]:
                 "track_from_year": data.get('track_from_year'),
                 "loan_input_cadence": data.get('loan_input_cadence'),
                 "mortgage_settled_on": data.get('mortgage_settled_on'),
+                "share_basis_default": basis_default,
+                "share_basis_exceptions": basis_exceptions,
             })
         return results
     except Exception as e:

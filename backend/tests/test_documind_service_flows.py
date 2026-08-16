@@ -2847,5 +2847,55 @@ class UnitOwnershipShareLookupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0]["label"], "A-1")
 
 
+class PropertyShareBasisLookupTests(unittest.IsolatedAsyncioTestCase):
+    """The property's basis answers have to survive the Firestore read. A
+    property that never answered reads as None / {} — which the engine
+    resolves to 'full', today's behaviour."""
+
+    def _rows(self, extra):
+        fake_db = _FakeDB()
+        fake_db.properties_rows = [
+            {"doc_id": "p1", "landlordId": "l1", "name": "Block", **extra},
+        ]
+        service = _build_service(fake_db, _FakeConversationStore(),
+                                 _FakeGraphOrchestrator({}), _FakeLLM("unused"))
+        return service._list_landlord_properties("l1")
+
+    async def test_stored_default_and_exceptions_are_returned(self):
+        rows = self._rows({
+            "share_basis_default": "mine",
+            "share_basis_exceptions": {"tax": "full"},
+        })
+        self.assertEqual(rows[0]["share_basis_default"], "mine")
+        self.assertEqual(rows[0]["share_basis_exceptions"], {"tax": "full"})
+
+    async def test_absent_fields_read_as_none_and_empty(self):
+        rows = self._rows({})
+        self.assertIsNone(rows[0]["share_basis_default"])
+        self.assertEqual(rows[0]["share_basis_exceptions"], {})
+
+    async def test_an_unknown_default_is_dropped(self):
+        rows = self._rows({"share_basis_default": "sometimes"})
+        self.assertIsNone(rows[0]["share_basis_default"])
+
+    async def test_unknown_exception_values_are_dropped_individually(self):
+        rows = self._rows({
+            "share_basis_exceptions": {"tax": "full", "upkeep": "maybe"},
+        })
+        self.assertEqual(rows[0]["share_basis_exceptions"], {"tax": "full"})
+
+    async def test_a_non_map_exceptions_field_reads_as_empty(self):
+        rows = self._rows({"share_basis_exceptions": ["tax"]})
+        self.assertEqual(rows[0]["share_basis_exceptions"], {})
+
+    async def test_the_existing_fields_still_come_back(self):
+        # A guard: the new keys are added to a dict several other features
+        # read, and dropping one of those would be silent here.
+        rows = self._rows({"ownership_share": 0.5, "utilities_paid_by": "landlord"})
+        self.assertEqual(rows[0]["ownership_share"], 0.5)
+        self.assertEqual(rows[0]["utilities_paid_by"], "landlord")
+        self.assertEqual(rows[0]["name"], "Block")
+
+
 if __name__ == "__main__":
     unittest.main()
