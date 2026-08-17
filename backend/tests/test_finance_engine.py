@@ -3346,10 +3346,14 @@ class DocumentShareBasisExpenseTests(unittest.TestCase):
         # Including a property whose default is 'mine'. The loan exemption
         # wins first: interest is the landlord's own borrowing, and basis is a
         # claim about what a statement shows, not about who owes the money.
+        # basis='full' (not 'mine'): at 'mine' the basis path and the loan
+        # exemption both resolve to 1.0, so the test cannot tell them apart.
+        # At 'full' only the exemption keeps the line unscaled — removing it
+        # would halve interest to 600.0, which is what makes this a real gate.
         docs = [_basis_doc("p1", "loan",
                            {"subtype": "interest_statement", "period_year": 2025,
                             "interest_paid": 1200.0, "principal_paid": 3000.0},
-                           basis="mine")]
+                           basis="full")]
         result = _summary(docs, [_basis_prop("p1", "Block", share=0.5, default="mine")])
         by_subtype = {l["subtype"]: l for l in result["properties"][0]["expense_lines"]}
         self.assertAlmostEqual(by_subtype["interest_statement"]["amount"], 1200.0, places=2)

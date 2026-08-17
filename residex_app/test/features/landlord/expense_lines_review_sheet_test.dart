@@ -12,6 +12,7 @@ import 'package:residex_app/features/landlord/presentation/widgets/common/expens
 Property _property({
   double ownershipShare = 1.0,
   String shareBasisDefault = 'full',
+  Map<String, String> shareBasisExceptions = const {},
 }) =>
     Property(
       id: 'p1',
@@ -26,6 +27,7 @@ Property _property({
       currentValue: 550000,
       ownershipShare: ownershipShare,
       shareBasisDefault: shareBasisDefault,
+      shareBasisExceptions: shareBasisExceptions,
       createdAt: DateTime(2026, 1, 1),
     );
 
@@ -140,6 +142,30 @@ void main() {
     );
     expect(mine.selected, isTrue,
         reason: 'the landlord confirms rather than answers');
+  });
+
+  testWidgets(
+      'a stray expenses key in exceptions does not pre-set the chip',
+      (tester) async {
+    // 'expenses' is never a key the UI writes into shareBasisExceptions, but
+    // the resolver must not trust that — a direct Firestore edit or a future
+    // UI bug must not make the chip pre-select an exception that doesn't
+    // apply to a bundled statement.
+    await _pumpSheet(
+      tester,
+      [{'subtype': 'maintenance', 'amount': 300.0, 'period_year': 2025}],
+      property: _property(
+        ownershipShare: 0.5,
+        shareBasisDefault: 'full',
+        shareBasisExceptions: const {'expenses': 'mine'},
+      ),
+    );
+
+    final full = tester.widget<AppChoiceChip>(
+      find.widgetWithText(AppChoiceChip, 'At the full property amount'),
+    );
+    expect(full.selected, isTrue,
+        reason: 'the stray exception key must not override the default');
   });
 
   testWidgets('a property at 100% with one co-owned unit still shows the chip',

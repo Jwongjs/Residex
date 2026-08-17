@@ -101,6 +101,23 @@ void main() {
       );
     });
 
+    test('a stray expenses key in exceptions is never matched', () {
+      // 'expenses' is never a key the UI writes, but the resolver must not
+      // trust that — a direct Firestore edit or a future UI bug must not
+      // make a bundled statement pick up a stray exception, matching the
+      // backend's own engine-enforced guard for the same document.
+      expect(
+        resolveShareBasis(
+          property: _property(
+            shareBasisDefault: 'full',
+            shareBasisExceptions: const {'expenses': 'mine'},
+          ),
+          category: 'expenses',
+        ),
+        'full',
+      );
+    });
+
     test('an unanswered property resolves to full', () {
       expect(
         resolveShareBasis(property: _property(), category: 'maintenance'),

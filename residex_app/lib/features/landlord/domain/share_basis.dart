@@ -49,8 +49,12 @@ bool shareApplies({
 /// [shareBasisFull].
 ///
 /// A bundled `expenses` statement's category is not one of
-/// [shareBasisCategories], so no exception can ever match it — it takes its
-/// own answer or the default, which is why the upload review sheet asks.
+/// [shareBasisCategories], so no exception can ever match it in practice —
+/// it takes its own answer or the default, which is why the upload review
+/// sheet asks. That guarantee holds today only because the UI never writes
+/// an `'expenses'` key into `shareBasisExceptions`; the check below enforces
+/// it directly rather than trusting that, mirroring the backend's
+/// `_document_share_basis`, which skips the same lookup for the same reason.
 String resolveShareBasis({
   required Property property,
   required String category,
@@ -59,7 +63,8 @@ String resolveShareBasis({
   if (documentBasis == shareBasisMine || documentBasis == shareBasisFull) {
     return documentBasis!;
   }
-  final exception = property.shareBasisExceptions[category];
+  final exception =
+      category == 'expenses' ? null : property.shareBasisExceptions[category];
   if (exception == shareBasisMine || exception == shareBasisFull) {
     return exception!;
   }
