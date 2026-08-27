@@ -231,17 +231,17 @@ Future<_FakePropertyRepository> _openCreateDialog(WidgetTester tester) async {
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
 
-  // Fills the required fields in build() order: name, street, city, state,
-  // zip, purchase price, current value, (ownership share already defaults
-  // to '100'), total units.
+  // Fills the required fields in build() order: name, (ownership share
+  // already defaults to '100'), street, city, state, zip, purchase price,
+  // current value, total units.
   final fields = find.byType(TextFormField);
   await tester.enterText(fields.at(0), 'Test Property');
-  await tester.enterText(fields.at(1), '1 Jalan Kiara');
-  await tester.enterText(fields.at(2), 'KL');
-  await tester.enterText(fields.at(3), 'WP');
-  await tester.enterText(fields.at(4), '50480');
-  await tester.enterText(fields.at(5), '500000');
-  await tester.enterText(fields.at(6), '550000');
+  await tester.enterText(fields.at(2), '1 Jalan Kiara');
+  await tester.enterText(fields.at(3), 'KL');
+  await tester.enterText(fields.at(4), 'WP');
+  await tester.enterText(fields.at(5), '50480');
+  await tester.enterText(fields.at(6), '500000');
+  await tester.enterText(fields.at(7), '550000');
   await tester.enterText(fields.at(8), '1');
 
   return fakeRepo;

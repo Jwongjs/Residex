@@ -437,6 +437,33 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
 
                       // Property Type Dropdown
                       _buildDropdown(),
+                      if (_selectedType == PropertyType.commercial) ...[
+                        const SizedBox(height: 16),
+                        _buildStructureTypeSelector(),
+                      ],
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: _ownershipShareController,
+                        label: 'My share of this property (%)',
+                        hint: '100 if solely owned',
+                        keyboardType: TextInputType.number,
+                        validator: _validateSharePercent,
+                      ),
+                      if (_selectedStructureType == PropertyStructureType.landed) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Rooms may be tracked as individual units, but this '
+                          'share applies to all of them.',
+                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+                        ),
+                      ] else if (_selectedStructureType == PropertyStructureType.strata) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'New units start at this share. Set a different share '
+                          'for an individual unit from Units if it differs.',
+                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+                        ),
+                      ],
                       const SizedBox(height: 20),
 
                       Text(
@@ -519,14 +546,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: _ownershipShareController,
-                        label: 'My share of this property (%)',
-                        hint: '100 if solely owned',
-                        keyboardType: TextInputType.number,
-                        validator: _validateSharePercent,
-                      ),
                       if (_shareAppliesFor(_watchUnits())) ...[
                         const SizedBox(height: 16),
                         _buildShareBasisQuestion(),
@@ -557,20 +576,6 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
                         ),
                       ],
                       const SizedBox(height: 20),
-                      Text(
-                        'Property profile',
-                        style: AppTextStyles.labelLarge.copyWith(color: AppColors.textMuted),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Quick facts — tailors which expenses the app ever asks you for.',
-                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
-                      ),
-                      const SizedBox(height: 12),
-                      if (_selectedType == PropertyType.commercial) ...[
-                        _buildStructureTypeSelector(),
-                        const SizedBox(height: 16),
-                      ],
                       _buildMortgageSelector(),
                       const SizedBox(height: 16),
                       _buildYearPicker(),

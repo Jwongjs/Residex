@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/app_theme.dart';
+import '../../../domain/entities/property.dart';
 import '../../../domain/entities/unit.dart';
 import '../../providers/unit_providers.dart';
 import '../../providers/documind_provider.dart';
@@ -138,16 +139,22 @@ class UnitsScreen extends ConsumerWidget {
   }
 
   Future<void> _editUnit(BuildContext context, WidgetRef ref, Unit unit,
-      double propertyShare) async {
+      double propertyShare, PropertyStructureType? structureType) async {
     final labelController = TextEditingController(text: unit.label);
     final initialShareText =
         ((unit.ownershipShare ?? propertyShare) * 100).toStringAsFixed(0);
     final shareController = TextEditingController(text: initialShareText);
+    // A landed property is one title with rooms as units, so a room can never
+    // be owned separately from the house. Share only ever lives at the
+    // property level there, and the unit share concept does not apply.
+    final isLanded = structureType == PropertyStructureType.landed;
     // Shown up front when co-ownership is already in play here — either the
     // property is co-owned, or this unit already carries its own share.
     // Otherwise it stays behind an affordance so a landlord who owns
     // everything outright never has to think about it.
-    var showShare = propertyShare < 1.0 || unit.ownershipShare != null;
+    var showShare =
+        !isLanded && (propertyShare < 1.0 || unit.ownershipShare != null);
+    final hasOwnShare = unit.ownershipShare != null;
     final formKey = GlobalKey<FormState>();
 
     final saved = await showDialog<bool>(
@@ -168,38 +175,52 @@ class UnitsScreen extends ConsumerWidget {
                   validator: (v) => v?.trim().isEmpty ?? true ? 'Required' : null,
                 ),
                 const SizedBox(height: 12),
-                if (showShare)
-                  TextFormField(
-                    controller: shareController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'My share of this unit (%)',
-                      hintText: '100 if you own this unit outright',
+                if (!isLanded)
+                  if (showShare) ...[
+                    TextFormField(
+                      controller: shareController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'My share of this unit (%)',
+                        hintText: '100 if you own this unit outright',
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Required';
+                        final parsed = double.tryParse(v);
+                        if (parsed == null) return 'Must be a number';
+                        // Message and rule agree: anything above 0 up to 100 is
+                        // accepted, so a fractional share like 0.5% is valid.
+                        if (parsed <= 0 || parsed > 100) {
+                          return 'Between 0 and 100';
+                        }
+                        return null;
+                      },
                     ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Required';
-                      final parsed = double.tryParse(v);
-                      if (parsed == null) return 'Must be a number';
-                      // Message and rule agree: anything above 0 up to 100 is
-                      // accepted, so a fractional share like 0.5% is valid.
-                      if (parsed <= 0 || parsed > 100) {
-                        return 'Between 0 and 100';
-                      }
-                      return null;
-                    },
-                  )
-                else
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: () => setDialogState(() => showShare = true),
-                      child: Text(
-                        'Set a different share for this unit',
-                        style: AppTextStyles.labelLarge
-                            .copyWith(color: AppColors.registry),
+                    if (!hasOwnShare) ...[
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          "Inherited from the property's "
+                          '${(propertyShare * 100).toStringAsFixed(0)}% share. '
+                          "Change only if this unit's ownership differs.",
+                          style: AppTextStyles.bodySmall
+                              .copyWith(color: AppColors.textMuted),
+                        ),
+                      ),
+                    ],
+                  ] else
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () => setDialogState(() => showShare = true),
+                        child: Text(
+                          'Set a different share for this unit',
+                          style: AppTextStyles.labelLarge
+                              .copyWith(color: AppColors.registry),
+                        ),
                       ),
                     ),
-                  ),
               ],
             ),
           ),
@@ -275,8 +296,9 @@ class UnitsScreen extends ConsumerWidget {
     final unitsAsync = ref.watch(unitsForPropertyStreamProvider(propertyId));
     // Watched, not read: the dialog needs this resolved when it opens, and
     // this screen is otherwise the only thing that would ever load it.
-    final propertyShare =
-        ref.watch(propertyByIdProvider(propertyId)).value?.ownershipShare ?? 1.0;
+    final property = ref.watch(propertyByIdProvider(propertyId)).value;
+    final propertyShare = property?.ownershipShare ?? 1.0;
+    final structureType = property?.structureType;
 
     return Scaffold(
       backgroundColor: AppColors.paper,
@@ -329,12 +351,17 @@ class UnitsScreen extends ConsumerWidget {
                             ),
                             child: ListTile(
                               title: Text(unit.label, style: AppTextStyles.bodyLarge),
-                              subtitle: Text(
-                                '${(((unit.ownershipShare ?? propertyShare) * 100)).toStringAsFixed(0)}% share',
-                                style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
-                              ),
-                              onTap: () =>
-                                  _editUnit(context, ref, unit, propertyShare),
+                              // A landed room can never be owned separately from
+                              // the house, so the share figure has nothing to
+                              // add here and only repeats the property card.
+                              subtitle: structureType == PropertyStructureType.landed
+                                  ? null
+                                  : Text(
+                                      '${(((unit.ownershipShare ?? propertyShare) * 100)).toStringAsFixed(0)}% share',
+                                      style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
+                                    ),
+                              onTap: () => _editUnit(
+                                  context, ref, unit, propertyShare, structureType),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [

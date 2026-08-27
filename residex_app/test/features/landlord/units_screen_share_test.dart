@@ -35,7 +35,11 @@ class _FakeUnitRepository implements UnitRepository {
 }
 
 // Mirrors the fixture in add_property_dialog_loan_prefs_test.dart:7-20.
-Property _property({required double ownershipShare}) => Property(
+Property _property({
+  required double ownershipShare,
+  PropertyStructureType? structureType,
+}) =>
+    Property(
       id: 'p1',
       landlordId: 'l1',
       name: 'Ayer 8',
@@ -44,6 +48,7 @@ Property _property({required double ownershipShare}) => Property(
         zipCode: '50480', country: 'Malaysia',
       ),
       type: PropertyType.condo,
+      structureType: structureType,
       purchasePrice: 500000,
       currentValue: 550000,
       ownershipShare: ownershipShare,
@@ -213,5 +218,75 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.lastUpdated?.ownershipShare, 0.333);
+  });
+
+  testWidgets(
+      'an inherited share on a co-owned strata property explains itself',
+      (tester) async {
+    await _pumpUnits(tester,
+        property: _property(
+            ownershipShare: 0.5, structureType: PropertyStructureType.strata),
+        unit: _unit());
+
+    await tester.tap(find.text('A-1'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Inherited from the property's 50% share. "
+          "Change only if this unit's ownership differs."),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a landed property never offers a per-unit share',
+      (tester) async {
+    await _pumpUnits(tester,
+        property: _property(
+            ownershipShare: 0.5, structureType: PropertyStructureType.landed),
+        unit: _unit());
+
+    await tester.tap(find.text('A-1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('My share of this unit (%)'), findsNothing);
+    expect(find.text('Set a different share for this unit'), findsNothing);
+  });
+
+  testWidgets(
+      'a landed property still saves a rename without touching share',
+      (tester) async {
+    final repository = await _pumpUnits(tester,
+        property: _property(
+            ownershipShare: 0.5, structureType: PropertyStructureType.landed),
+        unit: _unit());
+
+    await tester.tap(find.text('A-1'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Label'), 'Room 1');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(repository.lastUpdated?.label, 'Room 1');
+    expect(repository.lastUpdated?.ownershipShare, isNull);
+  });
+
+  testWidgets("a landed property's unit row shows no share subtitle",
+      (tester) async {
+    await _pumpUnits(tester,
+        property: _property(
+            ownershipShare: 0.5, structureType: PropertyStructureType.landed),
+        unit: _unit());
+
+    expect(find.textContaining('% share'), findsNothing);
+  });
+
+  testWidgets("a strata property's unit row still shows its share subtitle",
+      (tester) async {
+    await _pumpUnits(tester,
+        property: _property(
+            ownershipShare: 0.5, structureType: PropertyStructureType.strata),
+        unit: _unit());
+
+    expect(find.textContaining('% share'), findsOneWidget);
   });
 }
