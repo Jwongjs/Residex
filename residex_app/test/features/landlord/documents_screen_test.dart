@@ -74,7 +74,7 @@ void main() {
     expect(find.text('Rent records'), findsOneWidget);
     expect(find.text('Loans & Financing'), findsOneWidget);
     expect(find.text('Expenses'), findsOneWidget);
-    expect(find.text('Optional · tap to view'), findsOneWidget);
+    expect(find.text('Optional'), findsOneWidget);
     expect(find.text('Chat'), findsNothing);
     expect(find.text('Docs'), findsNothing);
   });

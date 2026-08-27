@@ -392,9 +392,9 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
       child: GridView.builder(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.0,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+          childAspectRatio: 1.15,
         ),
         itemCount: categories.length,
         itemBuilder: (context, index) {
@@ -406,48 +406,70 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   }
 
   Widget _buildCategoryCard(String category) {
-    return GestureDetector(
-      onTap: () => setState(() => _selectedCategory = category),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppColors.surface,
-              getCategoryColor(category).withValues(alpha: 0.1),
+    final categoryColor = getCategoryColor(category);
+    return Material(
+      color: AppColors.card,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => setState(() => _selectedCategory = category),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.hairline, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
             ],
           ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: getCategoryColor(category).withValues(alpha: 0.3),
-            width: 2,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                getCategoryIcon(category).icon,
-                color: getCategoryColor(category),
-                size: 48,
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: categoryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  getCategoryIcon(category).icon,
+                  color: categoryColor,
+                  size: 21,
+                ),
               ),
-              const SizedBox(height: 12),
+              const Spacer(),
               Text(
                 getCategoryLabel(category),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: AppTextStyles.titleMedium.copyWith(
                   color: AppColors.textPrimary,
                 ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 4),
-              Text(
-                category == 'rental_invoice' ? 'Optional · tap to view' : 'Tap to view',
-                style: AppTextStyles.bodySmall.copyWith(
-                  color: AppColors.textMuted,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      category == 'rental_invoice' ? 'Optional' : 'Tap to view',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 14,
+                    color: categoryColor.withOpacity(0.6),
+                  ),
+                ],
               ),
             ],
           ),
@@ -743,7 +765,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    'Optional — the lease already covers your rent. '
+                                    'Optional: the lease already covers your rent. '
                                     'Keep invoices, receipts, e-invoices and bank '
                                     'transfer slips here for when reality differs '
                                     'from the lease, or for audit proof.',
