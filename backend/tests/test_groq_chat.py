@@ -49,8 +49,8 @@ class TestGroqChat:
         headers = post.call_args.kwargs["headers"]
         assert headers["Authorization"] == "Bearer secret-token"
 
-    def test_default_model_is_llama_70b(self):
-        assert GroqChat(api_key="k").model == "llama-3.3-70b-versatile"
+    def test_default_model_is_gpt_oss_120b(self):
+        assert GroqChat(api_key="k").model == "openai/gpt-oss-120b"
 
     def test_api_key_read_from_env_when_not_passed(self):
         with patch.dict(os.environ, {"GROQ_API_KEY": "env-key"}, clear=False):

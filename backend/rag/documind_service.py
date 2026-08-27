@@ -183,7 +183,7 @@ class DocuMindService:
             print(f"🔄 Fact extraction routed to local Ollama ({model})")
             return OllamaChat(model=model, base_url=os.getenv("OLLAMA_BASE_URL"))
         if provider == "groq":
-            model = os.getenv("GROQ_FACT_MODEL", "llama-3.3-70b-versatile")
+            model = os.getenv("GROQ_FACT_MODEL", "openai/gpt-oss-120b")
             print(f"🔄 Fact extraction routed to Groq ({model}) — ZDR must be enabled")
             return GroqChat(model=model)
         return self._llm
@@ -200,7 +200,7 @@ class DocuMindService:
         """
         provider = os.getenv("CHAT_PROVIDER", "gemini").lower()
         if provider == "groq":
-            model = os.getenv("GROQ_CHAT_MODEL", "llama-3.3-70b-versatile")
+            model = os.getenv("GROQ_CHAT_MODEL", "openai/gpt-oss-120b")
             if not os.getenv("GROQ_API_KEY"):
                 # Without this, every chat turn 401s and each consumer catches
                 # broadly — the landlord sees generic "something went wrong"
@@ -229,7 +229,7 @@ class DocuMindService:
         )
         if not categories:
             return None, frozenset()
-        model = os.getenv("GROQ_FACT_MODEL", "llama-3.3-70b-versatile")
+        model = os.getenv("GROQ_FACT_MODEL", "openai/gpt-oss-120b")
         print(f"🔄 Groq fact extraction enabled for {sorted(categories)} ({model})")
         return FactExtractor(GroqChat(model=model)), categories
 
@@ -245,7 +245,13 @@ class DocuMindService:
         return self._fact_extractor
 
     def _get_document_facts(self, doc_ids):
-        """(doc_id, filename, unit_label, facts) for each doc_id that has facts.
+        """(doc_id, filename, unit_label, facts, fact_pages) for each doc_id
+        that has facts.
+
+        `fact_pages` maps a fact key to the 0-based page index that states it,
+        and is `{}` for every document ingested before pages were located —
+        the legacy case, which must keep behaving exactly as today. Read with
+        the same `or {}` tolerance already applied to `extracted_facts`.
 
         Scoped to the documents retrieval actually hit, so no data leaves for a
         document the query never touched. Best-effort by contract: any Firestore
@@ -265,7 +271,13 @@ class DocuMindService:
             facts = data.get('extracted_facts') or {}
             if not facts:
                 continue
-            rows.append((doc_id, data.get('filename') or doc_id, data.get('unit_label'), facts))
+            rows.append((
+                doc_id,
+                data.get('filename') or doc_id,
+                data.get('unit_label'),
+                facts,
+                data.get('fact_pages') or {},
+            ))
         return rows
 
     def _list_available_categories(self, landlord_id: str, property_id: str) -> List[str]:

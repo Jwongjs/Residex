@@ -6,7 +6,7 @@ FACT_PROVIDER flag / the lease category route with no call-site change.
 
 Why it exists: local qwen fails on tenancy-agreement prose (rent-in-words,
 "commencing on ... expiring on ..." dates), which needs a larger instruct model.
-Groq's free tier serves llama-3.3-70b-versatile fast on its LPU.
+Groq's free tier serves openai/gpt-oss-120b fast on its LPU.
 
 PRIVACY: fact extraction is fed the FULL unscrubbed document text (names, NRIC,
 addresses) — scrubbing would erase the very fields extraction captures. Sending
@@ -39,17 +39,22 @@ class _Response:
 class GroqChat:
     def __init__(
         self,
-        model: str = "llama-3.3-70b-versatile",
+        model: str = "openai/gpt-oss-120b",
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout: int = 60,
     ):
-        # llama-3.3-70b-versatile is the accuracy pick for structured extraction
-        # on the Groq free tier — a non-reasoning instruct model, so no thinking
-        # tokens to strip or pay for. Override with GROQ_FACT_MODEL (e.g.
-        # openai/gpt-oss-120b or moonshotai/kimi-k2-instruct if a lease still
-        # slips). Groq's LPU serves these in a few seconds, so a 60 s timeout
-        # covers a cold burst comfortably.
+        # openai/gpt-oss-120b is the accuracy pick for structured extraction on
+        # the Groq free tier. Its chain-of-thought comes back in a separate
+        # `message.reasoning` field (not inlined into `content` like
+        # deepseek-r1-distill/qwen3's <think> blocks), so .invoke()'s plain
+        # `.content` read already excludes it with nothing to strip. Override
+        # with GROQ_FACT_MODEL if a lease still slips — check
+        # https://api.groq.com/openai/v1/models against GROQ_API_KEY first,
+        # Groq periodically retires models from the catalog outright (this
+        # replaced a now-decommissioned llama-3.3-70b-versatile). Groq's LPU
+        # serves these in a few seconds, so a 60 s timeout covers a cold burst
+        # comfortably.
         self.model = model
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         self.base_url = (
