@@ -479,10 +479,10 @@ void main() {
       ],
     );
     await _pumpScreen(tester, 2026, summary);
+    expect(find.text('50% share'), findsOneWidget);
     expect(
-      find.text('Shown at your 50% share. '
-          'Loan interest and principal are shown in full.'),
-      findsOneWidget,
+      find.textContaining('Loan interest and principal are shown in full'),
+      findsNothing,
     );
     expect(find.textContaining("property's full figures"), findsNothing);
   });
@@ -978,6 +978,14 @@ void main() {
 
   testWidgets('marking the mortgage settled refreshes the finance summary',
       (tester) async {
+    // The loan-figures panel box adds height to the property card, pushing
+    // this control past the default 600px test surface with nothing left to
+    // scroll — grow the surface instead of fighting scroll physics.
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final repo = await pumpForSettlement(
       tester,
       settledOn: null,
@@ -1003,6 +1011,12 @@ void main() {
 
   testWidgets('clearing the settlement refreshes the finance summary',
       (tester) async {
+    // See the surface-size note above.
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     // The same gap in the other direction: the engine starts expecting the
     // loan document again, so a stale nudge under-counts instead.
     final repo = await pumpForSettlement(
@@ -1227,11 +1241,10 @@ void main() {
         ]));
 
     expect(find.text('50% share'), findsWidgets);
-    expect(find.textContaining('Shown at your 50% share.'), findsOneWidget);
     expect(find.textContaining('share of each unit'), findsNothing);
   });
 
-  testWidgets('mixed shares render a range badge and the per-unit footnote',
+  testWidgets('mixed shares render a range badge',
       (tester) async {
     await pumpShares(tester, summaryWithUnitShares(2026,
         propertyShare: 1.0,
@@ -1243,8 +1256,6 @@ void main() {
         ]));
 
     expect(find.text('50–100% share'), findsOneWidget);
-    expect(find.textContaining('Shown at your share of each unit.'),
-        findsOneWidget);
   });
 
   testWidgets('a co-owned unit row is badged and a wholly-owned one is not',
@@ -1295,7 +1306,5 @@ void main() {
         ]));
 
     expect(find.text('50–100% share'), findsOneWidget);
-    expect(find.textContaining('Shown at your share of each unit.'),
-        findsOneWidget);
   });
 }

@@ -113,7 +113,7 @@ void main() {
     expect(find.textContaining('1 document needed for'), findsOneWidget); // nudge banner
   });
 
-  testWidgets('incomplete year shows the incomplete-records note and an unavailable gap offers Undo', (tester) async {
+  testWidgets('incomplete year with an unavailable gap offers Undo', (tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -146,7 +146,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('records are incomplete'), findsOneWidget);
     expect(find.textContaining('acknowledged unavailable'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
     expect(find.text('Mark unavailable'), findsOneWidget); // nudge banner button

@@ -390,24 +390,6 @@ class FinanceScreen extends ConsumerWidget {
               ),
             ],
           ),
-          if (showShare) ...[
-            const SizedBox(height: 4),
-            Text(
-              sharesVary
-                  ? 'Shown at your share of each unit. Loan interest and '
-                      'principal are shown in full.'
-                  : 'Shown at your ${(lowestShare * 100).toStringAsFixed(0)}% '
-                      'share. Loan interest and principal are shown in full.',
-              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
-            ),
-          ],
-          if (!block.complete) ...[
-            const SizedBox(height: 4),
-            Text(
-              '${summary.year} records are incomplete — this is a provisional figure and will change as documents arrive.',
-              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted),
-            ),
-          ],
           if (showManualLoan) ...[
             const SizedBox(height: 8),
             _buildLoanFiguresRow(context, ref, block, property, summary.year),
@@ -602,7 +584,7 @@ class FinanceScreen extends ConsumerWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Divider(height: 20, color: AppColors.hairline),
+          const Divider(height: 32, color: AppColors.hairline),
           Row(
             children: [
               const Icon(Icons.check_circle_outline,
@@ -627,8 +609,15 @@ class FinanceScreen extends ConsumerWidget {
     }
 
     if (!hasFigures) {
-      return Row(
+      // Stacked, not side by side: "Add loan figures" is the frequent,
+      // primary action and needs its full label legible, while the
+      // settlement question is rare and one-time. Cramming both into one
+      // row starved whichever label lost the width fight on narrow screens.
+      // Matches the populated state's placement below.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Divider(height: 32, color: AppColors.hairline),
           Opacity(
             opacity: isUnusable ? 0.5 : 1.0,
             child: TextButton.icon(
@@ -639,14 +628,16 @@ class FinanceScreen extends ConsumerWidget {
               label: Text('Add loan figures', style: AppTextStyles.labelLarge),
             ),
           ),
-          const Spacer(),
           if (property != null)
-            TextButton(
-              onPressed: () => _openSettlementSheet(context, ref, property),
-              child: Text(
-                _settlementLabel(settled),
-                style: AppTextStyles.labelSmall
-                    .copyWith(color: AppColors.textMuted),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => _openSettlementSheet(context, ref, property),
+                child: Text(
+                  _settlementLabel(settled),
+                  style: AppTextStyles.labelSmall
+                      .copyWith(color: AppColors.textMuted),
+                ),
               ),
             ),
         ],
@@ -659,7 +650,7 @@ class FinanceScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(height: 20, color: AppColors.hairline),
+        const Divider(height: 32, color: AppColors.hairline),
         Row(
           children: [
             Expanded(
