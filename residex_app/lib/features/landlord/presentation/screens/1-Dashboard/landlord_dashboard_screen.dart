@@ -5,11 +5,11 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/router/app_router.dart';
 import '../../../../shared/presentation/providers/auth_providers.dart';
 import '../../providers/property_providers.dart';
-import '../../providers/documind_provider.dart';
 import '../../providers/upcoming_expiries.dart';
 import '../../../domain/entities/property.dart';
 import '../../../../../core/theme/app_dimensions.dart';
 import '../../../../../core/widgets/residex_logo.dart';
+import '../2-Documind/document_viewer_screen.dart';
 
 class LandlordDashboardScreen extends ConsumerWidget {
   final VoidCallback onOpenDocumind;
@@ -236,11 +236,14 @@ class LandlordDashboardScreen extends ConsumerWidget {
                     : AppColors.ink;
             final scope = entry.unitLabel ?? 'Property-wide';
             return InkWell(
-              onTap: () {
-                ref.read(documindNavTargetProvider.notifier).state =
-                    entry.propertyId;
-                onOpenDocumind();
-              },
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => DocumentViewerScreen(
+                  propertyId: entry.propertyId,
+                  docId: entry.docId,
+                  filename: entry.filename,
+                  page: entry.page,
+                ),
+              )),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(

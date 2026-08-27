@@ -26,6 +26,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
     super.unitId,
     super.unitLabel,
     super.extractedFacts,
+    super.factPages,
     super.factsConfidence,
     super.tags,
   });
@@ -47,6 +48,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
       unitId: data['unit_id'] as String?,
       unitLabel: data['unit_label'] as String?,
       extractedFacts: (data['extracted_facts'] as Map<String, dynamic>?),
+      factPages: (data['fact_pages'] as Map<String, dynamic>?),
       factsConfidence: (data['facts_confidence'] as num?)?.toDouble(),
       tags: _parseDocumentTags(data['tags']),
     );
@@ -65,6 +67,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
       unitId: json['unit_id'] as String?,
       unitLabel: json['unit_label'] as String?,
       extractedFacts: (json['extracted_facts'] as Map<String, dynamic>?),
+      factPages: (json['fact_pages'] as Map<String, dynamic>?),
       factsConfidence: (json['facts_confidence'] as num?)?.toDouble(),
       tags: _parseDocumentTags(json['tags']),
     );
@@ -83,6 +86,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
       'unit_id': unitId,
       'unit_label': unitLabel,
       'extracted_facts': extractedFacts,
+      'fact_pages': factPages,
       'facts_confidence': factsConfidence,
       'tags': [for (final t in tags) {'tag': t.tag, 'rhythm': t.rhythm}],
     };
@@ -101,6 +105,7 @@ class DocuMindDocumentModel extends DocuMindDocument {
       unitId: unitId,
       unitLabel: unitLabel,
       extractedFacts: extractedFacts,
+      factPages: factPages,
       factsConfidence: factsConfidence,
       tags: tags,
     );

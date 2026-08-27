@@ -6,6 +6,7 @@ DocuMindDocument _doc({
   required String docId,
   required String category,
   Map<String, dynamic>? facts,
+  Map<String, dynamic>? factPages,
   String propertyId = 'p1',
   String? unitId,
   DateTime? uploadedAt,
@@ -14,7 +15,7 @@ DocuMindDocument _doc({
     docId: docId, landlordId: 'l1', propertyId: propertyId,
     category: category, filename: '$docId.pdf', chunksIndexed: 1,
     uploadedAt: uploadedAt ?? DateTime(2026, 1, 1),
-    unitId: unitId, extractedFacts: facts,
+    unitId: unitId, extractedFacts: facts, factPages: factPages,
   );
 }
 
@@ -79,6 +80,26 @@ void main() {
     expect(entries, hasLength(1));
     expect(entries.single.kind, 'Policy expires');
     expect(entries.single.date, DateTime(2026, 8, 15));
+  });
+
+  test('a located fact page converts to a 1-based display page', () {
+    final entries = foldUpcomingExpiries([
+      _doc(docId: 'a', category: 'lease',
+          facts: {'lease_end': '2026-08-01'},
+          factPages: {'lease_end': 2}),
+    ], today);
+    expect(entries.single.page, 3);
+  });
+
+  test('an unlocated fact page falls back to null, not a wrong page', () {
+    final entries = foldUpcomingExpiries([
+      _doc(docId: 'a', category: 'lease',
+          facts: {'lease_end': '2026-08-01'},
+          factPages: {'other_key': 0}),
+      _doc(docId: 'b', category: 'insurance',
+          facts: {'policy_end': '2026-08-01'}),
+    ], today);
+    expect(entries.every((e) => e.page == null), isTrue);
   });
 
   test('expenses documents without policy_end are ignored', () {

@@ -14,6 +14,10 @@ class ExpiryEntry {
   final String kind; // 'Tenancy ends' | 'Policy expires'
   final DateTime date;
 
+  /// 1-based PDF page the expiry date was read from; null when the document
+  /// predates page location and the viewer should just open to page one.
+  final int? page;
+
   ExpiryEntry({
     required this.docId,
     required this.propertyId,
@@ -23,6 +27,7 @@ class ExpiryEntry {
     required this.filename,
     required this.kind,
     required this.date,
+    this.page,
   });
 }
 
@@ -63,11 +68,15 @@ List<ExpiryEntry> foldUpcomingExpiries(
   final horizon = startOfToday.add(Duration(days: windowDays));
   final entries = <ExpiryEntry>[];
   for (final doc in newestByScope.values) {
-    final raw = doc.extractedFacts?[_dateKeyByCategory[doc.category]];
+    final factKey = _dateKeyByCategory[doc.category];
+    final raw = doc.extractedFacts?[factKey];
     if (raw is! String) continue;
     final date = DateTime.tryParse(raw);
     if (date == null) continue;
     if (date.isBefore(startOfToday) || date.isAfter(horizon)) continue;
+    // Stored index is 0-based; the viewer's page jump is 1-based, matching
+    // how citation pages are already displayed elsewhere.
+    final pageIndex = doc.factPages?[factKey];
     entries.add(ExpiryEntry(
       docId: doc.docId,
       propertyId: doc.propertyId,
@@ -77,6 +86,7 @@ List<ExpiryEntry> foldUpcomingExpiries(
       filename: doc.filename,
       kind: _kindByCategory[doc.category]!,
       date: date,
+      page: pageIndex is int ? pageIndex + 1 : null,
     ));
   }
   entries.sort((a, b) => a.date.compareTo(b.date));

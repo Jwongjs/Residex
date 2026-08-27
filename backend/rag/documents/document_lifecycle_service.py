@@ -159,6 +159,7 @@ class DocumentLifecycleService:
                 facts_confidence=data.get('facts_confidence'),
                 facts_status=facts_status_for(data.get('extracted_facts')),
                 tags=[DocumentTag(**t) for t in document_tags(category, data.get('extracted_facts'))],
+                fact_pages=data.get('fact_pages'),
             ))
 
         print(f"✅ Listed {len(documents)} documents")

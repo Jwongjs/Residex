@@ -32,6 +32,10 @@ class DocuMindDocument {
   /// null when extraction produced nothing.
   final Map<String, dynamic>? extractedFacts;
 
+  /// Maps an extractedFacts key to the 0-based PDF page it was read from;
+  /// null/missing for documents ingested before pages were located.
+  final Map<String, dynamic>? factPages;
+
   /// Extractor's self-reported confidence (0.0-1.0).
   final double? factsConfidence;
 
@@ -50,6 +54,7 @@ class DocuMindDocument {
     this.unitId,
     this.unitLabel,
     this.extractedFacts,
+    this.factPages,
     this.factsConfidence,
     this.tags = const [],
   });

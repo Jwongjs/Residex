@@ -147,6 +147,9 @@ class DocumentInfo(BaseModel):
     # so legacy documents (stored before this field) surface correctly too.
     facts_status: str = "ok"
     tags: list[DocumentTag] = []
+    # Maps an extracted_facts key to the 0-based PDF page it was read from.
+    # {} for documents ingested before pages were located.
+    fact_pages: Optional[dict] = None
 
 
 class DocListResponse(BaseModel):
