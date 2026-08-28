@@ -112,6 +112,29 @@ Verified against the codebase and current external facts before implementation p
 | **F7** | App uses `google_sign_in` (`pubspec.yaml:47`) and is switching to App Check Play Integrity — both authenticate by app certificate fingerprint, which **Play App Signing changes**. | Registering Play's SHA-1/SHA-256 in Firebase added as an explicit step. Silent, tester-only failure otherwise. |
 | **F8** | Oracle Ubuntu images ship restrictive in-instance `iptables` independent of the OCI security list. | Both layers must be opened. |
 | **F9** | `pytest` is **not** in `requirements.txt` (0 occurrences); R8 minification is enabled on a release build type that has only ever been signed with the debug key. | Dev-deps install needed for the on-VM test step; release build needs explicit shakeout. |
+| **F10** | **Measured** (2026-08-29) the three stages that stay local, on 2 threads with the GPU excluded — see table below. All install and fit; **embeddings, not OCR, are the dominant ingestion cost** (~11× slower on CPU, and batching does not help). | Confirms 2 OCPU/12GB is workable. Sets the latency expectation to verify on the real VM. |
+
+### F10 detail — measured local-stage cost
+
+Install feasibility confirmed: `torch` 2.5.1 publishes a `manylinux2014_aarch64` wheel (91.9 MB); Ollama ships arm64 Linux builds; Tesseract is a distro package. No source builds required.
+
+**Memory: ~3 GB of the 12 GB budget** — 893 MB measured for torch + CrossEncoder, plus ~1 GB Ollama/`nomic-embed-text`, ~400 MB FastAPI/langchain/Firestore, ~700 MB OS. The halved tier costs cores, not RAM.
+
+| Stage | GPU / 16 threads | Forced CPU, 2 threads |
+|---|---|---|
+| Embeddings, per 1000-char chunk | 90 ms | **989 ms** (~11×) |
+| Rerank, 15 pairs = one question (`fetch_k=15`) | — | **~1.5 s** |
+| Tesseract OCR, per A4 page @150-200 dpi | — | **2.1-3.9 s** |
+
+Projected upload latency on the VM, at `chunk_size=1000` (`ingestion_service.py:104`), so a 10-page document is ~25-38 chunks:
+- **Digital PDF, 10 pages** (no OCR — all current test fixtures are this shape): **~30 s**
+- **Scanned/photographed, 10 pages**: **~60-120 s**
+
+Rerank is per-question, not per-upload, so chat latency stays ~1.5-2.5 s before the Groq call.
+
+*Caveat:* measured on x86 laptop cores pinned to 2 threads, not Ampere Altra. Treat magnitudes as ±50%; the ratios and cost ranking should hold. **Verify on the real VM before inviting testers** (see the ingestion-latency step in the verification plan).
+
+*Escape hatch, and its cost:* if ingestion proves too slow, the remaining lever is hosting embeddings too — but that is the lever that actually breaks the privacy property. Fact extraction sends PII-scrubbed spans; **embedding would send full chunk text**. Do not take that step casually.
 
 Unchanged by the check: the reverse-proxy/systemd/Play-closed-testing architecture, the Phase 1 auth model, and the decision to defer invite-only signup, CORS tightening, backend App Check enforcement, rate limiting, and crash monitoring.
 
