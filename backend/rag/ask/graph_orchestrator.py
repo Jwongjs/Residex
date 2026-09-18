@@ -60,6 +60,7 @@ class DocuMindGraphOrchestrator:
                 "conversation": "respond_conversation",
                 "finance": "prepare_finance",
                 "predict": "predict_categories",
+                "decide": "decide_action",
             },
         )
 
@@ -171,6 +172,14 @@ class DocuMindGraphOrchestrator:
     def _route_after_conversation(self, state: DocuMindState) -> str:
         if state.get("intent") == "finance_question":
             return "finance"
+        # Confirm / override resumes are scoped by the service from the pending
+        # checkpoint or the override itself, and cancel retrieves nothing, so a
+        # prediction here would be an LLM call whose result is thrown away. A
+        # unit resume still predicts: its prediction is the fallback category
+        # scope when the checkpoint stashed none.
+        user_action = (state.get("user_action") or "").strip().lower()
+        if user_action in {"confirm", "cancel"} or user_action.startswith("override:"):
+            return "decide"
         if state.get("rag_needed", False):
             return "predict"
         intent = state.get("intent")

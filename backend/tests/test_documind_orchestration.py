@@ -77,8 +77,10 @@ class _FakeRouter:
 class _FakePredictor:
     def __init__(self, result):
         self._result = result
+        self.calls = 0
 
     def predict(self, question, available_categories, available_units=None, recent_turns=None):
+        self.calls += 1
         return self._result
 
 
@@ -263,6 +265,58 @@ class GraphOrchestratorEmptyPredictionTests(unittest.IsolatedAsyncioTestCase):
             "property_name": "Maple Residency",
         })
 
+        self.assertEqual(state["action"], "retrieve")
+
+
+
+class GraphOrchestratorCheckpointResumeTests(unittest.IsolatedAsyncioTestCase):
+    def _orchestrator(self):
+        predictor = _FakePredictor({
+            "predicted_categories": ["lease"],
+            "confidence": 0.8,
+            "reason": "lease question",
+        })
+        return DocuMindGraphOrchestrator(
+            conversation_router=_FakeRouter(), category_predictor=predictor,
+        ), predictor
+
+    async def _run(self, orchestrator, user_action):
+        return await orchestrator.run({
+            "user_input": "when does the lease expire?",
+            "explicit_categories": [],
+            "available_categories": ["lease"],
+            "user_action": user_action,
+            "recent_turns": [],
+            "property_name": "Maple Residency",
+        })
+
+    async def test_resumes_that_never_read_the_prediction_skip_the_predictor(self):
+        # The service scopes confirm/override from the pending checkpoint or
+        # the override itself, and cancel retrieves nothing, so a prediction
+        # would be an LLM call whose result is thrown away.
+        for user_action, expected_action in [
+            ("confirm", "retrieve"),
+            ("override:lease", "retrieve"),
+            ("cancel", "cancel"),
+        ]:
+            with self.subTest(user_action=user_action):
+                orchestrator, predictor = self._orchestrator()
+                state = await self._run(orchestrator, user_action)
+                self.assertEqual(predictor.calls, 0)
+                self.assertEqual(state["action"], expected_action)
+
+    async def test_cancel_still_gets_its_reply(self):
+        orchestrator, _ = self._orchestrator()
+        state = await self._run(orchestrator, "cancel")
+        self.assertIn("cancelled", state["assistant_message"])
+
+    async def test_unit_resume_still_predicts(self):
+        # A unit resume falls back to the prediction as its category scope
+        # when the checkpoint stashed none, so it must keep paying for it.
+        orchestrator, predictor = self._orchestrator()
+        state = await self._run(orchestrator, "unit:unit-A")
+        self.assertEqual(predictor.calls, 1)
+        self.assertEqual(state["predicted_categories"], ["lease"])
         self.assertEqual(state["action"], "retrieve")
 
 
