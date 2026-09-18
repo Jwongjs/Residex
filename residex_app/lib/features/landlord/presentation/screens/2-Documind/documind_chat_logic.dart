@@ -8,6 +8,21 @@ String buildDocuMindAssistantText({
   return _appendSearchedCategories(answer.answer, answer, categoryLabelResolver);
 }
 
+/// The page/source suffix shown beside a citation's filename.
+///
+/// A fact citation now carries the page that states its value, located at
+/// upload, so it says both: where to look, and that the value came from the
+/// document's parsed details rather than the page's prose. A fact the locator
+/// could not place keeps the bare label — "p.—" reads as a missing page
+/// number, not as "we don't know".
+String citationSourceSuffix(Citation citation) {
+  final page = citation.page;
+  if (citation.isExtractedFacts) {
+    return page == null ? ' · extracted' : ' · p.$page · extracted';
+  }
+  return ' · p.${page ?? '—'}';
+}
+
 /// Quick-reply labels for the "which unit is this chat about" picker shown
 /// before the first question on a multi-unit property.
 List<String> buildUnitScopeQuickReplies(List<Unit> units) {

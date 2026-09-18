@@ -164,16 +164,16 @@ void main() {
     });
 
     test('flags tenant-paid utilities distinctly', () {
-      expect(expenseExclusionNote(makeLine('utilities', deductible: false)), 'Tenant pays — excluded');
+      expect(expenseExclusionNote(makeLine('utilities', deductible: false)), 'Tenant pays (excluded)');
     });
 
     test('flags penalties and capital as not deductible', () {
-      expect(expenseExclusionNote(makeLine('late_penalty', deductible: false)), 'Penalty — not deductible');
-      expect(expenseExclusionNote(makeLine('renovation', deductible: false)), 'Capital cost — not deductible');
+      expect(expenseExclusionNote(makeLine('late_penalty', deductible: false)), 'Penalty (not deductible)');
+      expect(expenseExclusionNote(makeLine('renovation', deductible: false)), 'Capital cost (not deductible)');
     });
 
     test('flags first-letting costs as excluded', () {
-      expect(expenseExclusionNote(makeLine('agent_commission', deductible: false)), 'First-letting cost — excluded');
+      expect(expenseExclusionNote(makeLine('agent_commission', deductible: false)), 'First-letting cost (excluded)');
     });
 
     test('falls back to a generic note for any other non-deductible line', () {

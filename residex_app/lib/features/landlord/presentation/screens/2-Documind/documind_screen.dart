@@ -416,13 +416,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                   ),
                 ),
                 Text(
-                  // An extracted-fact citation has no page to point at: the
-                  // value was parsed at upload, and the pages retrieval
-                  // returned may not state it at all. "p.—" would read as a
-                  // missing page number.
-                  citation.isExtractedFacts
-                      ? ' · extracted'
-                      : ' · p.${citation.page ?? '—'}',
+                  citationSourceSuffix(citation),
                   style: GoogleFonts.ibmPlexMono(
                     fontSize: 11,
                     color: AppColors.textMuted,

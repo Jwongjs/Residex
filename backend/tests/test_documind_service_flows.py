@@ -1436,6 +1436,129 @@ class FactExtractionIngestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored["facts_status"], "ok")
         self.assertIsNotNone(stored["facts_extracted_at"])
 
+    async def test_fact_pages_written_for_facts_the_text_states(self):
+        # The loader page states the rent; the dates it does not. Only the
+        # located fact gets an index — the rest stay absent rather than
+        # defaulting to page 1.
+        fake_db = _FakeDB()
+        fake_llm = _FakeLLM('{"monthly_rent": 1500, "lease_start": "2025-09-01", '
+                            '"lease_end": "2026-09-01", "confidence": 0.9}')
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), fake_llm
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documents.ingestion_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            loader_mock.return_value.load.return_value = [self._patched_loader_page()]
+
+            await service.ingest_document(
+                landlord_id="l1", property_id="p1", category="lease", file=self._upload_file(),
+            )
+
+        stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
+        self.assertEqual(stored["fact_pages"], {"monthly_rent": 0})
+
+    async def test_fact_pages_absent_when_nothing_locates(self):
+        fake_db = _FakeDB()
+        fake_llm = _FakeLLM('{"monthly_rent": 1500, "confidence": 0.9}')
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), fake_llm
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documents.ingestion_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            loader_mock.return_value.load.return_value = [
+                self._patched_loader_page(text="Tenancy agreement with no figures in it.")
+            ]
+
+            await service.ingest_document(
+                landlord_id="l1", property_id="p1", category="lease", file=self._upload_file(),
+            )
+
+        stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
+        self.assertIsNone(stored["fact_pages"])
+        # The facts themselves are untouched by the locator's outcome.
+        self.assertEqual(stored["extracted_facts"], {"monthly_rent": 1500.0})
+
+    async def test_locator_failure_never_loses_the_facts(self):
+        # Facts are load-bearing for the finance engine; pages are a
+        # navigation nicety. The locate call has its own try/except so a
+        # locator bug can never take the facts down with it.
+        fake_db = _FakeDB()
+        fake_llm = _FakeLLM('{"monthly_rent": 1500, "confidence": 0.9}')
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), fake_llm
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        def _explode(_facts, _pages):
+            raise RuntimeError("locator exploded")
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documents.ingestion_service.PyPDFLoader") as loader_mock, \
+             patch("rag.documents.ingestion_service.locate_facts", _explode):
+            embeddings_mock.return_value = _FakeEmbeddings()
+            loader_mock.return_value.load.return_value = [self._patched_loader_page()]
+
+            response = await service.ingest_document(
+                landlord_id="l1", property_id="p1", category="lease", file=self._upload_file(),
+            )
+
+        self.assertEqual(response.status, "indexed")
+        stored = next(d for d in fake_db.docs if d.get("landlord_id") == "l1")
+        self.assertEqual(stored["extracted_facts"]["monthly_rent"], 1500.0)
+        self.assertEqual(stored["facts_status"], "ok")
+        self.assertIsNone(stored["fact_pages"])
+
+    async def test_chunk_without_page_metadata_stores_none_not_zero(self):
+        # 0 means page 1 and makes a wrong citation unfalsifiable. Every read
+        # path already guards on None.
+        fake_db = _FakeDB()
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        page = self._patched_loader_page()
+        page.metadata = {}
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documents.ingestion_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            loader_mock.return_value.load.return_value = [page]
+
+            await service.ingest_document(
+                landlord_id="l1", property_id="p1", category="lease", file=self._upload_file(),
+            )
+
+        self.assertEqual(len(fake_db.chunks), 1)
+        self.assertIsNone(fake_db.chunks[0]["page"])
+
+    async def test_chunk_with_page_metadata_still_stores_the_page(self):
+        fake_db = _FakeDB()
+        service = _build_service(
+            fake_db, _FakeConversationStore(), _FakeGraphOrchestrator({}), _FakeLLM("unused")
+        )
+        service._storage_bucket = _FakeStorageBucket()
+
+        page = self._patched_loader_page()
+        page.metadata = {"page": 4}
+
+        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock, \
+             patch("rag.documents.ingestion_service.PyPDFLoader") as loader_mock:
+            embeddings_mock.return_value = _FakeEmbeddings()
+            loader_mock.return_value.load.return_value = [page]
+
+            await service.ingest_document(
+                landlord_id="l1", property_id="p1", category="lease", file=self._upload_file(),
+            )
+
+        self.assertEqual(fake_db.chunks[0]["page"], 4)
+
     async def test_list_documents_passes_extraction_fields_through(self):
         fake_db = _FakeDB(docs=[
             {
@@ -2626,6 +2749,244 @@ class FactContextInjectionTests(unittest.IsolatedAsyncioTestCase):
         extracted = [c for c in response.citations if c.source == "extracted_facts"]
         self.assertIn("661214055049", extracted[0].snippet)
         self.assertIn("[NRIC]", fake_llm.last_prompt)
+
+
+class CitationPageMergeTests(unittest.IsolatedAsyncioTestCase):
+    """Fact citations get a page, and stop displacing page citations.
+
+    Two independent changes land here and each can break the other silently:
+    facts are merged into the (doc_id, page) dict the chunk loop builds, and
+    the hardcoded score=1.0 + insert(0) is replaced by one score-ordered sort.
+    A wrong merge key or a wrong score produces a plausible strip pointing at
+    the wrong page, so the legacy-document regression test is the gate.
+    """
+
+    def _fixtures(self, fact_pages=None, chunk_pages=(5,), extra_doc=False):
+        doc = {
+            "doc_id": "d-lease", "landlord_id": "l1", "property_id": "p1",
+            "category": "lease", "filename": "ayer8-lease.pdf",
+            "unit_label": "Unit B2-1-2",
+            "extracted_facts": {"lease_end": "2026-10-31", "monthly_rent": 8000.0},
+        }
+        if fact_pages is not None:
+            doc["fact_pages"] = fact_pages
+        docs = [doc]
+        chunks = [
+            {
+                "doc_id": "d-lease", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "ayer8-lease.pdf",
+                "unit_label": "Unit B2-1-2", "page": page,
+                "text": f"tenancy clause text, page {page}",
+            }
+            for page in chunk_pages
+        ]
+        if extra_doc:
+            # A second, better-matching document carrying no facts. The fake
+            # retriever scores by fixture order, so putting it FIRST makes it
+            # the strongest chunk in the result set.
+            docs.insert(0, {
+                "doc_id": "d-strong", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "strong-match.pdf",
+                "unit_label": None, "extracted_facts": {},
+            })
+            chunks.insert(0, {
+                "doc_id": "d-strong", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "strong-match.pdf",
+                "unit_label": None, "page": 0,
+                "text": "the strongest matching passage",
+            })
+        fake_db = _FakeDB(docs=docs, chunks=chunks)
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": ["lease"],
+            "prediction_confidence": 0.95,
+            "prediction_reason": "asks about tenancy end date",
+            "assistant_message": "",
+            "intent": "document_question",
+        })
+        return fake_db, fake_graph
+
+    async def _ask(self, fake_db, fake_graph):
+        service = _build_service(
+            fake_db, _FakeConversationStore(), fake_graph, _FakeLLM("ok")
+        )
+        payload = AskRequest(property_id="p1", question="When does the tenancy end?")
+        return await service.ask_documind(payload, "l1")
+
+    async def test_facts_on_two_pages_emit_two_fact_citations(self):
+        fake_db, fake_graph = self._fixtures(
+            fact_pages={"lease_end": 3, "monthly_rent": 7}
+        )
+        response = await self._ask(fake_db, fake_graph)
+
+        extracted = [c for c in response.citations if c.source == "extracted_facts"]
+        self.assertEqual(sorted(c.page for c in extracted), [4, 8])
+        by_page = {c.page: c.snippet for c in extracted}
+        self.assertIn("Lease end: 2026-10-31", by_page[4])
+        self.assertNotIn("Monthly rent", by_page[4])
+        self.assertIn("Monthly rent (RM): 8000.0", by_page[8])
+        # The chunk's own page survives as its own row.
+        self.assertEqual(
+            [c.page for c in response.citations if c.source == "excerpt"], [6]
+        )
+
+    async def test_a_fact_and_a_chunk_on_the_same_page_emit_one_row(self):
+        # chunk page 5 -> display 6; both facts located on index 5 -> display 6.
+        fake_db, fake_graph = self._fixtures(
+            fact_pages={"lease_end": 5, "monthly_rent": 5}
+        )
+        response = await self._ask(fake_db, fake_graph)
+
+        self.assertEqual(len(response.citations), 1)
+        row = response.citations[0]
+        self.assertEqual(row.page, 6)
+        self.assertEqual(row.source, "extracted_facts")
+        self.assertIn("Lease end: 2026-10-31", row.snippet)
+        self.assertIn("Monthly rent (RM): 8000.0", row.snippet)
+        # It keeps the chunk's rerank score, not a hardcoded 1.0.
+        self.assertAlmostEqual(row.score, 0.9)
+
+    async def test_a_fact_only_page_scores_at_the_documents_best_chunk(self):
+        # Two chunks -> scores 0.9 and 0.85. The fact page no chunk came from
+        # takes 0.9: the document earned its place, and that is the honest
+        # measure of it.
+        fake_db, fake_graph = self._fixtures(
+            fact_pages={"lease_end": 3, "monthly_rent": 3}, chunk_pages=(5, 9)
+        )
+        response = await self._ask(fake_db, fake_graph)
+
+        fact_row = next(c for c in response.citations if c.page == 4)
+        self.assertEqual(fact_row.source, "extracted_facts")
+        self.assertAlmostEqual(fact_row.score, 0.9)
+        self.assertNotEqual(fact_row.score, 1.0)
+
+    async def test_a_strong_chunk_is_no_longer_displaced_by_a_fact_citation(self):
+        # Goal 2. Today the fact citation is inserted at position 0 with
+        # score=1.0 regardless of how well its document matched.
+        fake_db, fake_graph = self._fixtures(
+            fact_pages={"lease_end": 3, "monthly_rent": 3}, extra_doc=True
+        )
+        response = await self._ask(fake_db, fake_graph)
+
+        self.assertEqual(response.citations[0].filename, "strong-match.pdf")
+        self.assertEqual(response.citations[0].source, "excerpt")
+        scores = [c.score for c in response.citations]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+        # The fact page takes ITS OWN document's best chunk score (0.85), not
+        # the global best (0.9). Without this the sort still comes out
+        # descending under a global-max bug, so the ordering assertion above
+        # cannot catch it on its own.
+        fact_row = next(c for c in response.citations if c.source == "extracted_facts")
+        self.assertAlmostEqual(fact_row.score, 0.85)
+
+    async def test_pageless_facts_never_merge_into_a_chunk_with_no_page(self):
+        # An unknown page is not a page. A chunk whose page metadata was
+        # missing and a fact we could not place are not known to be on the
+        # same page, so collapsing them would drop the excerpt from the strip
+        # on exactly the documents carrying the least metadata.
+        fake_db, fake_graph = self._fixtures(chunk_pages=(None,))
+        response = await self._ask(fake_db, fake_graph)
+
+        self.assertEqual(len(response.citations), 2)
+        self.assertEqual({c.source for c in response.citations},
+                         {"excerpt", "extracted_facts"})
+        self.assertTrue(all(c.page is None for c in response.citations))
+        excerpt = next(c for c in response.citations if c.source == "excerpt")
+        self.assertIn("tenancy clause text", excerpt.snippet)
+
+    async def test_legacy_document_produces_todays_citation_rows(self):
+        # THE REGRESSION GATE. A document with no fact_pages must emit exactly
+        # the rows shipped today — same count, same doc_id/page/snippet/source
+        # on each, one page-less fact row. Only the ORDER may differ, and only
+        # because scoring replaced the hardcoded top slot.
+        fake_db, fake_graph = self._fixtures()  # no fact_pages key at all
+        response = await self._ask(fake_db, fake_graph)
+
+        # Count first, and separately: the set comparison below collapses a
+        # duplicated row, so on its own it cannot enforce "same count".
+        self.assertEqual(len(response.citations), 2)
+        rows = {
+            (c.doc_id, c.page, c.source, c.unit_label) for c in response.citations
+        }
+        self.assertEqual(rows, {
+            ("d-lease", 6, "excerpt", "Unit B2-1-2"),
+            ("d-lease", None, "extracted_facts", "Unit B2-1-2"),
+        })
+        fact_row = next(c for c in response.citations if c.source == "extracted_facts")
+        self.assertIn("Lease end: 2026-10-31", fact_row.snippet)
+        self.assertIn("Monthly rent (RM): 8000.0", fact_row.snippet)
+        excerpt = next(c for c in response.citations if c.source == "excerpt")
+        self.assertIn("tenancy clause text", excerpt.snippet)
+
+        # Ordering is asserted separately, against score — not assumed.
+        scores = [c.score for c in response.citations]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+    async def test_two_documents_sharing_a_filename_do_not_merge(self):
+        # A landlord who uploads "lease.pdf" for each unit gives two distinct
+        # documents the same name. Keyed on filename, one document's facts
+        # would be written into the OTHER document's page row: a citation
+        # opening a document that does not state the value, labelled with the
+        # wrong unit, and destroying that document's excerpt on the way. The
+        # merge key is doc_id for exactly this reason.
+        docs = [
+            {
+                "doc_id": "d-unit-a", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "lease.pdf",
+                "unit_label": "Unit A",
+                "extracted_facts": {"lease_end": "2026-10-31"},
+                "fact_pages": {"lease_end": 3},
+            },
+            {
+                "doc_id": "d-unit-b", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "lease.pdf",
+                "unit_label": "Unit B", "extracted_facts": {},
+            },
+        ]
+        chunks = [
+            {
+                "doc_id": "d-unit-a", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "lease.pdf",
+                "unit_label": "Unit A", "page": 0,
+                "text": "unit A cover page",
+            },
+            {
+                # Same display page (4) as unit A's located fact.
+                "doc_id": "d-unit-b", "landlord_id": "l1", "property_id": "p1",
+                "category": "lease", "filename": "lease.pdf",
+                "unit_label": "Unit B", "page": 3,
+                "text": "unit B clause text",
+            },
+        ]
+        fake_db = _FakeDB(docs=docs, chunks=chunks)
+        _, fake_graph = self._fixtures()
+        response = await self._ask(fake_db, fake_graph)
+
+        extracted = [c for c in response.citations if c.source == "extracted_facts"]
+        self.assertEqual(len(extracted), 1)
+        # The fact belongs to unit A, on unit A's document.
+        self.assertEqual(extracted[0].doc_id, "d-unit-a")
+        self.assertEqual(extracted[0].unit_label, "Unit A")
+        self.assertEqual(extracted[0].page, 4)
+
+        # Unit B's page 4 survives as its own excerpt row, unclaimed.
+        unit_b = next(c for c in response.citations if c.doc_id == "d-unit-b")
+        self.assertEqual(unit_b.source, "excerpt")
+        self.assertEqual(unit_b.page, 4)
+        self.assertIn("unit B clause text", unit_b.snippet)
+
+    async def test_a_bucket_that_renders_nothing_emits_no_row(self):
+        # expense_lines is structured; facts_snippet skips it, so its bucket
+        # has nothing to show and must not become an empty citation.
+        fake_db, fake_graph = self._fixtures(fact_pages={"lease_end": 3})
+        fake_db.docs[0]["extracted_facts"] = {
+            "lease_end": "2026-10-31",
+            "expense_lines": [{"subtype": "quit_rent", "amount": 120.0}],
+        }
+        response = await self._ask(fake_db, fake_graph)
+
+        extracted = [c for c in response.citations if c.source == "extracted_facts"]
+        self.assertEqual([c.page for c in extracted], [4])
 
 
 class UnitOwnershipShareLookupTests(unittest.IsolatedAsyncioTestCase):

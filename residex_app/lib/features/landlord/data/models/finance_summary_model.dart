@@ -32,7 +32,7 @@ class FinanceSummaryModel {
       netPl: _d(json['net_pl']),
       landlordExpenses: _d(json['landlord_expenses']),
       statutoryRentalIncome: _d(json['statutory_rental_income']),
-      statutoryNote: json['statutory_note'] as String? ?? 'Estimate — for your tax agent',
+      statutoryNote: json['statutory_note'] as String? ?? 'Estimate; confirm with your tax agent',
     );
   }
 

@@ -179,7 +179,8 @@ class FinanceScreen extends ConsumerWidget {
                   style: AppTextStyles.titleLarge),
               const SizedBox(height: 8),
               Text(
-                'Upload rent invoices, tax bills, loan statements and receipts — the numbers compute themselves.',
+                'Upload rent invoices, tax bills, loan statements and receipts. '
+                'The numbers compute themselves.',
                 style: AppTextStyles.bodyMedium,
                 textAlign: TextAlign.center,
               ),
@@ -473,7 +474,7 @@ class FinanceScreen extends ConsumerWidget {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '${coverageLabels[category] ?? category} — acknowledged unavailable',
+                          '${coverageLabels[category] ?? category} · acknowledged unavailable',
                           style: AppTextStyles.labelSmall.copyWith(color: AppColors.textMuted),
                         ),
                       ),
@@ -718,7 +719,7 @@ class FinanceScreen extends ConsumerWidget {
                   style: AppTextStyles.titleLarge),
               const SizedBox(height: 4),
               Text(
-                'Past years keep their loan figures — you just stop being '
+                'Past years keep their loan figures. You just stop being '
                 'asked from this point on.',
                 style: AppTextStyles.bodySmall
                     .copyWith(color: AppColors.textMuted),
@@ -932,7 +933,7 @@ class FinanceScreen extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Divider(height: 20, color: AppColors.hairline),
-        Text('Rent payment issues — $year', style: AppTextStyles.titleMedium),
+        Text('Rent payment issues · $year', style: AppTextStyles.titleMedium),
         const SizedBox(height: 8),
         ...issues.map((issue) {
           final unit = issue.$1;
@@ -962,7 +963,7 @@ class FinanceScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text('${unit.label} — $monthLabel', style: AppTextStyles.bodyMedium),
+                    child: Text('${unit.label} · $monthLabel', style: AppTextStyles.bodyMedium),
                   ),
                   Text(
                     isWrittenOff ? 'Written off' : 'Outstanding',

@@ -1,4 +1,5 @@
-"""Loading extracted facts for the documents retrieval actually hit.
+"""Loading extracted facts, and the pages that state them, for the documents
+retrieval actually hit.
 
 Scope is deliberately narrow: only doc_ids present in the retrieved chunks.
 The lookup must never raise — a facts failure degrades the answer to
@@ -63,14 +64,34 @@ def _service(docs, explode_on=None):
 
 
 class TestDocumentFactsLookup:
-    def test_returns_doc_id_filename_unit_label_and_facts(self):
+    def test_returns_doc_id_filename_unit_label_facts_and_fact_pages(self):
         service = _service({
             "d1": {"filename": "lease.pdf", "unit_label": "Unit A",
+                   "extracted_facts": {"lease_end": "2026-10-31"},
+                   "fact_pages": {"lease_end": 3}},
+        })
+        assert service._get_document_facts(["d1"]) == [
+            ("d1", "lease.pdf", "Unit A", {"lease_end": "2026-10-31"}, {"lease_end": 3}),
+        ]
+
+    def test_missing_fact_pages_reads_as_an_empty_map(self):
+        # The legacy case: every document ingested before pages were located.
+        # It must behave exactly as today, so absence is an empty map, never
+        # a None the caller has to guard.
+        service = _service({
+            "d1": {"filename": "lease.pdf", "unit_label": None,
                    "extracted_facts": {"lease_end": "2026-10-31"}},
         })
         assert service._get_document_facts(["d1"]) == [
-            ("d1", "lease.pdf", "Unit A", {"lease_end": "2026-10-31"}),
+            ("d1", "lease.pdf", None, {"lease_end": "2026-10-31"}, {}),
         ]
+
+    def test_null_fact_pages_reads_as_an_empty_map(self):
+        service = _service({
+            "d1": {"filename": "lease.pdf", "unit_label": None,
+                   "extracted_facts": {"amount": 1}, "fact_pages": None},
+        })
+        assert service._get_document_facts(["d1"])[0][4] == {}
 
     def test_deduplicates_doc_ids_preserving_order(self):
         service = _service({
@@ -88,6 +109,13 @@ class TestDocumentFactsLookup:
         })
         assert service._get_document_facts(["d1"]) == []
 
+    def test_document_with_pages_but_no_facts_is_still_omitted(self):
+        service = _service({
+            "d1": {"filename": "lease.pdf", "unit_label": None,
+                   "extracted_facts": {}, "fact_pages": {"lease_end": 3}},
+        })
+        assert service._get_document_facts(["d1"]) == []
+
     def test_missing_document_is_omitted(self):
         service = _service({})
         assert service._get_document_facts(["nope"]) == []
@@ -100,7 +128,7 @@ class TestDocumentFactsLookup:
         )
         # d1 raises; d2 must still come back.
         assert service._get_document_facts(["d1", "d2"]) == [
-            ("d2", "ok.pdf", None, {"amount": 5}),
+            ("d2", "ok.pdf", None, {"amount": 5}, {}),
         ]
 
     def test_empty_input_makes_no_firestore_call(self):

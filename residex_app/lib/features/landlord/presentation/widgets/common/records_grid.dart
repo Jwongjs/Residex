@@ -120,7 +120,7 @@ class RecordsGridScreen extends ConsumerWidget {
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         backgroundColor: AppColors.paper,
-        title: Text('$propertyName — Records', style: AppTextStyles.titleLarge),
+        title: Text('$propertyName · Records', style: AppTextStyles.titleLarge),
       ),
       body: summaryAsync.when(
         data: (summary) {

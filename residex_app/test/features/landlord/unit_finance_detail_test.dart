@@ -169,7 +169,7 @@ void main() {
     expect(find.text('−RM 380.00'), findsNothing);
     // The excluded line still shows, tagged with its reason.
     expect(find.text('Water meter'), findsOneWidget);
-    expect(find.text('Tenant pays — excluded'), findsOneWidget);
+    expect(find.text('Tenant pays (excluded)'), findsOneWidget);
   });
 
   testWidgets('accordion shows Net P/L direct expenses and a statutory contribution block',
@@ -257,13 +257,13 @@ void main() {
     await tester.pump();
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Unit A — $year'), findsOneWidget); // still frozen on old year
+    expect(find.text('Unit A · $year'), findsOneWidget); // still frozen on old year
 
     completer.complete(_summaryWithUnit(nextYear, unitYear2));
     await tester.pumpAndSettle();
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.text('Unit A — $nextYear'), findsOneWidget);
+    expect(find.text('Unit A · $nextYear'), findsOneWidget);
     expect(find.text('RM 5,000.00'), findsWidgets);
   });
 
@@ -317,7 +317,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.text('Unit A — $year2'), findsOneWidget);
+    expect(find.text('Unit A · $year2'), findsOneWidget);
 
     // Second switch: year2 -> year3. This is the one the user reports as broken.
     await tester.tap(find.text('$year2'));
@@ -331,7 +331,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.text('Unit A — $year3'), findsOneWidget);
+    expect(find.text('Unit A · $year3'), findsOneWidget);
     expect(find.text('RM 3,000.00'), findsWidgets);
   });
 
@@ -371,7 +371,7 @@ void main() {
     await tester.tap(find.text('$year2'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Unit A — $year2'), findsOneWidget);
+    expect(find.text('Unit A · $year2'), findsOneWidget);
 
     // Switch BACK to the original year. By now financeSummaryProvider(year)
     // is already cached from the initial load, so there is no loading ->
@@ -382,7 +382,7 @@ void main() {
     await tester.tap(find.text('$year'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Unit A — $year'), findsOneWidget);
+    expect(find.text('Unit A · $year'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
@@ -418,7 +418,7 @@ void main() {
     await tester.tap(find.text('$nextYear'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Unit A — $year'), findsOneWidget); // reverted, not stuck
+    expect(find.text('Unit A · $year'), findsOneWidget); // reverted, not stuck
     expect(find.textContaining("Couldn't load $nextYear"), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });

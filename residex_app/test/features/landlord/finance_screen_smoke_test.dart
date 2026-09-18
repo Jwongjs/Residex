@@ -219,10 +219,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Rent payment issues'), findsOneWidget);
-    expect(find.textContaining('Unit A — Mar'), findsOneWidget);
+    expect(find.textContaining('Unit A · Mar'), findsOneWidget);
 
-    await tester.ensureVisible(find.textContaining('Unit A — Mar'));
-    await tester.tap(find.textContaining('Unit A — Mar'));
+    await tester.ensureVisible(find.textContaining('Unit A · Mar'));
+    await tester.tap(find.textContaining('Unit A · Mar'));
     await tester.pumpAndSettle();
     manageOpened = find.textContaining('is marked outstanding').evaluate().isNotEmpty;
     expect(manageOpened, isTrue);

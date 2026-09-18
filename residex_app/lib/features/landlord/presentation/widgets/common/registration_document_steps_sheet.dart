@@ -14,9 +14,9 @@ class _ChecklistItem {
 
 const List<_ChecklistItem> _step2Items = [
   _ChecklistItem('lease', 'Tenancy agreement',
-      'Rent, span, and the utilities/repairs clauses — one upload resolves the whole income side'),
+      'Rent, span, and the utilities/repairs clauses: one upload resolves the whole income side'),
   _ChecklistItem('expenses', 'Latest management statement',
-      'Strata only — cumulative, backfills months of maintenance and sinking fund at once'),
+      'Strata only: cumulative, backfills months of maintenance and sinking fund at once'),
 ];
 
 List<_ChecklistItem> _step3Items(PropertyStructureType? structureType, bool? hasMortgage) {
@@ -25,7 +25,7 @@ List<_ChecklistItem> _step3Items(PropertyStructureType? structureType, bool? has
         'Cukai pintu, cukai tanah, or parcel rent'),
     if (structureType != PropertyStructureType.strata)
       const _ChecklistItem('insurance', 'Fire insurance',
-          "Landed only — strata's sits inside the MC bill"),
+          "Landed only: strata's sits inside the MC bill"),
     if (hasMortgage == true)
       const _ChecklistItem('loan', 'Loan interest statement', "The bank's year-end statement"),
   ];
@@ -106,8 +106,8 @@ class _RegistrationStepSheetState extends ConsumerState<_RegistrationStepSheet> 
         : _step3Items(_property.structureType, _property.hasMortgage);
     final title = _step == 2 ? 'The two unlock documents' : 'Annual one-offs';
     final subtitle = _step == 2
-        ? '${_property.name} — the tenancy agreement resolves rent; a management statement backfills strata maintenance in one upload. All optional.'
-        : "${_property.name} — this year's official bills. All optional; add them anytime.";
+        ? '${_property.name}: the tenancy agreement resolves rent; a management statement backfills strata maintenance in one upload. All optional.'
+        : "${_property.name}: this year's official bills. All optional; add them anytime.";
 
     return SafeArea(
       child: Padding(

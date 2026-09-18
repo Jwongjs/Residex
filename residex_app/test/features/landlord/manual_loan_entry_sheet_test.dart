@@ -952,7 +952,7 @@ void main() {
     expect(saveEnabled(tester), isFalse);
     expect(
         find.text(
-            "Can't save yet — couldn't load the existing entries. Pull "
+            "Can't save yet: couldn't load the existing entries. Pull "
             'down to refresh on the Finance tab, then reopen this sheet.'),
         findsOneWidget);
   });
@@ -1368,7 +1368,7 @@ void main() {
     await _pumpSheet(tester,
         structureType: null, units: const [], cadence: 'annual');
 
-    expect(find.text('Add loan figures — 2025'), findsOneWidget);
+    expect(find.text('Add loan figures · 2025'), findsOneWidget);
   });
 
   testWidgets(
@@ -1411,7 +1411,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('Modify loan figures — 2025'), findsOneWidget);
-    expect(find.text('Add loan figures — 2025'), findsNothing);
+    expect(find.text('Modify loan figures · 2025'), findsOneWidget);
+    expect(find.text('Add loan figures · 2025'), findsNothing);
   });
 }

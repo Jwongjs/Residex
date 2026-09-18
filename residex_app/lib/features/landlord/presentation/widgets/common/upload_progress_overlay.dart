@@ -81,7 +81,7 @@ class UploadProgressOverlay extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 'This can take up to a minute for scanned or photographed '
-                'documents — hang tight.',
+                'documents. Hang tight.',
                 style: AppTextStyles.bodySmall.copyWith(
                   color: AppColors.textMuted,
                 ),

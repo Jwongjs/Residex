@@ -930,7 +930,7 @@ class _AddPropertyDialogState extends ConsumerState<AddPropertyDialog> {
           ),
         ),
         child: Text(
-          _trackFromYear?.toString() ?? 'Not sure — defaults to $currentYear',
+          _trackFromYear?.toString() ?? 'Not sure: defaults to $currentYear',
           style: AppTextStyles.bodyMedium.copyWith(
             color: _trackFromYear == null ? AppColors.textMuted : AppColors.textPrimary,
           ),

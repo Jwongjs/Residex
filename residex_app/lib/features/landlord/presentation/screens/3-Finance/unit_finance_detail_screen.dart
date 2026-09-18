@@ -96,7 +96,7 @@ class _UnitFinanceDetailScreenState
           setState(() => _year = _displayedYear);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Couldn't load $failedYear — check your connection and try again.")),
+              SnackBar(content: Text("Couldn't load $failedYear. Check your connection and try again.")),
             );
           }
         }
@@ -109,7 +109,7 @@ class _UnitFinanceDetailScreenState
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         backgroundColor: AppColors.paper,
-        title: Text('${_displayedUnit.label} — $_displayedYear',
+        title: Text('${_displayedUnit.label} · $_displayedYear',
             style: AppTextStyles.titleLarge),
         actions: [
           Padding(
@@ -204,7 +204,7 @@ class _UnitFinanceDetailScreenState
       expensesTotal: deductibleExpenseTotal(unit.expenseLines),
       lines: unit.expenseLines,
       exclusionNote: expenseExclusionNote,
-      emptyNote: 'No deductible expenses recorded — equals your gross income.',
+      emptyNote: 'No deductible expenses recorded, so this equals your gross income.',
       caption: "Contributes to this property's Statutory Income. "
           'Only LHDN-deductible expenses reduce this figure.',
     );
@@ -216,8 +216,8 @@ class _UnitFinanceDetailScreenState
   String? _netExclusionNote(ExpenseLine line) {
     if (line.paidByLandlord) return null;
     return line.subtype == 'utilities'
-        ? 'Tenant pays — excluded'
-        : 'Not paid by you — excluded';
+        ? 'Tenant pays (excluded)'
+        : 'Not paid by you (excluded)';
   }
 
   Widget _breakdownAccordion(

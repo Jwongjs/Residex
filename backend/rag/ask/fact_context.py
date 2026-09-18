@@ -62,6 +62,29 @@ def facts_snippet(facts: dict) -> str:
     return "\n".join(line.strip() for line in _render_lines(facts))
 
 
+def facts_by_page(
+    facts: Optional[dict], fact_pages: Optional[dict]
+) -> dict[Optional[int], dict]:
+    """Split a document's facts into {display_page: facts_subset} buckets.
+
+    Display page is 1-based, matching the chunk citations these buckets are
+    merged with. Facts with no located page collect under None, which is every
+    fact on a document ingested before pages were located — so an empty
+    `fact_pages` yields exactly one None bucket holding everything,
+    reproducing today's single page-less citation.
+
+    A stored page index that is not an int (malformed data, or a bool, which
+    Python would otherwise happily add 1 to) also falls to None. Degrading to
+    today's behaviour is always safe; a wrong page is not.
+    """
+    buckets: dict[Optional[int], dict] = {}
+    for key, value in (facts or {}).items():
+        index = (fact_pages or {}).get(key)
+        located = isinstance(index, int) and not isinstance(index, bool)
+        buckets.setdefault(index + 1 if located else None, {})[key] = value
+    return buckets
+
+
 def build_facts_block(
     docs: Iterable[Tuple[str, Optional[str], dict]],
 ) -> str:

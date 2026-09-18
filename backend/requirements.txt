@@ -24,6 +24,7 @@ langgraph
 
 # Document Processing
 pypdf
+pillow  # turns scans upright before OCR (rag/documents/pdf_ocr.py)
 
 # Utilities
 python-dotenv

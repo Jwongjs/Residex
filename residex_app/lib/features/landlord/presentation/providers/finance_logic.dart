@@ -359,13 +359,13 @@ const Set<String> _firstLettingSubtypes = {
 String? expenseExclusionNote(ExpenseLine line) {
   if (line.deductible) return null;
   final subtype = line.subtype;
-  if (subtype == 'utilities') return 'Tenant pays — excluded';
-  if (subtype == 'late_penalty') return 'Penalty — not deductible';
+  if (subtype == 'utilities') return 'Tenant pays (excluded)';
+  if (subtype == 'late_penalty') return 'Penalty (not deductible)';
   if (subtype == 'renovation' || subtype == 'loan_principal') {
-    return 'Capital cost — not deductible';
+    return 'Capital cost (not deductible)';
   }
   if (subtype != null && _firstLettingSubtypes.contains(subtype)) {
-    return 'First-letting cost — excluded';
+    return 'First-letting cost (excluded)';
   }
   return 'Not deductible';
 }

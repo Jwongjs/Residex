@@ -435,3 +435,79 @@ Your proposed stack is **production-ready and superior** to alternatives. Here's
 │ - Chat renders answer        │
 │ - Citations displayed        │
 └──────────────────────────────┘
+
+
+
+After that, look into 
+- month placement error of the folder arrangement feature based on tagging as JAN, MAR, APR, MAY 25 are all under JAN 2025. 
+- Ensuring the Date format initialization and display is consistent based on the extraction 
+- Utilities such as water meter and billing still count as direct expenses despite tenant paying it in ayer 8
+
+Financial Dashboard
+Ensure that all expenses deducted for both calculations below strictly adheres to LHDN tax expenses policy/law (search the web for info if necessary)
+- Total Net P/l: Must include **all** expenses that is paid by the Landlord 
+- Statutory Rental Income: If lack documents, show the "Current Statutory rental income". If got everything, then display something like Current Statutory Rental Income (Maybe also add contributing statutory income for individual properties)
+
+Loan Interest and principal
+
+Upload Documents Loading bar based on ingestion pipeline stage? (saved temp -> chunks splitting -> embedding...)
+
+After everything, send text down here:
+Great right now, I just need the complete end to end flow including what model and deterministic rules are integrated on different stages, 
+
+I just want to see if the whole pipeline is clean, organized and presentable, not a jumbled up mess of solutions bundled together
+
+- for the loan figure input at the property panel, the unit did not capture loan figure as expenses
+- Total Received and Expenses at finance tab did not take into calculation of the property share %
+- Net contribution change to Overall Rental income along with contributing statutory income to overall statutory income within unit level (ensure all the other financial value terms are consistent across all levels (finance tab, property, unit...)
+- When query in documind "When is the tenancy agreement ended", it answers back: "I couldn't search your documents. Please check your Firestore vector index." despite there is already an uploaded agreement document
+- Remove the 2025 . 2 missing 2026 . 6 missing ui bubble on property panel, theres already a bottom panel that reminds how document is needed for the year (along with upload documents and mark unavailable)
+- Finance tab: Overall Net Profit/Loss, Property panel: Net Profit/Loss
+
+-The ui widget design for upload documents and enter figure manually are just plain lazy, there has to be clear separation of concerns to indicate its differentiating functionality
+-Remove property level expenses at property panel to clear up the confusion
+- Remove loan figures manual add at the loan & financing document folder
+- Loan & Financing document folder should only appear 
+- Rental income replaced as Rental Profit/Loss for Unit 
+- something wrong with documind, despite the uploaded tenancy agreement document at ayer 8, 
+documind responded that there's no document to be found, 
+also the LLM should route to Groq not gemini for privacy conerns as chunk contain confidential info
+
+can the citation refer to the direct page of chunk that the LLM retrieve from, 
+which is stored under documind_chunks that has page metadata in firestore. 
+Does the LLM retrieve the chunk or extracted facts?
+
+Do a direct execution fix and I will test in the app personally
+
+
+
+Let me devise a plan alongside with the ones stated in the handoff:
+For property that has ownership property share percentage set, 
+before landlords upload any documents, 
+it should ask for each document categories which ones need to scale to the chosen percentage (as different landlords have different receiving nature of documents like one tenancy agreement, invoice, loan figures.. cover full payment, 
+some cover only according to the scaled value), except for expenses where there should be a subtle standby on whether to scale the extracted values everytime its uploaded due to its unpredictable nature as different landlords owning different kinds of properties who will receive different forms of documents (expenses documents received could be combined or separated across upkeep, assessment tax, quit rent, maintenance...etc.)
+
+in the end there should be subtle standby on whether to scale the documents, 
+with along with lines of ,ex: "Does this document need to apply its ownership share percentage?" 
+(make it more understandable for Landlords) UNLESS the unit that the document is uploaded is 100% owned
+
+choose number 3
+two scenarios, which only differs in how the system tells the landlord to pay:
+- if the property of the particular unit doesn't have ownership shares. Landlords will expect to enter the full invoiced amount 
+- if the property of the particular unit have ownership shares. Landlords will expect to enter their share of the full invoiced amount
+the system will tell the landlord to enter their expected input
+
+Also one problem from here, allowing setting of ownership share for one whole property when there are multiple units seem overlap the miniscul possibility that units may have different ownership shares (e.g. unit A and C has 100% ownership, unit B has 50% ownership...). 
+
+So in this case, ownership share assignment shouldn't be property level but at unit unless its landed with full ownership...
+
+**UP NEXT**
+Loan figures got an issue, property that has only one unit (counted as whole property) already have good loan figure assignment 
+(loan principle and interest displayed in the property panel for one property itself).
+
+Now lets say the property has multiple units where each unit could have its own individual loan figures and their settlement timeline,
+loan figure could no longer be represented as whole property (cannot be easily displayed as singular loan figure in property panel) 
+along with the effects on finance calculation/reconciliation/engine, computing the Net P/L, gross profit, direct expenses, statutory income...etc.
+
+Figure out whats the best approach (at manual input loan figure pop up ui panel have certain additions according to the existing units, then sum it up and display
+the full amount at the property panel *as usual* and then the entered loan figures of each units will individually be able to get traced when drilling down to unit from property panel)

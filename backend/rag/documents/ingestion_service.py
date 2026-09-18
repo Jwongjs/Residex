@@ -13,8 +13,21 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from models.documind_models import DocUploadResponse
 from rag.categories import ALLOWED_CATEGORIES, CATEGORY_ORDER, facts_status_for, normalize_category, resolve_upload_kind
+from rag.documents import table_extraction
+from rag.documents.fact_locator import locate_facts
 
 OCR_TEXT_THRESHOLD = 200  # chars; below this a PDF is treated as scanned
+# A table page is chunked smaller than prose. Its rows are dense and unrelated
+# to each other — a tenancy Schedule puts the term dates, the landlord's NRIC
+# and the bank account within a few hundred characters — so a 1000-char chunk
+# embeds as the average of half a dozen unrelated facts and none of them stays
+# findable. Measured on the 20-question retrieval eval (evals/): dropping table
+# pages to 600 moved Recall@15 from 85% to 95% and P@3 from 65% to 75%. Prose
+# keeps 1000, where the surrounding sentences are context rather than noise.
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
+TABLE_CHUNK_SIZE = 600
+TABLE_CHUNK_OVERLAP = 120
 
 
 class IngestionService:
@@ -98,14 +111,28 @@ class IngestionService:
                     print(f"Transcribed image upload ({len(pages)} block(s))")
 
             await _emit("organising")
-            # Step 3: Chunk text
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200,
+            # Step 3: Chunk text, page by page so a table page can be split
+            # finer than a prose one. split_documents() never merges across
+            # pages, so this is the same work, just with the splitter chosen
+            # per page instead of once for the document.
+            prose_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=CHUNK_SIZE,
+                chunk_overlap=CHUNK_OVERLAP,
             )
-            chunks = text_splitter.split_documents(pages)
+            table_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=TABLE_CHUNK_SIZE,
+                chunk_overlap=TABLE_CHUNK_OVERLAP,
+            )
+            chunks = []
+            table_pages = 0
+            for page in pages:
+                is_table = table_extraction.looks_reconstructed(page.page_content)
+                table_pages += is_table
+                splitter = table_splitter if is_table else prose_splitter
+                chunks.extend(splitter.split_documents([page]))
 
-            print(f"📝 Split into {len(chunks)} chunks")
+            print(f"📝 Split into {len(chunks)} chunks "
+                  f"({table_pages} table page(s) chunked at {TABLE_CHUNK_SIZE})")
 
             await _emit("indexing")
             # Step 4: Embed every chunk in ONE batched call. A quota error
@@ -134,8 +161,12 @@ class IngestionService:
                     'chunk_index': i,
                     'text': chunk.page_content,
                     'embedding': Vector(embedding),
-                    # ✅ FIXED: Ensure page is always an integer (never None)
-                    'page': chunk.metadata.get('page', 0) if chunk.metadata.get('page') is not None else 0,
+                    # A page we cannot attribute is stored as None, not 0: 0
+                    # means page 1, which makes a wrong citation unfalsifiable.
+                    # Every read path already handles None — retriever.py uses
+                    # chunk.get('page'), the ask path guards on `is not None`,
+                    # and Citation.page is int | None.
+                    'page': chunk.metadata.get('page'),
                     'created_at': firestore.SERVER_TIMESTAMP,
                 }
                 chunk_documents.append(chunk_doc)
@@ -172,6 +203,25 @@ class IngestionService:
             except Exception as e:
                 print(f"⚠️ Fact extraction failed (non-blocking): {e}")
 
+            # Where each fact is stated, so its citation can open the document
+            # at that page instead of page 1. `pages` is still in scope, so
+            # this costs no extra LLM call and no extra read.
+            #
+            # Its OWN try/except, separate from the extraction one above: the
+            # facts are load-bearing for the finance engine, the pages are a
+            # navigation nicety, and a locator bug must never be able to lose
+            # the facts themselves.
+            fact_pages = None
+            if extracted_facts:
+                try:
+                    located = locate_facts(
+                        extracted_facts,
+                        [page.page_content or "" for page in pages],
+                    )
+                    fact_pages = located or None
+                except Exception as e:
+                    print(f"⚠️ Fact page location failed (non-blocking): {e}")
+
             # Step 5.5: Upload original file to Firebase Storage
             storage_path = f"documind/{landlord_id}/{property_id}/{doc_id}{ext}"
             blob = self._storage_bucket_getter().blob(storage_path)
@@ -192,6 +242,10 @@ class IngestionService:
                 'storage_path': storage_path,
                 'status': 'indexed',
                 'extracted_facts': extracted_facts,
+                # Sibling map, deliberately not nested into extracted_facts:
+                # that dict is read by the finance engine and the prompt
+                # builder, and reshaping it ripples into both.
+                'fact_pages': fact_pages,
                 'facts_confidence': facts_confidence,
                 'facts_status': facts_status_for(extracted_facts),
                 'facts_extracted_at': firestore.SERVER_TIMESTAMP if extracted_facts else None,

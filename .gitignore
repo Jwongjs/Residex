@@ -2,6 +2,14 @@
 .env
 **/.env
 .worktrees
+.gitignore
+
+docs/
+demo_documents/
+
+residex-section-rewrite.md
+backend/evals
+demo_documents/FINANCE_SETUP_AND_TEST_GUIDE.md
 
 # Python bytecode
 __pycache__/
@@ -9,3 +17,9 @@ __pycache__/
 
 # Superpowers scratch (SDD ledgers, briefs, brainstorm, review packages)
 .superpowers/
+
+.claude/
+
+backend/rexAI.txt
+backend/.gitignore
+backend/rag/GRAPH_OVERVIEW.md

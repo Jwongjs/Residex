@@ -1081,11 +1081,11 @@ void main() {
     );
     await _pumpScreen(tester, 2026, summary);
 
-    expect(find.text('Rent payment issues — 2026'), findsOneWidget);
+    expect(find.text('Rent payment issues · 2026'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('B-08-11 — Sep 2026'));
+    await tester.ensureVisible(find.text('B-08-11 · Sep 2026'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('B-08-11 — Sep 2026'));
+    await tester.tap(find.text('B-08-11 · Sep 2026'));
     await tester.pumpAndSettle();
     expect(find.text('Record a recovery'), findsOneWidget);
 
@@ -1145,9 +1145,9 @@ void main() {
     );
     await _pumpScreen(tester, 2026, summary);
 
-    await tester.ensureVisible(find.text('B-08-11 — Sep 2026'));
+    await tester.ensureVisible(find.text('B-08-11 · Sep 2026'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('B-08-11 — Sep 2026'));
+    await tester.tap(find.text('B-08-11 · Sep 2026'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Record a recovery'));
     await tester.pumpAndSettle();
@@ -1155,7 +1155,7 @@ void main() {
     expect(find.text('Your share of the amount received (RM)'), findsOneWidget);
     expect(
       find.text(
-        'Enter your 50% share of what the tenant paid — this unit is '
+        'Enter your 50% share of what the tenant paid. This unit is '
         'co-owned and this month has no separate invoice on file.',
       ),
       findsOneWidget,

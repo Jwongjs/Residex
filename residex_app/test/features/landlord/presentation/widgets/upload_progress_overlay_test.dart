@@ -29,7 +29,7 @@ void main() {
     expect(find.text('Reading the document'), findsOneWidget);
     expect(find.text('30%'), findsOneWidget);
     expect(
-      find.textContaining('hang tight'),
+      find.textContaining('Hang tight'),
       findsOneWidget,
     );
   });

@@ -5,7 +5,7 @@ from typing import List, Optional
 from google.api_core.exceptions import FailedPrecondition, ServiceUnavailable
 
 from models.documind_models import AskRequest, AskResponse, Citation
-from rag.ask.fact_context import build_facts_block, facts_snippet
+from rag.ask.fact_context import build_facts_block, facts_by_page, facts_snippet
 from rag.categories import ALLOWED_CATEGORIES, expand_categories_for_query, normalize_category
 from rag.pii_scrub import scrub_for_hosted
 from rag.unit_resolution import resolve_unit_mention
@@ -339,21 +339,23 @@ Rules:
                 action_reason="No chunks retrieved",
             )
 
-        # No post-retrieval unit checkpoint: unit routing happened above from
-        # the question text, and answers over mixed-unit chunks attribute every
-        # fact to its unit (prompt rule 6) instead of blocking to ask.
-
-        # Dedupe citations by (filename, page): multiple chunks can come from
+        # Dedupe citations by (doc_id, page): multiple chunks can come from
         # the same page (overlapping splits), each with its own rerank score.
         # The LLM still sees every chunk's text via context_text below; this
         # only collapses what's shown as a citation, keeping the best score
         # per page so the same source never appears twice with two different
         # relevance bars.
+        #
+        # Keyed on doc_id, not filename: a landlord uploading "lease.pdf" for
+        # each unit gives two distinct documents the same name, and collapsing
+        # those would merge one document's page into another's row — and, once
+        # facts merge in below, attribute one document's values to a page of a
+        # different document that does not state them.
         best_citation_by_page: dict[tuple[str, Optional[int]], dict] = {}
         context_text = ""
         for i, chunk in enumerate(retrieved_chunks):
             display_page = chunk['page'] + 1 if chunk.get('page') is not None else None
-            page_key = (chunk['filename'], display_page)
+            page_key = (chunk['doc_id'], display_page)
             chunk_score = chunk.get('rerank_score', chunk.get('dense_score', 0.0))
             existing = best_citation_by_page.get(page_key)
             if existing is None or chunk_score > existing['score']:
@@ -366,6 +368,7 @@ Rules:
                     'score': chunk_score,
                     'unit_id': chunk.get('unit_id'),
                     'unit_label': chunk.get('unit_label'),
+                    'source': 'excerpt',
                 }
             unit_context = chunk.get('unit_label') or 'Property-wide'
             # PII gate: chunk text is the one place raw document content reaches
@@ -386,13 +389,75 @@ Rules:
                 doc_ids = list(dict.fromkeys(c['doc_id'] for c in retrieved_chunks))
                 fact_rows = list(self._get_document_facts(doc_ids))
                 facts_block = scrub_for_hosted(
-                    build_facts_block([(f, u, fa) for _, f, u, fa in fact_rows])
+                    build_facts_block([(f, u, fa) for _, f, u, fa, _pages in fact_rows])
                 )
             except Exception as e:
                 print(f"WARNING: facts block unavailable, answering from excerpts only: {e}")
                 facts_block = ""
                 fact_rows = []
 
+        # A value answered from extracted facts is now cited at the page that
+        # states it, located at upload. Facts fold into the same
+        # (doc_id, page) dict the chunk loop built, so one document-page is
+        # never two rows — that would read as a bug and burn two of the three
+        # visible slots on a single page. The raw chunk text still reaches the
+        # LLM via context_text either way; this only collapses what is shown.
+        #
+        # Category and unit come from the chunk that pulled the document in, so
+        # the badge matches the page citations beside it.
+        chunk_meta = {
+            c['doc_id']: (normalize_category(c['category']), c.get('unit_id'), c.get('unit_label'))
+            for c in retrieved_chunks
+        }
+        # A fact page no retrieved chunk came from has no rerank score of its
+        # own, so it takes the best among that document's retrieved chunks: the
+        # document earned its place in the results and that is the honest
+        # measure of it.
+        best_doc_score: dict[str, float] = {}
+        for c in retrieved_chunks:
+            c_score = c.get('rerank_score', c.get('dense_score', 0.0))
+            if c_score > best_doc_score.get(c['doc_id'], float('-inf')):
+                best_doc_score[c['doc_id']] = c_score
+
+        pageless_fact_rows = []
+        for doc_id, filename, unit_label, facts, fact_pages in fact_rows:
+            category, unit_id, chunk_unit_label = chunk_meta.get(doc_id, ('other', None, None))
+            for page, subset in facts_by_page(facts, fact_pages).items():
+                snippet = facts_snippet(subset)
+                if not snippet:
+                    continue
+                existing = best_citation_by_page.get((doc_id, page)) if page is not None else None
+                if existing is not None:
+                    # Same page as a retrieved chunk: show the values instead of
+                    # the excerpt, keep the chunk's rerank score.
+                    existing['snippet'] = snippet
+                    existing['source'] = 'extracted_facts'
+                    continue
+                row = {
+                    'doc_id': doc_id,
+                    'filename': filename,
+                    'category': category,
+                    'page': page,
+                    'snippet': snippet,
+                    'score': best_doc_score.get(doc_id, 0.0),
+                    'unit_id': unit_id,
+                    'unit_label': unit_label or chunk_unit_label,
+                    'source': 'extracted_facts',
+                }
+                if page is None:
+                    # An unknown page is not a page. A chunk whose page metadata
+                    # was missing and a fact we could not place are not known to
+                    # be on the same page, so they must never collapse into one
+                    # row — that would drop the excerpt from the strip on
+                    # exactly the documents carrying the least metadata.
+                    pageless_fact_rows.append(row)
+                else:
+                    best_citation_by_page[(doc_id, page)] = row
+
+        # Sorted once across both sources, so what appears in the strip is what
+        # actually mattered to the answer rather than whichever document
+        # happened to carry facts. Ties keep insertion order — chunk rows, then
+        # fact-only pages, then page-less facts — so the order is deterministic.
         citations = [
             Citation(
                 doc_id=c['doc_id'],
@@ -403,35 +468,14 @@ Rules:
                 score=c['score'],
                 unit_id=c['unit_id'],
                 unit_label=c['unit_label'],
+                source=c['source'],
             )
-            for c in sorted(best_citation_by_page.values(), key=lambda c: c['score'], reverse=True)
+            for c in sorted(
+                list(best_citation_by_page.values()) + pageless_fact_rows,
+                key=lambda c: c['score'],
+                reverse=True,
+            )
         ]
-
-        # A value answered from extracted facts is not on any page we retrieved
-        # — citing only those pages would send a landlord to verify a date that
-        # is not there. Cite the facts themselves, page-less, with the value in
-        # the snippet. Category and unit come from the chunk that pulled the
-        # document in, so the badge matches the page citations beside it.
-        chunk_meta = {
-            c['doc_id']: (normalize_category(c['category']), c.get('unit_id'), c.get('unit_label'))
-            for c in retrieved_chunks
-        }
-        for doc_id, filename, unit_label, facts in fact_rows:
-            snippet = facts_snippet(facts)
-            if not snippet:
-                continue
-            category, unit_id, chunk_unit_label = chunk_meta.get(doc_id, ('other', None, None))
-            citations.insert(0, Citation(
-                doc_id=doc_id,
-                filename=filename,
-                category=category,
-                page=None,
-                snippet=snippet,
-                score=1.0,
-                unit_id=unit_id,
-                unit_label=unit_label or chunk_unit_label,
-                source="extracted_facts",
-            ))
 
         searched_categories_text = ", ".join(selected_categories) if selected_categories else "all categories"
         prompt = f"""You are DocuMind, an AI assistant specialized in property document management.

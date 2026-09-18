@@ -38,6 +38,43 @@ void main() {
     });
   });
 
+  group('citationSourceSuffix', () {
+    Citation citation({int? page, String source = 'excerpt'}) => Citation(
+          docId: 'd1',
+          filename: 'lease.pdf',
+          category: 'lease',
+          page: page,
+          snippet: 'Lease end: 2026-10-31',
+          score: 0.9,
+          source: source,
+        );
+
+    test('a fact citation with a page says both', () {
+      // Where to look, and that the value came from parsed details rather
+      // than the page's prose.
+      expect(
+        citationSourceSuffix(citation(page: 4, source: 'extracted_facts')),
+        ' · p.4 · extracted',
+      );
+    });
+
+    test('a fact citation without a page keeps the bare label', () {
+      // "p.—" would read as a missing page number.
+      expect(
+        citationSourceSuffix(citation(source: 'extracted_facts')),
+        ' · extracted',
+      );
+    });
+
+    test('a chunk citation is unchanged', () {
+      expect(citationSourceSuffix(citation(page: 2)), ' · p.2');
+    });
+
+    test('a chunk citation with no page still shows the dash', () {
+      expect(citationSourceSuffix(citation()), ' · p.—');
+    });
+  });
+
   group('buildUnitScopeQuickReplies', () {
     Unit unit(String id, String label) => Unit(
           id: id,

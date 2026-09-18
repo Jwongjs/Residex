@@ -1,6 +1,12 @@
 .env
 serviceAccountKey.json
 
+END_TO_END_FLOW.md
+fact_chat.jsonl
+ARCHITECTURE.md
+
+rexAI.txt
+
 # Python bytecode
 __pycache__/
 *.pyc

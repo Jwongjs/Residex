@@ -92,8 +92,8 @@ class _UtilitiesLiabilityConfirmSheetState
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(finalLiability == 'tenant'
-              ? "Noted — tenant pays utilities."
-              : "Noted — you pay utilities."),
+              ? "Noted: tenant pays utilities."
+              : "Noted: you pay utilities."),
         ));
       }
     } catch (e) {

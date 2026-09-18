@@ -103,7 +103,7 @@ Future<void> showMarkUnavailableConfirm(
     builder: (dialogContext) => AlertDialog(
       title: Text('Mark ${coverageLabels[category] ?? category} unavailable for $year?'),
       content: const Text(
-        'Use this when you genuinely cannot obtain the document — the year '
+        'Use this when you genuinely cannot obtain the document. The year '
         'settles as complete, with this gap acknowledged, instead of nagging '
         'permanently.',
       ),

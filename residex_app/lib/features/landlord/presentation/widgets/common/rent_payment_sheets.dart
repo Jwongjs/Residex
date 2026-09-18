@@ -43,12 +43,12 @@ Future<void> showMarkUnpaidSheet(
                 spacing: 8,
                 children: [
                   AppChoiceChip(
-                    label: 'Outstanding — still chasing',
+                    label: 'Outstanding (still chasing)',
                     selected: state == 'outstanding',
                     onSelected: (_) => setSheetState(() => state = 'outstanding'),
                   ),
                   AppChoiceChip(
-                    label: 'Written off — given up',
+                    label: 'Written off (given up)',
                     selected: state == 'written_off',
                     onSelected: (_) => setSheetState(() => state = 'written_off'),
                   ),
@@ -239,7 +239,7 @@ Future<void> _showRecoverSheet(
   } else if (hasUnitPair && unitGrossIncome != null) {
     final pct =
         ((unitGrossIncome / unitFullGrossIncome) * 100).toStringAsFixed(0);
-    helperText = 'Enter your $pct% share of what the tenant paid — this '
+    helperText = 'Enter your $pct% share of what the tenant paid. This '
         'unit is co-owned and this month has no separate invoice on file.';
   }
 
@@ -263,7 +263,7 @@ Future<void> _showRecoverSheet(
             Text('Record recovery for $monthLabel', style: AppTextStyles.titleLarge),
             const SizedBox(height: 4),
             Text(
-              'Booked as its own line in the year the money arrived — $monthLabel stays frozen.',
+              'Booked as its own line in the year the money arrived; $monthLabel stays frozen.',
               style: AppTextStyles.bodySmall,
             ),
             const SizedBox(height: 12),

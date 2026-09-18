@@ -98,3 +98,71 @@ class TestFactsSnippet:
         assert "Amount (RM): 120.0" in snippet
         assert "Expense lines" not in snippet
         assert "Note" not in snippet
+
+
+class TestFactsByPage:
+    """Splitting a document's facts by the page that states them.
+
+    The None bucket is load-bearing: it is every fact on a document ingested
+    before pages were located, and it must reproduce today's single page-less
+    citation exactly.
+    """
+
+    def test_facts_on_two_pages_produce_two_buckets(self):
+        from rag.ask.fact_context import facts_by_page
+        buckets = facts_by_page(
+            {"lease_end": "2026-10-31", "monthly_rent": 8000.0},
+            {"lease_end": 3, "monthly_rent": 7},
+        )
+        # 0-based storage -> 1-based display.
+        assert buckets == {
+            4: {"lease_end": "2026-10-31"},
+            8: {"monthly_rent": 8000.0},
+        }
+
+    def test_facts_on_the_same_page_share_one_bucket(self):
+        from rag.ask.fact_context import facts_by_page
+        buckets = facts_by_page(
+            {"lease_end": "2026-10-31", "monthly_rent": 8000.0},
+            {"lease_end": 3, "monthly_rent": 3},
+        )
+        assert buckets == {
+            4: {"lease_end": "2026-10-31", "monthly_rent": 8000.0},
+        }
+
+    def test_empty_fact_pages_produces_one_none_bucket_holding_everything(self):
+        from rag.ask.fact_context import facts_by_page
+        facts = {"lease_end": "2026-10-31", "monthly_rent": 8000.0}
+        assert facts_by_page(facts, {}) == {None: facts}
+
+    def test_missing_fact_pages_is_tolerated_like_an_empty_one(self):
+        from rag.ask.fact_context import facts_by_page
+        facts = {"lease_end": "2026-10-31"}
+        assert facts_by_page(facts, None) == {None: facts}
+
+    def test_partially_located_facts_split_between_a_page_and_none(self):
+        from rag.ask.fact_context import facts_by_page
+        buckets = facts_by_page(
+            {"lease_end": "2026-10-31", "monthly_rent": 8000.0},
+            {"lease_end": 3},
+        )
+        assert buckets == {
+            4: {"lease_end": "2026-10-31"},
+            None: {"monthly_rent": 8000.0},
+        }
+
+    def test_a_fact_pages_key_with_no_matching_fact_is_ignored(self):
+        from rag.ask.fact_context import facts_by_page
+        buckets = facts_by_page({"lease_end": "2026-10-31"}, {"deposit": 2})
+        assert buckets == {None: {"lease_end": "2026-10-31"}}
+
+    def test_a_non_integer_page_falls_back_to_the_none_bucket(self):
+        # Malformed stored data must degrade to today's behaviour, never crash.
+        from rag.ask.fact_context import facts_by_page
+        facts = {"lease_end": "2026-10-31"}
+        assert facts_by_page(facts, {"lease_end": "3"}) == {None: facts}
+
+    def test_empty_facts_produce_no_buckets(self):
+        from rag.ask.fact_context import facts_by_page
+        assert facts_by_page({}, {"lease_end": 3}) == {}
+        assert facts_by_page(None, None) == {}

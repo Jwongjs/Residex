@@ -324,8 +324,8 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
               children: [
                 Text(
                     hasEntryForScope
-                        ? 'Modify loan figures — ${widget.year}'
-                        : 'Add loan figures — ${widget.year}',
+                        ? 'Modify loan figures · ${widget.year}'
+                        : 'Add loan figures · ${widget.year}',
                     style: AppTextStyles.titleLarge),
                 if (_cadence == null) ...[
                   const SizedBox(height: 16),
@@ -440,7 +440,7 @@ class _ManualLoanEntrySheetState extends ConsumerState<ManualLoanEntrySheet> {
                     const SizedBox(height: 6),
                     Text(
                       entriesAsync.hasError
-                          ? "Can't save yet — couldn't load the existing "
+                          ? "Can't save yet: couldn't load the existing "
                               'entries. Pull down to refresh on the Finance '
                               'tab, then reopen this sheet.'
                           : 'Loading existing entries before you can save…',
