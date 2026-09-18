@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from google.api_core.exceptions import FailedPrecondition, ServiceUnavailable
 
-from models.documind_models import AskRequest, AskResponse, Citation, UnitOption
+from models.documind_models import AskRequest, AskResponse, Citation
 from rag.ask.fact_context import build_facts_block, facts_snippet
 from rag.categories import ALLOWED_CATEGORIES, expand_categories_for_query, normalize_category
 from rag.pii_scrub import scrub_for_hosted
@@ -13,7 +13,7 @@ from rag.unit_resolution import resolve_unit_mention
 
 class AskOrchestrator:
     """The LangGraph-driven chat flow: route intent -> conversation / finance /
-    confirmation / cancel / unit-clarification / retrieve+answer."""
+    retrieve+answer."""
 
     def __init__(
         self, *, conversation_store, graph_orchestrator, hybrid_retriever, llm_getter,
@@ -107,26 +107,20 @@ Rules:
 
         # Units go into the graph so the routing node can decide the unit
         # scope in the same LLM call that picks categories — but only when
-        # that routing output would actually be read. It's discarded
-        # whenever the unit is already resolved before this call: the
-        # frontend's proactive picker pinned unit_id directly, or this turn
-        # resumes a prior unit-ambiguity checkpoint via user_action=
-        # "unit:<id>". CategoryPredictor.predict() already treats an empty
-        # unit list as "no unit routing needed" (shorter prompt, no unit
-        # section), so this is a prompt-size optimization, not a behavior
-        # change — the "whole property" per-question override still gets the
-        # full list, since that's the one path that actually reads it.
+        # that routing output would actually be read. It's discarded when the
+        # frontend's unit picker already pinned unit_id. CategoryPredictor.
+        # predict() already treats an empty unit list as "no unit routing
+        # needed" (shorter prompt, no unit section), so this is a prompt-size
+        # optimization, not a behavior change — a "whole property" session
+        # still gets the full list, since that's the one path that reads it.
         property_units = self._list_property_units(payload.property_id)
-        unit_already_resolved = bool(payload.unit_id) or (
-            payload.user_action or ""
-        ).strip().lower().startswith("unit:")
+        unit_already_resolved = bool(payload.unit_id)
 
         graph_state = await self._graph_orchestrator.run({
             "user_input": payload.question,
             "explicit_categories": explicit_valid,
             "available_categories": available_categories,
             "available_units": [] if unit_already_resolved else property_units,
-            "user_action": payload.user_action or "",
             "recent_turns": recent_turns,
             "property_name": property_name,
         })
@@ -160,12 +154,8 @@ Rules:
                 property_name=property_name,
                 searched_categories=[],
                 category_filter_mode="conversation",
-                needs_category_clarification=False,
-                clarification_prompt=None,
-                clarification_options=[],
                 session_id=session_id,
                 conversation_turn=turn_number,
-                user_action_required=False,
                 predicted_categories=[],
                 action_reason=graph_state.get("intent_reason"),
             )
@@ -200,52 +190,12 @@ Rules:
                 property_name=property_name,
                 searched_categories=[],
                 category_filter_mode="finance",
-                needs_category_clarification=False,
-                clarification_prompt=None,
-                clarification_options=[],
                 session_id=session_id,
                 conversation_turn=turn_number,
-                user_action_required=False,
                 predicted_categories=[],
                 action_reason=graph_state.get("intent_reason"),
             )
 
-        if graph_action == "cancel":
-            self._conversation_store.clear_pending_confirmation(session_id)
-            cancel_message = graph_state.get(
-                "assistant_message",
-                "Understood. I cancelled that action. Ask me anytime about your property documents.",
-            )
-            if property_name != "Unknown Property" and property_name.lower() not in cancel_message.lower():
-                cancel_message = f"For {property_name}, {cancel_message}"
-            self._conversation_store.append_turn(
-                session_id,
-                {
-                    "turn": turn_number,
-                    "question": payload.question,
-                    "intent": "document_question",
-                    "action": "cancel",
-                    "answer": cancel_message,
-                },
-            )
-            return AskResponse(
-                answer=cancel_message,
-                confidence=0.9,
-                citations=[],
-                property_name=property_name,
-                searched_categories=[],
-                category_filter_mode="cancel",
-                needs_category_clarification=False,
-                clarification_prompt=None,
-                clarification_options=[],
-                session_id=session_id,
-                conversation_turn=turn_number,
-                user_action_required=False,
-                predicted_categories=[],
-                action_reason="User cancelled requested action",
-            )
-
-        working_question = payload.question
         selected_categories: List[str] = []
         effective_unit_id = payload.unit_id
 
@@ -253,94 +203,37 @@ Rules:
             selected_categories = explicit_valid[:10]
             category_filter_mode = "explicit"
         else:
-            pending = self._conversation_store.get_pending_confirmation(session_id)
-            user_action_raw = (payload.user_action or "").strip()
-            user_action = user_action_raw.lower()
+            # Auto scope: apply the predicted categories only when the
+            # predictor is reasonably confident; a weak prediction searches
+            # the whole corpus rather than risking a wrong silent filter.
+            if graph_state.get("prediction_confidence", 0.0) >= 0.45:
+                selected_categories = [
+                    category for category in predicted_categories if category in ALLOWED_CATEGORIES
+                ]
+            if selected_categories:
+                category_filter_mode = "auto"
 
-            if user_action == "confirm":
-                if pending and pending.get("predicted_categories"):
-                    selected_categories = [
-                        category for category in pending.get("predicted_categories", [])
-                        if category in ALLOWED_CATEGORIES
-                    ]
-                    working_question = pending.get("question", payload.question)
-                    category_filter_mode = "clarification_selected"
-                self._conversation_store.clear_pending_confirmation(session_id)
-            elif user_action.startswith("override:"):
-                override_category = user_action.split(":", 1)[1].strip().lower()
-                if override_category in ALLOWED_CATEGORIES:
-                    selected_categories = [override_category]
-                    working_question = pending.get("question", payload.question) if pending else payload.question
-                    category_filter_mode = "clarification_selected"
-                self._conversation_store.clear_pending_confirmation(session_id)
-            elif user_action.startswith("unit:"):
-                # Resume of a unit-ambiguity checkpoint. The unit id keeps its
-                # original casing (Firestore ids are case-sensitive); the "all"
-                # sentinel proceeds unfiltered. A missing pending confirmation
-                # falls back to treating this as a fresh question.
-                unit_target = user_action_raw.split(":", 1)[1].strip()
-                if pending:
-                    working_question = pending.get("question", payload.question)
-                if unit_target and unit_target.lower() != "all":
-                    effective_unit_id = unit_target
-                # Reuse the ORIGINAL question's category scope (stashed when the
-                # checkpoint fired) — the follow-up turn's text is just the unit
-                # label, so re-predicting over it would drop the real scope.
-                pending_categories = pending.get("selected_categories") if pending else None
-                if pending_categories:
-                    selected_categories = [
-                        category for category in pending_categories if category in ALLOWED_CATEGORIES
-                    ]
-                    category_filter_mode = "clarification_selected"
-                else:
-                    selected_categories = [
-                        category for category in predicted_categories if category in ALLOWED_CATEGORIES
-                    ]
-                    if selected_categories:
-                        category_filter_mode = "auto"
-                self._conversation_store.clear_pending_confirmation(session_id)
-            elif user_action in ALLOWED_CATEGORIES:
-                selected_categories = [user_action]
-                working_question = pending.get("question", payload.question) if pending else payload.question
-                category_filter_mode = "clarification_selected"
-                self._conversation_store.clear_pending_confirmation(session_id)
-            else:
-                # Auto scope: apply the predicted categories only when the
-                # predictor is reasonably confident; a weak prediction searches
-                # the whole corpus rather than risking a wrong silent filter.
-                if graph_state.get("prediction_confidence", 0.0) >= 0.45:
-                    selected_categories = [
-                        category for category in predicted_categories if category in ALLOWED_CATEGORIES
-                    ]
-                if selected_categories:
-                    category_filter_mode = "auto"
-
-        # Unit routing (skipped when the header dropdown already scopes the
-        # chat or this turn resumes a unit checkpoint). The search-router LLM
-        # decides the unit scope from the question when it can (tool-style
-        # routing); when it couldn't, deterministic label matching takes over.
-        # Either way: explicit references route silently, a reference matching
-        # several units is the only case that still asks, and a reference to a
-        # unit that does not exist gets an honest answer listing the real ones.
-        user_action_lower = (payload.user_action or "").strip().lower()
-        if effective_unit_id is None and not user_action_lower.startswith("unit:"):
+        # Unit routing (skipped when the unit picker already scopes the chat).
+        # The search-router LLM decides the unit scope from the question when
+        # it can (tool-style routing); when it couldn't, deterministic label
+        # matching takes over. Either way explicit references route silently,
+        # and a reference to a unit that does not exist gets an honest answer
+        # listing the real ones.
+        if effective_unit_id is None:
             unit_ids = {unit["unit_id"] for unit in property_units}
             routed_unit_id = graph_state.get("routed_unit_id")
             unknown_mention = graph_state.get("unknown_unit_mention")
-            ambiguous_candidates = None
 
             if unknown_mention:
                 pass  # honest not-found answer below
             elif routed_unit_id and routed_unit_id in unit_ids:
                 effective_unit_id = routed_unit_id
             elif not graph_state.get("unit_routing_decided"):
-                unit_resolution = resolve_unit_mention(working_question, property_units)
+                unit_resolution = resolve_unit_mention(payload.question, property_units)
                 if unit_resolution["kind"] == "scoped":
                     effective_unit_id = unit_resolution["unit"]["unit_id"]
                 elif unit_resolution["kind"] == "unknown":
                     unknown_mention = unit_resolution["mention"]
-                elif unit_resolution["kind"] == "ambiguous":
-                    ambiguous_candidates = unit_resolution["candidates"]
 
             if unknown_mention:
                 unit_labels = ", ".join(sorted(u["label"] for u in property_units))
@@ -353,7 +246,7 @@ Rules:
                     session_id,
                     {
                         "turn": turn_number,
-                        "question": working_question,
+                        "question": payload.question,
                         "intent": "document_question",
                         "action": "unknown_unit",
                         "answer": not_found_message,
@@ -368,66 +261,16 @@ Rules:
                     category_filter_mode=category_filter_mode,
                     session_id=session_id,
                     conversation_turn=turn_number,
-                    user_action_required=False,
                     predicted_categories=predicted_categories,
                     action_reason="Question referenced a unit that does not exist",
                 )
 
-            if ambiguous_candidates:
-                unit_options = [
-                    UnitOption(unit_id=u["unit_id"], unit_label=u["label"])
-                    for u in sorted(ambiguous_candidates, key=lambda u: u["label"])
-                ]
-                unit_options.append(UnitOption(unit_id="all", unit_label="All units"))
-                matched_labels = " and ".join(
-                    option.unit_label for option in unit_options[:-1]
-                )
-                unit_prompt = (
-                    f"That could mean {matched_labels}. Which unit do you mean?"
-                )
-                self._conversation_store.set_pending_confirmation(
-                    session_id,
-                    {
-                        "type": "unit",
-                        "question": working_question,
-                        "selected_categories": selected_categories,
-                        "unit_options": [option.model_dump() for option in unit_options],
-                    },
-                )
-                self._conversation_store.append_turn(
-                    session_id,
-                    {
-                        "turn": turn_number,
-                        "question": working_question,
-                        "intent": "document_question",
-                        "action": "ask_unit_clarification",
-                        "unit_options": [option.unit_id for option in unit_options],
-                    },
-                )
-                return AskResponse(
-                    answer=unit_prompt,
-                    confidence=0.6,
-                    citations=[],
-                    property_name=property_name,
-                    searched_categories=selected_categories,
-                    category_filter_mode=category_filter_mode,
-                    needs_category_clarification=False,
-                    clarification_prompt=unit_prompt,
-                    clarification_options=[],
-                    session_id=session_id,
-                    conversation_turn=turn_number,
-                    user_action_required=True,
-                    needs_unit_clarification=True,
-                    unit_options=unit_options,
-                    predicted_categories=predicted_categories,
-                    action_reason="Unit reference matches multiple units",
-                )
-            # "multi", "aggregate", and "none" all search unscoped; the answer
-            # prompt attributes every fact to its unit.
+            # "ambiguous", "multi", "aggregate", and "none" all search
+            # unscoped; the answer prompt attributes every fact to its unit.
 
         try:
             retrieved_chunks = await self._hybrid_retriever.retrieve(
-                question=working_question,
+                question=payload.question,
                 landlord_id=landlord_id,
                 property_id=payload.property_id,
                 top_k=payload.top_k,
@@ -462,7 +305,6 @@ Rules:
                 category_filter_mode=category_filter_mode,
                 session_id=session_id,
                 conversation_turn=turn_number,
-                user_action_required=False,
                 predicted_categories=predicted_categories,
                 action_reason=reason,
             )
@@ -477,7 +319,7 @@ Rules:
                 session_id,
                 {
                     "turn": turn_number,
-                    "question": working_question,
+                    "question": payload.question,
                     "intent": "document_question",
                     "action": "retrieve_no_result",
                     "searched_categories": selected_categories,
@@ -493,7 +335,6 @@ Rules:
                 category_filter_mode=category_filter_mode,
                 session_id=session_id,
                 conversation_turn=turn_number,
-                user_action_required=False,
                 predicted_categories=predicted_categories,
                 action_reason="No chunks retrieved",
             )
@@ -606,7 +447,7 @@ Rules:
     - Rental Invoices (monthly rent billed to tenants)
 
     **User Question:**
-    {working_question}
+    {payload.question}
 
     **Current Property:**
     {property_name}
@@ -657,12 +498,8 @@ Rules:
             property_name=property_name,
             searched_categories=selected_categories,
             category_filter_mode=category_filter_mode,
-            needs_category_clarification=False,
-            clarification_prompt=None,
-            clarification_options=[],
             session_id=session_id,
             conversation_turn=turn_number,
-            user_action_required=False,
             predicted_categories=predicted_categories,
             action_reason=action_reason,
         )
@@ -671,7 +508,7 @@ Rules:
             session_id,
             {
                 "turn": turn_number,
-                "question": working_question,
+                "question": payload.question,
                 "intent": "document_question",
                 "action": "retrieve",
                 "searched_categories": selected_categories,

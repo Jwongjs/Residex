@@ -106,14 +106,6 @@ class Citation {
   });
 }
 
-/// One selectable unit in a unit-clarification checkpoint.
-class UnitOption {
-  final String unitId;
-  final String unitLabel;
-
-  UnitOption({required this.unitId, required this.unitLabel});
-}
-
 ///Answer entity for Q&A responses
 class DocuMindAnswer {
   final String answer;
@@ -122,16 +114,10 @@ class DocuMindAnswer {
   final String propertyName;
   final List<String> searchedCategories;
   final String categoryFilterMode;
-  final bool needsCategoryClarification;
-  final String? clarificationPrompt;
-  final List<String> clarificationOptions;
   final String? sessionId;
   final int conversationTurn;
-  final bool userActionRequired;
   final List<String> predictedCategories;
   final String? actionReason;
-  final bool needsUnitClarification;
-  final List<UnitOption> unitOptions;
 
   DocuMindAnswer({
     required this.answer,
@@ -140,15 +126,9 @@ class DocuMindAnswer {
     required this.propertyName,
     this.searchedCategories = const [],
     this.categoryFilterMode = 'all',
-    this.needsCategoryClarification = false,
-    this.clarificationPrompt,
-    this.clarificationOptions = const [],
     this.sessionId,
     this.conversationTurn = 1,
-    this.userActionRequired = false,
     this.predictedCategories = const [],
     this.actionReason,
-    this.needsUnitClarification = false,
-    this.unitOptions = const [],
   });
 }

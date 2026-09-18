@@ -74,7 +74,6 @@ void main() {
       String? unitId,
       String? sessionId,
       int conversationTurn = 1,
-      String? userAction,
     }) async {
       capturedUnitIds.add(unitId);
       return plainAnswer();
@@ -117,7 +116,6 @@ void main() {
       String? unitId,
       String? sessionId,
       int conversationTurn = 1,
-      String? userAction,
     }) async {
       callCount += 1;
       return plainAnswer();
@@ -166,7 +164,6 @@ void main() {
       String? unitId,
       String? sessionId,
       int conversationTurn = 1,
-      String? userAction,
     }) async {
       capturedUnitIds.add(unitId);
       return plainAnswer(turn: capturedUnitIds.length);
@@ -213,7 +210,6 @@ void main() {
       String? unitId,
       String? sessionId,
       int conversationTurn = 1,
-      String? userAction,
     }) async {
       capturedUnitIds.add(unitId);
       return plainAnswer(turn: capturedUnitIds.length);
@@ -261,7 +257,6 @@ void main() {
       String? unitId,
       String? sessionId,
       int conversationTurn = 1,
-      String? userAction,
     }) async {
       capturedUnitIds.add(unitId);
       return plainAnswer(turn: capturedUnitIds.length);
@@ -353,7 +348,6 @@ void main() {
       String? unitId,
       String? sessionId,
       int conversationTurn = 1,
-      String? userAction,
     }) async =>
         plainAnswer();
 

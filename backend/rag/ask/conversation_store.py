@@ -40,39 +40,10 @@ class ConversationStore:
             "last_activity": firestore.SERVER_TIMESTAMP,
             "ttl_seconds": self._ttl_seconds,
             "conversation_turns": [],
-            "pending_confirmation": None,
         }
         self._session_ref(session_id).set(payload)
         self._cache[session_id] = payload
         return payload
-
-    def set_pending_confirmation(self, session_id: str, pending: Dict[str, Any]) -> None:
-        self._session_ref(session_id).update({
-            "pending_confirmation": pending,
-            "last_activity": firestore.SERVER_TIMESTAMP,
-        })
-        if session_id in self._cache:
-            self._cache[session_id]["pending_confirmation"] = pending
-
-    def get_pending_confirmation(self, session_id: str) -> Optional[Dict[str, Any]]:
-        cached = self._cache.get(session_id)
-        if cached and "pending_confirmation" in cached:
-            return cached.get("pending_confirmation")
-
-        snapshot = self._session_ref(session_id).get()
-        if not snapshot.exists:
-            return None
-        data = snapshot.to_dict() or {}
-        self._cache[session_id] = {**data, "session_id": session_id}
-        return data.get("pending_confirmation")
-
-    def clear_pending_confirmation(self, session_id: str) -> None:
-        self._session_ref(session_id).update({
-            "pending_confirmation": None,
-            "last_activity": firestore.SERVER_TIMESTAMP,
-        })
-        if session_id in self._cache:
-            self._cache[session_id]["pending_confirmation"] = None
 
     def append_turn(self, session_id: str, turn_data: Dict[str, Any]) -> None:
         safe_turn = {

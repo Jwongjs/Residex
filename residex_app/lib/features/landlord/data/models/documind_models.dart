@@ -204,25 +204,6 @@ class CitationModel {
   }
 }
 
-/// Unit option model for unit-clarification checkpoints
-class UnitOptionModel {
-  final String unitId;
-  final String unitLabel;
-
-  UnitOptionModel({required this.unitId, required this.unitLabel});
-
-  factory UnitOptionModel.fromJson(Map<String, dynamic> json) {
-    return UnitOptionModel(
-      unitId: json['unit_id'] as String? ?? '',
-      unitLabel: json['unit_label'] as String? ?? '',
-    );
-  }
-
-  Map<String, dynamic> toJson() => {'unit_id': unitId, 'unit_label': unitLabel};
-
-  UnitOption toEntity() => UnitOption(unitId: unitId, unitLabel: unitLabel);
-}
-
 /// ✅ ADDED: Answer model for Q&A responses
 class DocuMindAnswerModel {
   final String answer;
@@ -231,16 +212,10 @@ class DocuMindAnswerModel {
   final String propertyName;
   final List<String> searchedCategories;
   final String categoryFilterMode;
-  final bool needsCategoryClarification;
-  final String? clarificationPrompt;
-  final List<String> clarificationOptions;
   final String? sessionId;
   final int conversationTurn;
-  final bool userActionRequired;
   final List<String> predictedCategories;
   final String? actionReason;
-  final bool needsUnitClarification;
-  final List<UnitOptionModel> unitOptions;
 
   DocuMindAnswerModel({
     required this.answer,
@@ -249,16 +224,10 @@ class DocuMindAnswerModel {
     required this.propertyName,
     this.searchedCategories = const [],
     this.categoryFilterMode = 'all',
-    this.needsCategoryClarification = false,
-    this.clarificationPrompt,
-    this.clarificationOptions = const [],
     this.sessionId,
     this.conversationTurn = 1,
-    this.userActionRequired = false,
     this.predictedCategories = const [],
     this.actionReason,
-    this.needsUnitClarification = false,
-    this.unitOptions = const [],
   });
 
   factory DocuMindAnswerModel.fromJson(Map<String, dynamic> json) {
@@ -276,22 +245,12 @@ class DocuMindAnswerModel {
           .map((category) => category.toString())
           .toList(),
       categoryFilterMode: json['category_filter_mode'] as String? ?? 'all',
-        needsCategoryClarification: json['needs_category_clarification'] as bool? ?? false,
-        clarificationPrompt: json['clarification_prompt'] as String?,
-        clarificationOptions: (json['clarification_options'] as List<dynamic>? ?? [])
-          .map((option) => option.toString())
-          .toList(),
         sessionId: json['session_id'] as String?,
         conversationTurn: json['conversation_turn'] as int? ?? 1,
-        userActionRequired: json['user_action_required'] as bool? ?? false,
         predictedCategories: (json['predicted_categories'] as List<dynamic>? ?? [])
           .map((category) => category.toString())
           .toList(),
         actionReason: json['action_reason'] as String?,
-        needsUnitClarification: json['needs_unit_clarification'] as bool? ?? false,
-        unitOptions: (json['unit_options'] as List<dynamic>? ?? [])
-            .map((option) => UnitOptionModel.fromJson(option as Map<String, dynamic>))
-            .toList(),
     );
   }
 
@@ -303,16 +262,10 @@ class DocuMindAnswerModel {
       'property_name': propertyName,
       'searched_categories': searchedCategories,
       'category_filter_mode': categoryFilterMode,
-      'needs_category_clarification': needsCategoryClarification,
-      'clarification_prompt': clarificationPrompt,
-      'clarification_options': clarificationOptions,
       'session_id': sessionId,
       'conversation_turn': conversationTurn,
-      'user_action_required': userActionRequired,
       'predicted_categories': predictedCategories,
       'action_reason': actionReason,
-      'needs_unit_clarification': needsUnitClarification,
-      'unit_options': unitOptions.map((option) => option.toJson()).toList(),
     };
   }
 
@@ -328,16 +281,10 @@ class DocuMindAnswerModel {
       propertyName: propertyName,
       searchedCategories: searchedCategories,
       categoryFilterMode: categoryFilterMode,
-      needsCategoryClarification: needsCategoryClarification,
-      clarificationPrompt: clarificationPrompt,
-      clarificationOptions: clarificationOptions,
       sessionId: sessionId,
       conversationTurn: conversationTurn,
-      userActionRequired: userActionRequired,
       predictedCategories: predictedCategories,
       actionReason: actionReason,
-      needsUnitClarification: needsUnitClarification,
-      unitOptions: unitOptions.map((option) => option.toEntity()).toList(),
     );
   }
 }

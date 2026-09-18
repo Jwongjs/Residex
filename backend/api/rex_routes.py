@@ -180,11 +180,9 @@ async def documind_ask(payload: AskRequest, landlord_id: str = Depends(current_l
 
     Flow highlights:
     - Random/greeting input -> purpose redirect response
-    - Valid doc question without explicit category -> predicted category + confirmation checkpoint
-    - Follow-up actions supported through `session_id` + `user_action`:
-      - confirm
-      - cancel
-      - override:<category>
+    - Valid doc question without explicit category -> predicted categories scope the search
+      when confident; otherwise the whole corpus is searched
+    - Finance question -> computed by the finance engine, narrated by the LLM
 
     Optional category filtering is supported via `payload.categories`.
     Allowed categories: 'lease', 'insurance', 'loan', 'tax', 'upkeep', 'maintenance', 'rental_invoice'
@@ -192,9 +190,9 @@ async def documind_ask(payload: AskRequest, landlord_id: str = Depends(current_l
     Examples:
     - categories=['upkeep'] -> search only upkeep documents
     - categories=['lease', 'insurance'] -> search across selected categories
-    - categories omitted/null -> orchestration predicts categories and may request user confirmation
+    - categories omitted/null -> orchestration predicts categories
     - session_id provided -> continues prior conversation memory
-    - user_action='confirm' -> executes previously suggested category action
+    - unit_id provided -> scopes the search to that unit plus property-wide documents
     """
     return await documind_service.ask_documind(payload, landlord_id)
 

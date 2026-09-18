@@ -36,30 +36,14 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   String _lastQuestion = '';
   String? _docuMindSessionId;
   int _docuMindConversationTurn = 1;
-  bool _awaitingUserAction = false;
-  List<UnitOption> _pendingUnitOptions = const [];
 
   // Unit scope: which unit (if any) this chat session is pinned to. Chosen
   // via a proactive picker before the first question on a multi-unit
   // property; null means "whole property" (or the property has <=1 unit, so
-  // there was nothing to ask). Distinct from _pendingUnitOptions above, which
-  // is the backend's own *reactive* checkpoint for a question whose wording
-  // ambiguously names more than one unit.
+  // there was nothing to ask).
   String? _selectedUnitScopeId;
   bool _unitScopeChosen = false;
   bool _unitScopePickerShown = false;
-
-  // Granular category vocabulary the chat checkpoint can override to.
-  static const List<String> _overrideCategories = [
-    'lease',
-    'insurance',
-    'loan',
-    'tax',
-    'upkeep',
-    'maintenance',
-    'rental_invoice',
-    'expenses',
-  ];
 
   // Focus of the chat input. The empty-state overlay hides while it has
   // focus — the keyboard signal can't come from viewInsets because the
@@ -138,7 +122,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       _messages.clear();
       _docuMindSessionId = null;
       _docuMindConversationTurn = 1;
-      _awaitingUserAction = false;
       _selectedUnitScopeId = null;
       _unitScopeChosen = false;
       _unitScopePickerShown = false;
@@ -543,17 +526,9 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                       final citations =
                           message.customProperties?['citations']
                               as List<Citation>?;
-                      final quickReplies =
-                          message.customProperties?['quickReplies']
-                              as List<String>?;
                       final unitScopeOptions =
                           message.customProperties?['unitScopeOptions']
                               as List<String>?;
-                      final showQuickReplies = quickReplies != null &&
-                          quickReplies.isNotEmpty &&
-                          _awaitingUserAction &&
-                          _messages.isNotEmpty &&
-                          identical(_messages.first, message);
                       final showUnitScopeOptions = unitScopeOptions != null &&
                           unitScopeOptions.isNotEmpty &&
                           !_unitScopeChosen &&
@@ -561,9 +536,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                           identical(_messages.first, message);
                       final hasCitations =
                           citations != null && citations.isNotEmpty;
-                      if (!hasCitations &&
-                          !showQuickReplies &&
-                          !showUnitScopeOptions) {
+                      if (!hasCitations && !showUnitScopeOptions) {
                         return const SizedBox.shrink();
                       }
                       return Column(
@@ -571,8 +544,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (hasCitations) _buildRelevanceMeter(citations),
-                          if (showQuickReplies)
-                            _buildQuickReplyChips(quickReplies),
                           if (showUnitScopeOptions)
                             _buildQuickReplyChips(
                               unitScopeOptions,
@@ -700,12 +671,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
 
     try {
       final askAction = ref.read(askDocuMindQuestionActionProvider);
-      final userAction = mapDocuMindUserAction(
-        awaitingUserAction: _awaitingUserAction,
-        messageText: message.text,
-        categories: _overrideCategories,
-        unitOptions: _pendingUnitOptions,
-      );
       final answer = await askAction(
         propertyId: _selectedPropertyId!,
         question: message.text,
@@ -713,7 +678,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         unitId: _selectedUnitScopeId,
         sessionId: _docuMindSessionId,
         conversationTurn: _docuMindConversationTurn,
-        userAction: userAction,
       );
       _consumeAnswer(answer, message.text);
     } catch (e) {
@@ -735,18 +699,13 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     _lastQuestion = sourceQuestion;
     _docuMindSessionId = answer.sessionId ?? _docuMindSessionId;
     _docuMindConversationTurn = answer.conversationTurn + 1;
-    _awaitingUserAction = answer.userActionRequired;
-    _pendingUnitOptions =
-        answer.userActionRequired ? answer.unitOptions : const [];
 
     final responseText = buildDocuMindAssistantText(
       answer: answer,
       categoryLabelResolver: getCategoryLabel,
     );
-    final quickReplies = buildDocuMindQuickReplies(answer);
     final customProperties = <String, dynamic>{
       if (answer.citations.isNotEmpty) 'citations': answer.citations,
-      if (quickReplies.isNotEmpty) 'quickReplies': quickReplies,
     };
 
     setState(() {
@@ -764,14 +723,13 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     });
   }
 
-  /// Checkpoint quick replies: by default tapping a chip sends its text as a
-  /// normal user message, so the transcript shows the choice and the reply
-  /// flows through the same mapDocuMindUserAction path as a typed answer.
-  /// The unit-scope picker passes its own [onTap] instead, since that choice
-  /// is resolved locally and never becomes a chat message sent to the
+  /// Tappable chips for the unit-scope picker. The choice is resolved
+  /// locally by [onTap] and never becomes a chat message sent to the
   /// backend.
-  Widget _buildQuickReplyChips(List<String> replies, {void Function(String)? onTap}) {
-    final handleTap = onTap ?? _sendQuickReply;
+  Widget _buildQuickReplyChips(
+    List<String> replies, {
+    required void Function(String) onTap,
+  }) {
     return Container(
       margin: const EdgeInsets.only(top: 6, bottom: 4),
       child: Wrap(
@@ -780,7 +738,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         children: replies.map((reply) {
           return InkWell(
             borderRadius: BorderRadius.circular(20),
-            onTap: () => handleTap(reply),
+            onTap: () => onTap(reply),
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -801,17 +759,6 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
             ),
           );
         }).toList(),
-      ),
-    );
-  }
-
-  void _sendQuickReply(String reply) {
-    if (_isThinking) return;
-    _onSendMessage(
-      ChatMessage(
-        user: _currentUser,
-        createdAt: DateTime.now(),
-        text: reply,
       ),
     );
   }

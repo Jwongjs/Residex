@@ -73,18 +73,17 @@ PDF-only (enforced in the app picker and by PyPDFLoader here):
 
 ## Ask pipeline (`ask_documind`)
 
-The design principle after the checkpoint redesign: **route silently, ask
-almost never**. The LLM decides the search parameters (tool-call style); every
-LLM decision has a deterministic fallback, so an LLM failure degrades to a
-broader search — never a dead end and never an unnecessary question.
+The design principle: **route silently, never stop to ask**. The LLM decides
+the search parameters (tool-call style); every LLM decision has a
+deterministic fallback, so an LLM failure degrades to a broader search: never
+a dead end and never a question back to the user.
 
 Per question:
 
 1. **Unit fetch** — `properties/{id}/units` is read once and passed into the
    graph as `available_units`.
-2. **`route_conversation` node** — LLM classifies chit-chat vs document
-   question. Checkpoint resume actions (`confirm`, `cancel`, `override:*`,
-   `unit:*`) bypass classification.
+2. **`route_conversation` node** — LLM classifies chit-chat vs finance
+   question vs document question.
 3. **`predict_categories` node — the unified search router.** One Gemini call
    receives the question, available categories, the unit list, **and the last
    few conversation turns** (so a follow-up like "and when does it end?"
@@ -94,23 +93,24 @@ Per question:
    the output — only a real unit id may scope a search; `unit_decided=False`
    (failure, hallucinated id, unparseable output) hands unit routing to the
    deterministic matcher.
-4. **`decide_action` node** — fresh questions always `retrieve`; the
-   confirm/cancel/override/unit branches only serve legacy checkpoint resumes.
+4. **Graph exit** — `predict_categories` ends the graph with
+   `action=retrieve`. There is no confirmation step.
 5. **Service-side unit routing** (in priority order):
-   - An explicit `unit_id` in the API payload wins outright (the app no
-     longer sends one — the chat has no unit picker — but the field remains
-     for API clients and checkpoint resumes).
+   - An explicit `unit_id` in the API payload wins outright. The app's unit
+     picker sends it when the landlord scopes the session to one unit, and
+     omits it for "Whole property".
    - Else the **LLM's validated decision** applies: scoped, all, or the honest
      "I couldn't find Unit D — this property's units are: …" answer.
    - Else the **deterministic matcher** `resolve_unit_mention` label-matches
      the question ("unit a" → "Unit A-12-03" only at a segment boundary):
      scoped / aggregate ("all units", "per unit", …) / unknown / ambiguous.
-   - **The one surviving checkpoint:** a reference that genuinely matches
-     *several* units (e.g. "unit A" with "Unit A-1" and "Unit A-2") asks which
-     one — rendered as tap chips in the app. Everything else routes silently.
+   - **No checkpoint:** a reference that matches *several* units (e.g.
+     "unit A" with "Unit A-1" and "Unit A-2") searches the whole property,
+     like "all units"; the answer attributes every fact to its unit. The
+     landlord already chose the scope in the unit picker.
 6. **Category scope** — the router's categories apply when its confidence is
-   ≥ 0.45; otherwise the whole corpus is searched. Explicit user categories
-   and checkpoint-resume selections always win.
+   ≥ 0.45; otherwise the whole corpus is searched. Explicit categories in
+   the payload always win.
 7. **Retrieval** — `HybridRetriever`: Firestore `find_nearest` dense search
    filtered by landlord/property/category, unit post-filter, then
    cross-encoder rerank (sentence-transformers).
@@ -121,10 +121,9 @@ Per question:
    (filename, page), keep the best rerank score, and carry `unit_id` /
    `unit_label` for the app's unit badges.
 
-Conversation/checkpoint state lives in the in-memory `ConversationStore`
-(sessions, turns, pending confirmations). A checkpoint resume re-runs the
-*original* question with the chosen scope, reusing the categories stashed when
-the checkpoint fired.
+Conversation state lives in `ConversationStore` (Firestore-backed sessions
+and turns, cached in process); recent turns feed both routers so short
+follow-ups keep their context.
 
 **LLM call budget:** three calls per document question — conversation router,
 search router, answer synthesis. Unit routing added zero extra calls.
@@ -133,12 +132,12 @@ search router, answer synthesis. Unit routing added zero extra calls.
 
 `residex_app/lib/features/landlord/presentation/screens/2-Documind/`:
 
-- **Chat tab** — dash_chat_2; typing-dots indicator while waiting; checkpoint
-  options render as quick-reply chips that send their text as a normal message
-  (same mapping path as typing, so the backend contract is unchanged); there
-  is **no unit picker** — unit scope comes from the question and the recent
-  conversation via the backend router; citation lines pin the page number and
-  unit badge (the transparency layer for unit scoping).
+- **Chat tab** — dash_chat_2; typing-dots indicator while waiting; on a
+  multi-unit property a unit picker (each unit plus "Whole property") appears
+  before the first question, and a header control changes it later; the
+  chosen unit goes out as `unit_id` on every question, while "Whole property"
+  leaves unit scope to the backend router; citation lines pin the page number
+  and unit badge (the transparency layer for unit scoping).
 - **Docs tab** — category grid → per-category list, always property-wide;
   each tile shows its unit badge; PDF-only upload with an assign-to-unit
   dialog (leases list units first).
@@ -151,10 +150,10 @@ search router, answer synthesis. Unit routing added zero extra calls.
 | File | Covers |
 |---|---|
 | `tests/test_documind_orchestration.py` | Graph routing, search-router parsing (unit id / label echo / unknown / hallucination / failure fallback) |
-| `tests/test_documind_service_flows.py` | Ask flows end-to-end with fakes: LLM-routed scoping, deterministic fallback, unknown-unit answers, ambiguity checkpoint, resumes, unassign/delete |
+| `tests/test_documind_service_flows.py` | Ask flows end-to-end with fakes: LLM-routed scoping, deterministic fallback, unknown-unit answers, ambiguous references searching the whole property, unassign/delete |
 | `tests/test_rex_routes_documind_*.py` | API contract |
 | `tests/test_retriever.py` | Hybrid retrieval |
-| `residex_app/test/features/landlord/` | Chat logic mapping, quick replies, checkpoint widget flows, upload rules, unit label resolution |
+| `residex_app/test/features/landlord/` | Chat text and citation helpers, unit-scope picker flows, upload rules, unit label resolution |
 
 Run backend tests with a Python 3.11 that has `sentence_transformers`
 installed (the repo `.venv` does not): `py -3.11 -m pytest tests/ -q` from

@@ -49,7 +49,6 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
     String? unitId,
     String? sessionId,
     int conversationTurn = 1,
-    String? userAction,
   }) async {
     print('🔵 Repository: Ask question');
     print('   - Property: $propertyId');
@@ -64,7 +63,6 @@ class DocuMindRepositoryImpl implements DocuMindRepository {
         unitId: unitId,
         sessionId: sessionId,
         conversationTurn: conversationTurn,
-        userAction: userAction,
       );
       print('✅ Repository: Ask successful');
       return model.toEntity();

@@ -126,7 +126,6 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
   String? unitId,
   String? sessionId,
   int conversationTurn,
-  String? userAction,
 })>((ref) {
   return ({
     required String propertyId,
@@ -136,7 +135,6 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
     String? unitId,
     String? sessionId,
     int conversationTurn = 1,
-    String? userAction,
   }) async {
     final useCase = ref.read(askDocuMindQuestionUseCaseProvider);
 
@@ -151,7 +149,6 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
       unitId: unitId,
       sessionId: sessionId,
       conversationTurn: conversationTurn,
-      userAction: userAction,
     );
   };
 });

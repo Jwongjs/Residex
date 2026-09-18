@@ -84,7 +84,6 @@ class DocuMindRemoteDataSource {
     String? unitId,
     String? sessionId,
     int conversationTurn = 1,
-    String? userAction,
   }) async {
     print('🔵 DataSource: Ask question');
     print('   - Property: $propertyId');
@@ -104,7 +103,6 @@ class DocuMindRemoteDataSource {
           if (unitId != null && unitId.isNotEmpty) 'unit_id': unitId,
           if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
           'conversation_turn': conversationTurn,
-          if (userAction != null && userAction.isNotEmpty) 'user_action': userAction,
         }),
       );
 

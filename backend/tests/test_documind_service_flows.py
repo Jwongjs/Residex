@@ -454,7 +454,6 @@ class _FakeDB:
 class _FakeConversationStore:
     def __init__(self):
         self.sessions = {}
-        self.pending = {}
         self.turns = {}
 
     def get_or_create_session(self, landlord_id, property_id, session_id):
@@ -472,15 +471,6 @@ class _FakeConversationStore:
 
     def append_turn(self, session_id, turn_data):
         self.turns.setdefault(session_id, []).append(turn_data)
-
-    def set_pending_confirmation(self, session_id, pending):
-        self.pending[session_id] = pending
-
-    def get_pending_confirmation(self, session_id):
-        return self.pending.get(session_id)
-
-    def clear_pending_confirmation(self, session_id):
-        self.pending[session_id] = None
 
 
 class _FakeGraphOrchestrator:
@@ -596,129 +586,6 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
 
 
 class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
-    async def test_cancel_clears_pending_and_returns_cancel_mode(self):
-        fake_db = _FakeDB(docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}])
-        fake_store = _FakeConversationStore()
-        fake_store.pending["session-9"] = {"question": "q", "predicted_categories": ["lease"]}
-        fake_graph = _FakeGraphOrchestrator(
-            {
-                "action": "cancel",
-                "assistant_message": "Cancelled.",
-                "intent": "document_question",
-            }
-        )
-        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
-
-        payload = AskRequest(
-            property_id="p1",
-            question="cancel that",
-            session_id="session-9",
-            user_action="cancel",
-        )
-        response = await service.ask_documind(payload, "l1")
-
-        self.assertEqual(response.category_filter_mode, "cancel")
-        self.assertFalse(response.user_action_required)
-        self.assertIsNone(fake_store.pending["session-9"])
-
-    async def test_confirm_uses_pending_predicted_categories_for_retrieval(self):
-        fake_db = _FakeDB(
-            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}],
-            chunks=[
-                {
-                    "doc_id": "d1",
-                    "filename": "lease.pdf",
-                    "category": "lease",
-                    "page": 2,
-                    "text": "Pets are allowed with approval.",
-                    "landlord_id": "l1",
-                    "property_id": "p1",
-                }
-            ],
-            property_name="Maple Residency",
-        )
-        fake_store = _FakeConversationStore()
-        fake_store.pending["session-1"] = {
-            "question": "Are pets allowed?",
-            "predicted_categories": ["lease"],
-            "available_categories": ["lease"],
-        }
-        fake_graph = _FakeGraphOrchestrator(
-            {
-                "action": "retrieve",
-                "predicted_categories": ["lease"],
-                "prediction_reason": "lease clause",
-                "intent": "document_question",
-            }
-        )
-        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("Pets are allowed with owner approval."))
-
-        payload = AskRequest(
-            property_id="p1",
-            question="yes",
-            session_id="session-1",
-            user_action="confirm",
-        )
-
-        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock:
-            embeddings_mock.return_value = _FakeEmbeddings()
-            response = await service.ask_documind(payload, "l1")
-
-        self.assertEqual(response.category_filter_mode, "clarification_selected")
-        self.assertEqual(response.searched_categories, ["lease"])
-        self.assertEqual(response.property_name, "Maple Residency")
-        self.assertEqual(len(response.citations), 1)
-        self.assertFalse(response.user_action_required)
-
-    async def test_override_category_uses_override_in_retrieval(self):
-        fake_db = _FakeDB(
-            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "upkeep"}],
-            chunks=[
-                {
-                    "doc_id": "d2",
-                    "filename": "upkeep.pdf",
-                    "category": "upkeep",
-                    "page": 1,
-                    "text": "Aircon servicing coverage starts from installation date.",
-                    "landlord_id": "l1",
-                    "property_id": "p1",
-                }
-            ],
-        )
-        fake_store = _FakeConversationStore()
-        fake_store.pending["session-2"] = {
-            "question": "What is covered?",
-            "predicted_categories": ["lease"],
-            "available_categories": ["lease", "upkeep"],
-        }
-        fake_graph = _FakeGraphOrchestrator(
-            {
-                "action": "retrieve",
-                "predicted_categories": ["lease"],
-                "prediction_reason": "initial lease guess",
-                "intent": "document_question",
-            }
-        )
-        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("Coverage includes parts and labor."))
-
-        payload = AskRequest(
-            property_id="p1",
-            question="choose upkeep",
-            session_id="session-2",
-            user_action="override:upkeep",
-        )
-
-        with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock:
-            embeddings_mock.return_value = _FakeEmbeddings()
-            response = await service.ask_documind(payload, "l1")
-
-        self.assertEqual(response.category_filter_mode, "clarification_selected")
-        self.assertEqual(response.searched_categories, ["upkeep"])
-        self.assertEqual(
-            fake_db.last_chunk_category_filter,
-            ("in", ["upkeep", "utility", "warranty", "expenses"]),
-        )
-
     async def test_citations_and_context_carry_unit_fields(self):
         fake_db = _FakeDB(
             docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}],
@@ -807,7 +674,7 @@ class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.action_reason, "Retrieval failure")
 
 
-class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
+class DocuMindUnitRoutingTests(unittest.IsolatedAsyncioTestCase):
     def _multi_unit_db(self):
         return _FakeDB(
             docs=[
@@ -838,17 +705,6 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
             "intent": "document_question",
         })
 
-    def _unit_pending(self):
-        return {
-            "type": "unit",
-            "question": "when does the lease expire?",
-            "unit_options": [
-                {"unit_id": "unit-A", "unit_label": "Unit A"},
-                {"unit_id": "unit-B", "unit_label": "Unit B"},
-                {"unit_id": "all", "unit_label": "All units"},
-            ],
-        }
-
     async def test_multi_unit_retrieval_without_filter_answers_with_attribution(self):
         # Mixed-unit retrieval no longer blocks on a checkpoint: the answer
         # comes back directly and the prompt's unit-attribution rule keeps
@@ -861,8 +717,6 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(property_id="p1", question="when does the lease expire?")
         response = await service.ask_documind(payload, "l1")
 
-        self.assertFalse(response.needs_unit_clarification)
-        self.assertFalse(response.user_action_required)
         self.assertEqual(len(response.citations), 2)
         self.assertIn("Unit attribution", fake_llm.last_prompt)
 
@@ -878,7 +732,6 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         )
         response = await service.ask_documind(payload, "l1")
 
-        self.assertFalse(response.needs_unit_clarification)
         retriever_call = service._hybrid_retriever.calls[-1]
         self.assertEqual(retriever_call["unit_id"], "unit-A")
         self.assertEqual(len(response.citations), 1)
@@ -894,8 +747,6 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         )
         response = await service.ask_documind(payload, "l1")
 
-        self.assertFalse(response.needs_unit_clarification)
-        self.assertFalse(response.user_action_required)
         self.assertIn("Unit D", response.answer)
         self.assertIn("Unit A", response.answer)
         self.assertEqual(response.citations, [])
@@ -917,8 +768,6 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         )
         response = await service.ask_documind(payload, "l1")
 
-        self.assertFalse(response.needs_unit_clarification)
-        self.assertFalse(response.user_action_required)
         retriever_call = service._hybrid_retriever.calls[-1]
         self.assertIsNone(retriever_call["unit_id"])
         self.assertEqual(len(response.citations), 2)
@@ -944,7 +793,6 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         )
         response = await service.ask_documind(payload, "l1")
 
-        self.assertFalse(response.needs_unit_clarification)
         retriever_call = service._hybrid_retriever.calls[-1]
         self.assertEqual(retriever_call["unit_id"], "unit-B")
         self.assertEqual(len(response.citations), 1)
@@ -965,14 +813,14 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(property_id="p1", question="rent for unit D?")
         response = await service.ask_documind(payload, "l1")
 
-        self.assertFalse(response.user_action_required)
         self.assertIn("Unit D", response.answer)
         self.assertIn("Unit A", response.answer)
         self.assertEqual(service._hybrid_retriever.calls, [])
 
-    async def test_prefix_collision_still_asks_which_unit(self):
-        # The one surviving unit checkpoint: a reference that genuinely
-        # matches several units (pre-retrieval, so no wasted search).
+    async def test_prefix_collision_searches_the_whole_property(self):
+        # No "which unit?" prompt: the unit picker already set this session's
+        # scope (here the whole property), so a reference matching several
+        # units searches unscoped and the answer attributes facts per unit.
         fake_db = _FakeDB(
             docs=[{"doc_id": "doc-A", "landlord_id": "l1", "property_id": "p1", "category": "lease"}],
             chunks=[],
@@ -987,60 +835,10 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(
             property_id="p1", question="what is the rent for unit A?"
         )
-        response = await service.ask_documind(payload, "l1")
+        await service.ask_documind(payload, "l1")
 
-        self.assertTrue(response.needs_unit_clarification)
-        self.assertTrue(response.user_action_required)
-        self.assertEqual(
-            [option.unit_id for option in response.unit_options],
-            ["unit-A1", "unit-A2", "all"],
-        )
-        pending = fake_store.pending[response.session_id]
-        self.assertEqual(pending["type"], "unit")
-        self.assertEqual(service._hybrid_retriever.calls, [])
-
-    async def test_unit_action_reruns_pending_question_with_unit_filter(self):
-        fake_db = self._multi_unit_db()
-        fake_store = _FakeConversationStore()
-        fake_store.pending["session-7"] = self._unit_pending()
-        service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("It ends 31 December 2026."))
-
-        payload = AskRequest(
-            property_id="p1",
-            question="Unit A",
-            session_id="session-7",
-            user_action="unit:unit-A",
-        )
-        response = await service.ask_documind(payload, "l1")
-
-        self.assertFalse(response.needs_unit_clarification)
-        self.assertEqual(len(response.citations), 1)
-        self.assertEqual(response.citations[0].unit_label, "Unit A")
-        retriever_call = service._hybrid_retriever.calls[-1]
-        self.assertEqual(retriever_call["unit_id"], "unit-A")
-        self.assertEqual(retriever_call["question"], "when does the lease expire?")
-        self.assertIsNone(fake_store.pending["session-7"])
-
-    async def test_unit_all_action_answers_unfiltered_without_loop(self):
-        fake_db = self._multi_unit_db()
-        fake_store = _FakeConversationStore()
-        fake_store.pending["session-8"] = self._unit_pending()
-        service = _build_service(fake_db, fake_store, self._retrieve_graph(), _FakeLLM("Unit A ends 2026; Unit B ends 2027."))
-
-        payload = AskRequest(
-            property_id="p1",
-            question="All units",
-            session_id="session-8",
-            user_action="unit:all",
-        )
-        response = await service.ask_documind(payload, "l1")
-
-        self.assertFalse(response.needs_unit_clarification)
-        self.assertFalse(response.user_action_required)
-        self.assertEqual(len(response.citations), 2)
-        retriever_call = service._hybrid_retriever.calls[-1]
-        self.assertIsNone(retriever_call["unit_id"])
-        self.assertEqual(retriever_call["question"], "when does the lease expire?")
+        self.assertEqual(len(service._hybrid_retriever.calls), 1)
+        self.assertIsNone(service._hybrid_retriever.calls[-1]["unit_id"])
 
     async def test_single_unit_plus_property_wide_does_not_trigger(self):
         fake_db = _FakeDB(
@@ -1070,44 +868,7 @@ class DocuMindUnitClarificationTests(unittest.IsolatedAsyncioTestCase):
         payload = AskRequest(property_id="p1", question="when does the lease expire?")
         response = await service.ask_documind(payload, "l1")
 
-        self.assertFalse(response.needs_unit_clarification)
         self.assertEqual(len(response.citations), 2)
-
-    async def test_unit_resume_preserves_original_category_scope(self):
-        fake_db = self._multi_unit_db()
-        fake_store = _FakeConversationStore()
-        # Pending carries the ORIGINAL question's lease scope.
-        fake_store.pending["session-scope"] = {
-            "type": "unit",
-            "question": "when does the lease expire?",
-            "selected_categories": ["lease"],
-            "unit_options": [
-                {"unit_id": "unit-A", "unit_label": "Unit A"},
-                {"unit_id": "unit-B", "unit_label": "Unit B"},
-                {"unit_id": "all", "unit_label": "All units"},
-            ],
-        }
-        # This turn's graph runs over "Unit A" and honestly returns no category.
-        empty_pred_graph = _FakeGraphOrchestrator({
-            "action": "retrieve",
-            "predicted_categories": [],
-            "intent": "document_question",
-        })
-        service = _build_service(fake_db, fake_store, empty_pred_graph, _FakeLLM("It ends 31 December 2026."))
-
-        payload = AskRequest(
-            property_id="p1",
-            question="Unit A",
-            session_id="session-scope",
-            user_action="unit:unit-A",
-        )
-        response = await service.ask_documind(payload, "l1")
-
-        # The resumed retrieval must keep the ORIGINAL lease scope, not search all categories.
-        retriever_call = service._hybrid_retriever.calls[-1]
-        self.assertEqual(retriever_call["categories"], ["lease"])
-        self.assertEqual(retriever_call["unit_id"], "unit-A")
-        self.assertEqual(response.searched_categories, ["lease"])
 
 
 class _FakeBlob:
@@ -1440,13 +1201,12 @@ class SkipUnitRoutingWhenAlreadyResolvedTests(unittest.IsolatedAsyncioTestCase):
     """CategoryPredictor bundles unit routing into its one category-prediction
     LLM call. That routing output is only ever read when
     ask_orchestrator.py's own `effective_unit_id is None` check passes — which
-    is false whenever the caller already pinned a unit (frontend's proactive
-    picker) or this turn resumes a unit-ambiguity checkpoint. In both cases
-    the LLM was still being asked to route a unit nobody reads; the fix is to
-    hand the predictor an empty unit list in exactly those two cases, which
-    CategoryPredictor.predict() already treats as "no unit-routing needed"
-    (see its `if units:` branch) — so this is a prompt-size optimization, not
-    a behavior change."""
+    is false whenever the caller already pinned a unit (the app's unit
+    picker). The LLM was still being asked to route a unit nobody reads; the
+    fix is to hand the predictor an empty unit list in exactly that case,
+    which CategoryPredictor.predict() already treats as "no unit-routing
+    needed" (see its `if units:` branch) — so this is a prompt-size
+    optimization, not a behavior change."""
 
     def _fake_db_with_units(self):
         return _FakeDB(
@@ -1467,22 +1227,6 @@ class SkipUnitRoutingWhenAlreadyResolvedTests(unittest.IsolatedAsyncioTestCase):
         service = _build_service(fake_db, _FakeConversationStore(), fake_graph, _FakeLLM("ans"))
 
         payload = AskRequest(property_id="p1", question="what is the rent?", unit_id="unit-A")
-        await service.ask_documind(payload, "l1")
-
-        self.assertEqual(fake_graph.received_states[-1]["available_units"], [])
-
-    async def test_unit_checkpoint_resume_sends_no_units_to_the_predictor(self):
-        fake_db = self._fake_db_with_units()
-        fake_graph = _FakeGraphOrchestrator({
-            "action": "retrieve",
-            "predicted_categories": [],
-            "intent": "document_question",
-        })
-        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, _FakeLLM("ans"))
-
-        payload = AskRequest(
-            property_id="p1", question="Unit A", user_action="unit:unit-A",
-        )
         await service.ask_documind(payload, "l1")
 
         self.assertEqual(fake_graph.received_states[-1]["available_units"], [])
@@ -2090,7 +1834,6 @@ class FinanceChatFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.answer, narration)
         self.assertEqual(response.category_filter_mode, "finance")
         self.assertEqual(response.citations, [])
-        self.assertFalse(response.user_action_required)
 
     async def test_finance_path_never_retrieves_document_chunks(self):
         # Privacy lock: finance answers must be built ONLY from the engine's
@@ -2276,11 +2019,6 @@ class HostedContextScrubTests(unittest.IsolatedAsyncioTestCase):
             property_name="Maple Residency",
         )
         fake_store = _FakeConversationStore()
-        fake_store.pending["session-pii"] = {
-            "question": "Who signed?",
-            "predicted_categories": ["lease"],
-            "available_categories": ["lease"],
-        }
         fake_graph = _FakeGraphOrchestrator(
             {
                 "action": "retrieve",
@@ -2294,9 +2032,8 @@ class HostedContextScrubTests(unittest.IsolatedAsyncioTestCase):
 
         payload = AskRequest(
             property_id="p1",
-            question="yes",
+            question="Who signed?",
             session_id="session-pii",
-            user_action="confirm",
         )
 
         with patch.object(DocuMindService, "embeddings", new_callable=PropertyMock) as embeddings_mock:

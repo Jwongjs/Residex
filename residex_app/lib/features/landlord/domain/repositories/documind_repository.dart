@@ -27,7 +27,6 @@ abstract class DocuMindRepository {
     String? unitId,
     String? sessionId,
     int conversationTurn = 1,
-    String? userAction,
   });
 
   /// List documents for a property.

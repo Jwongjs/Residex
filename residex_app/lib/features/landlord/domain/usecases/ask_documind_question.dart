@@ -15,7 +15,6 @@ class AskDocuMindQuestion {
     String? unitId,
     String? sessionId,
     int conversationTurn = 1,
-    String? userAction,
   }) async {
     // ✅ Business validation
     if (question.trim().isEmpty) {
@@ -38,7 +37,6 @@ class AskDocuMindQuestion {
       unitId: unitId,
       sessionId: sessionId,
       conversationTurn: conversationTurn,
-      userAction: userAction,
     );
   }
 }

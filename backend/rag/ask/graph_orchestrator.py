@@ -10,7 +10,6 @@ class DocuMindState(TypedDict, total=False):
     explicit_categories: List[str]
     available_categories: List[str]
     available_units: List[Dict[str, Any]]
-    user_action: str
     recent_turns: List[Dict[str, Any]]
     property_name: str
 
@@ -47,8 +46,6 @@ class DocuMindGraphOrchestrator:
         graph.add_node("route_conversation", self._route_conversation_node)
         graph.add_node("respond_conversation", self._respond_conversation_node)
         graph.add_node("predict_categories", self._predict_categories_node)
-        graph.add_node("decide_action", self._decide_action_node)
-        graph.add_node("prepare_cancel", self._prepare_cancel_node)
         graph.add_node("prepare_finance", self._prepare_finance_node)
 
         graph.set_entry_point("route_conversation")
@@ -60,23 +57,11 @@ class DocuMindGraphOrchestrator:
                 "conversation": "respond_conversation",
                 "finance": "prepare_finance",
                 "predict": "predict_categories",
-                "decide": "decide_action",
-            },
-        )
-
-        graph.add_edge("predict_categories", "decide_action")
-
-        graph.add_conditional_edges(
-            "decide_action",
-            self._route_after_decision,
-            {
-                "cancel": "prepare_cancel",
-                "retrieve": END,
             },
         )
 
         graph.add_edge("respond_conversation", END)
-        graph.add_edge("prepare_cancel", END)
+        graph.add_edge("predict_categories", END)
         graph.add_edge("prepare_finance", END)
 
         return graph.compile()
@@ -85,17 +70,6 @@ class DocuMindGraphOrchestrator:
         return await self._graph.ainvoke(state)
 
     async def _route_conversation_node(self, state: DocuMindState) -> DocuMindState:
-        user_action = (state.get("user_action") or "").strip().lower()
-        if user_action in {"confirm", "cancel"} or user_action.startswith(("override:", "unit:")):
-            return {
-                **state,
-                "intent": "document_question",
-                "rag_needed": True,
-                "intent_confidence": 1.0,
-                "intent_reason": "User checkpoint action",
-                "assistant_message": "",
-            }
-
         result = self._conversation_router.route(
             text=state.get("user_input", ""),
             recent_turns=state.get("recent_turns", []),
@@ -122,6 +96,7 @@ class DocuMindGraphOrchestrator:
         if explicit_categories:
             return {
                 **state,
+                "action": "retrieve",
                 "predicted_categories": explicit_categories,
                 "prediction_confidence": 1.0,
                 "prediction_reason": "User provided explicit categories",
@@ -139,6 +114,7 @@ class DocuMindGraphOrchestrator:
 
         return {
             **state,
+            "action": "retrieve",
             "predicted_categories": prediction.get("predicted_categories", []),
             "prediction_confidence": prediction.get("confidence", 0.0),
             "prediction_reason": prediction.get("reason", ""),
@@ -147,45 +123,15 @@ class DocuMindGraphOrchestrator:
             "unit_routing_decided": prediction.get("unit_decided", False),
         }
 
-    async def _decide_action_node(self, state: DocuMindState) -> DocuMindState:
-        # Cancelling a checkpoint is the only thing that diverts a question
-        # away from retrieval. Everything else — fresh questions, confirm /
-        # override / unit resumes, explicit category filters — retrieves:
-        # predicted categories scope the search when the predictor is confident
-        # and the whole corpus is searched otherwise (decided in the service).
-        # Confirming a category on every question added friction without
-        # improving answers, so no category checkpoint is raised any more.
-        user_action = (state.get("user_action") or "").strip().lower()
-        if user_action == "cancel" and not state.get("explicit_categories"):
-            return {**state, "action": "cancel"}
-        return {**state, "action": "retrieve"}
-
-    async def _prepare_cancel_node(self, state: DocuMindState) -> DocuMindState:
-        return {
-            **state,
-            "assistant_message": "Understood. I cancelled that action. Ask me anytime about your property documents.",
-        }
-
     async def _prepare_finance_node(self, state: DocuMindState) -> DocuMindState:
         return {**state, "action": "finance"}
 
     def _route_after_conversation(self, state: DocuMindState) -> str:
         if state.get("intent") == "finance_question":
             return "finance"
-        # Confirm / override resumes are scoped by the service from the pending
-        # checkpoint or the override itself, and cancel retrieves nothing, so a
-        # prediction here would be an LLM call whose result is thrown away. A
-        # unit resume still predicts: its prediction is the fallback category
-        # scope when the checkpoint stashed none.
-        user_action = (state.get("user_action") or "").strip().lower()
-        if user_action in {"confirm", "cancel"} or user_action.startswith("override:"):
-            return "decide"
         if state.get("rag_needed", False):
             return "predict"
         intent = state.get("intent")
         if intent == "conversation":
             return "conversation"
         return "predict"
-
-    def _route_after_decision(self, state: DocuMindState) -> str:
-        return "cancel" if state.get("action") == "cancel" else "retrieve"

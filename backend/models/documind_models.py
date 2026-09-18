@@ -42,10 +42,6 @@ class AskRequest(BaseModel):
         ge=1,
         description="Conversation turn number when continuing an existing session"
     )
-    user_action: Optional[str] = Field(
-        default=None,
-        description="User response for checkpointed actions: confirm | cancel | override:<category> | unit:<unit_id> | unit:all"
-    )
 
 
 class Citation(BaseModel):
@@ -61,12 +57,6 @@ class Citation(BaseModel):
     source: str = "excerpt"  # "excerpt" | "extracted_facts"
 
 
-class UnitOption(BaseModel):
-    """One selectable unit in a unit-clarification checkpoint"""
-    unit_id: str
-    unit_label: str
-
-
 class AskResponse(BaseModel):
     """Response from DocuMind Q&A"""
     answer: str
@@ -78,18 +68,6 @@ class AskResponse(BaseModel):
         default="all",
         description="Category filtering mode: explicit, auto, all"
     )
-    needs_category_clarification: bool = Field(
-        default=False,
-        description="Whether frontend should ask user to choose a category before searching"
-    )
-    clarification_prompt: Optional[str] = Field(
-        default=None,
-        description="Prompt shown when category clarification is needed"
-    )
-    clarification_options: List[str] = Field(
-        default_factory=list,
-        description="Suggested categories for user to choose"
-    )
     session_id: Optional[str] = Field(
         default=None,
         description="Conversation session id to continue follow-up actions"
@@ -99,25 +77,13 @@ class AskResponse(BaseModel):
         ge=1,
         description="Current conversation turn in the session"
     )
-    user_action_required: bool = Field(
-        default=False,
-        description="When true, frontend should prompt user to confirm/override/cancel next action"
-    )
     predicted_categories: List[str] = Field(
         default_factory=list,
-        description="Categories predicted by orchestrator before user confirmation"
+        description="Categories the orchestrator predicted for the question"
     )
     action_reason: Optional[str] = Field(
         default=None,
-        description="Reasoning shown to user for the suggested action"
-    )
-    needs_unit_clarification: bool = Field(
-        default=False,
-        description="Whether frontend should ask user to choose a unit before answering",
-    )
-    unit_options: List[UnitOption] = Field(
-        default_factory=list,
-        description="Units whose documents matched; ends with sentinel {unit_id: 'all', unit_label: 'All units'}",
+        description="Why the orchestrator answered or scoped the search the way it did"
     )
 
 

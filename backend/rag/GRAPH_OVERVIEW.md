@@ -8,10 +8,7 @@
    - [route_conversation](#1-route_conversation)
    - [respond_conversation](#2-respond_conversation)
    - [predict_categories](#3-predict_categories)
-   - [decide_action](#4-decide_action)
-   - [prepare_confirmation](#5-prepare_confirmation)
-   - [prepare_cancel](#6-prepare_cancel)
-   - [prepare_retrieve](#7-prepare_retrieve)
+   - [prepare_finance](#4-prepare_finance)
 5. [Edges and Routing Logic](#edges-and-routing-logic)
 6. [Supporting Components](#supporting-components)
    - [ConversationRouter](#conversationrouter)
@@ -28,11 +25,10 @@
 
 DocuMind is a Retrieval-Augmented Generation (RAG) system for property document Q&A. It uses **LangGraph** to orchestrate a stateful, multi-step decision pipeline before any vector search is performed. The graph decides:
 
-- Is this a casual chat or a real document question?
-- Which document categories are relevant?
-- Should the system ask the user for confirmation first, or retrieve immediately?
+- Is this casual chat, a finance question, or a document question?
+- For a document question: which document categories, and which unit, should the search target?
 
-The graph runs entirely before RAG retrieval. Its output (`action` field) tells `DocuMindService` what to do next.
+The graph never asks the user anything back and never retrieves. It runs entirely before RAG retrieval, and its output (`action` field) tells `AskOrchestrator.ask()` what to do next. On a multi-unit property the app's unit picker usually settles the unit before the question is asked (`payload.unit_id`).
 
 **Technology stack:**
 - LangGraph `StateGraph` for orchestration
@@ -44,7 +40,7 @@ The graph runs entirely before RAG retrieval. Its output (`action` field) tells 
 
 ## State Schema
 
-**File:** [graph_orchestrator.py](graph_orchestrator.py) — lines 8–27
+**File:** [ask/graph_orchestrator.py](ask/graph_orchestrator.py#L8-L35)
 
 `DocuMindState` is a `TypedDict` (all fields optional via `total=False`) that flows through every node. Each node reads from it and returns a merged copy with its additions.
 
@@ -53,61 +49,48 @@ The graph runs entirely before RAG retrieval. Its output (`action` field) tells 
 | `user_input` | `str` | Caller | The user's raw question |
 | `explicit_categories` | `List[str]` | Caller | Categories explicitly requested by the user |
 | `available_categories` | `List[str]` | Caller | Categories that have uploaded docs for this property |
-| `user_action` | `str` | Caller | Checkpoint response: `"confirm"`, `"cancel"`, `"override:<cat>"` |
+| `available_units` | `List[Dict]` | Caller | The property's units for unit routing; empty when the app's unit picker already pinned `unit_id` |
 | `recent_turns` | `List[Dict]` | Caller | Last N conversation turns for context |
 | `property_name` | `str` | Caller | Human-readable property name |
-| `intent` | `str` | `route_conversation` | `"conversation"` or `"document_question"` |
+| `intent` | `str` | `route_conversation` | `"conversation"`, `"document_question"`, or `"finance_question"` |
 | `rag_needed` | `bool` | `route_conversation` | Whether RAG retrieval is required |
 | `intent_confidence` | `float` | `route_conversation` | LLM confidence score (0.0–1.0) |
 | `intent_reason` | `str` | `route_conversation` | Human-readable reason for intent classification |
+| `finance_year` | `int` | `route_conversation` | Year named in a finance question (None = current year) |
 | `predicted_categories` | `List[str]` | `predict_categories` | Up to 2 predicted document categories |
 | `prediction_confidence` | `float` | `predict_categories` | Confidence of category prediction |
 | `prediction_reason` | `str` | `predict_categories` | Reason for category prediction |
-| `action` | `str` | `decide_action` / `respond_conversation` | Final action: `"conversation"`, `"ask_confirmation"`, `"cancel"`, `"retrieve"` |
-| `assistant_message` | `str` | Multiple nodes | Pre-composed user-facing text (used for non-retrieval responses) |
+| `routed_unit_id` | `str` | `predict_categories` | Unit the router picked (validated by the service before use) |
+| `unknown_unit_mention` | `str` | `predict_categories` | A unit the question names that doesn't exist |
+| `unit_routing_decided` | `bool` | `predict_categories` | False = router made no unit decision; the service falls back to label matching |
+| `action` | `str` | the terminal node | `"conversation"`, `"finance"`, or `"retrieve"` |
+| `assistant_message` | `str` | `route_conversation` | Chat reply, used only when `action="conversation"` |
 
 ---
 
 ## Graph Topology
 
 ```
-                    ┌─────────────────────┐
-                    │   route_conversation │  (ENTRY POINT)
-                    └──────────┬──────────┘
-                               │
-              ┌────────────────┴────────────────┐
-              │ _route_after_conversation()       │
-              │                                   │
-       rag_needed=false                    rag_needed=true
-       intent="conversation"               OR intent="document_question"
-              │                                   │
-              ▼                                   ▼
-  ┌─────────────────────┐          ┌──────────────────────┐
-  │  respond_conversation│          │   predict_categories  │
-  └──────────┬──────────┘          └──────────┬───────────┘
-             │                                │
-             │                                │ (always)
-             │                                ▼
-             │                    ┌──────────────────────┐
-             │                    │     decide_action     │
-             │                    └──────────┬───────────┘
-             │                               │
-             │           ┌──────────────────┬┴──────────────────┐
-             │           │ _route_after_     │                   │
-             │           │  decision()       │                   │
-             │           │                  │                    │
-             │      action=                action=          action=
-             │    ask_confirmation         cancel           retrieve
-             │           │                  │                   │
-             │           ▼                  ▼                   ▼
-             │  ┌──────────────────┐ ┌──────────────┐ ┌────────────────┐
-             │  │prepare_confirmation│ │prepare_cancel│ │prepare_retrieve│
-             │  └────────┬─────────┘ └──────┬───────┘ └───────┬────────┘
-             │           │                  │                  │
-             └───────────┴──────────────────┴──────────────────┘
-                                            │
-                                           END
+                       ┌──────────────────────┐
+                       │  route_conversation  │  (ENTRY POINT)
+                       └──────────┬───────────┘
+                                  │  _route_after_conversation()
+           ┌──────────────────────┼──────────────────────┐
+           │                      │                      │
+  intent="conversation"   intent="finance_question"   rag_needed=true
+                           (checked first)            (and the fallback)
+           │                      │                      │
+           ▼                      ▼                      ▼
+┌──────────────────────┐ ┌─────────────────┐ ┌──────────────────────┐
+│ respond_conversation │ │ prepare_finance │ │  predict_categories  │
+│ action=conversation  │ │ action=finance  │ │   action=retrieve    │
+└──────────┬───────────┘ └────────┬────────┘ └──────────┬───────────┘
+           └──────────────────────┼──────────────────────┘
+                                  ▼
+                                 END
 ```
+
+Every path is two nodes long: classify, then one terminal node that names the action.
 
 ---
 
@@ -115,65 +98,35 @@ The graph runs entirely before RAG retrieval. Its output (`action` field) tells 
 
 ### 1. `route_conversation`
 
-**File:** [graph_orchestrator.py:78–102](graph_orchestrator.py#L78-L102)  
+**File:** [ask/graph_orchestrator.py:72–86](ask/graph_orchestrator.py#L72-L86)  
 **Entry point of the graph.**
 
-**Responsibility:** Classify the user's intent — is this a document question requiring RAG, or casual conversation?
+**Responsibility:** Classify the user's message as casual conversation, a finance question, or a document question.
 
-**LLM PROMPT:** """
-You are DocuMind's conversation router.
-Your main role: support property-document assistance while allowing natural conversation.
-
-Input: {text}
-{property_context}
-{history_summary}
-
-Determine whether retrieval should be triggered now.
-
-Rules:
-- If user asks about property documents, tenancy, rent terms, warranties, insurance, utilities, receipts, rules/clauses, obligations -> rag_needed=true and intent=document_question.
-- If user is chatting, greeting, random social text, or not asking for document facts -> rag_needed=false and intent=conversation.
-- If uncertain between conversation/document_question, prefer rag_needed=true.
-
-Respond in this exact format:
-intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-1.0>;reason=<short reason>;assistant_reply=<short user-facing reply when rag_needed=false, else empty>
-"""
-
-**Logic:**
-
-1. **Checkpoint bypass:** If `user_action` is `"confirm"`, `"cancel"`, or starts with `"override:"`, the node **skips the LLM entirely** and forces `intent="document_question"`, `rag_needed=True`. This handles the case where the user is responding to a prior confirmation prompt.
-
-2. **LLM classification (normal path):** Delegates to `ConversationRouter.route()` with:
-   - `user_input` — the current question
-   - `recent_turns` — up to last 3 turns for context
-   - `property_name` — for property-aware replies
+**Logic:** Delegates to `ConversationRouter.route()` (one LLM call; the prompt lives in [ask/conversation_router.py](ask/conversation_router.py)) with:
+- `user_input`: the current question
+- `recent_turns`: recent turns, so short follow-ups keep their context
+- `property_name`: for property-aware replies
 
 **State mutations:**
 
 | Field Written | Value |
 |---------------|-------|
-| `intent` | `"conversation"` or `"document_question"` |
+| `intent` | `"conversation"`, `"document_question"`, or `"finance_question"` |
 | `rag_needed` | `true` / `false` |
 | `intent_confidence` | 0.0–1.0 |
 | `intent_reason` | Short reason string |
-| `assistant_message` | Pre-composed reply if `rag_needed=false`, else `""` |
+| `assistant_message` | Pre-composed reply for conversation, else `""` |
+| `finance_year` | Year named in a finance question, else `None` |
 
 ---
 
 ### 2. `respond_conversation`
 
-**File:** [graph_orchestrator.py:104–108](graph_orchestrator.py#L104-L108)  
+**File:** [ask/graph_orchestrator.py:88–92](ask/graph_orchestrator.py#L88-L92)  
 **Terminal node for casual chat.**
 
-**Responsibility:** Mark the action as `"conversation"` so downstream code skips RAG entirely.
-
-**Logic:** Minimal — just writes `action = "conversation"` to state. The actual reply text was already placed in `assistant_message` by `route_conversation`.
-
-**State mutations:**
-
-| Field Written | Value |
-|---------------|-------|
-| `action` | `"conversation"` |
+**Logic:** Writes `action = "conversation"`. The reply text is already in `assistant_message` from `route_conversation`.
 
 **Exits to:** `END`
 
@@ -181,99 +134,36 @@ intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-
 
 ### 3. `predict_categories`
 
-**File:** [graph_orchestrator.py:110–130](graph_orchestrator.py#L110-L130)
+**File:** [ask/graph_orchestrator.py:94–124](ask/graph_orchestrator.py#L94-L124)  
+**Terminal node for document questions.**
 
-**Responsibility:** Determine which document category/categories are most relevant to the user's question.
+**Responsibility:** The search router. Decide which categories, and which unit, the retrieval should target.
 
 **Logic:**
 
-1. **Explicit categories shortcut:** If `explicit_categories` is already populated (user or caller specified them), the node skips LLM prediction entirely and returns those with `confidence=1.0`.
-
-2. **LLM prediction (normal path):** Delegates to `CategoryPredictor.predict()` with:
-   - `user_input` — the question
-   - `available_categories` — only categories that have actual documents for this property
+1. **Explicit categories shortcut:** if the caller passed `explicit_categories`, return them with `confidence=1.0` and make no LLM call.
+2. **LLM routing (normal path):** `CategoryPredictor.predict()` makes one LLM call with the question, `available_categories`, `available_units`, and `recent_turns`, and returns up to 2 categories plus a unit decision.
 
 **State mutations:**
 
 | Field Written | Value |
 |---------------|-------|
+| `action` | `"retrieve"` |
 | `predicted_categories` | Up to 2 category strings |
 | `prediction_confidence` | 0.0–1.0 |
 | `prediction_reason` | Reason string |
-
-**Always exits to:** `decide_action`
-
----
-
-### 4. `decide_action`
-
-**File:** [graph_orchestrator.py:132–153](graph_orchestrator.py#L132-L153)
-
-**Responsibility:** The decision hub. Determines the final action for this turn based on what information is available and what the user requested.
-
-**Decision priority (waterfall):**
-
-| Priority | Condition | Action |
-|----------|-----------|--------|
-| 1 | `explicit_categories` is set | `"retrieve"` — user told us exactly what to search |
-| 2 | `user_action == "cancel"` | `"cancel"` — user cancelled the pending confirmation |
-| 3 | `user_action` starts with `"override:"` | `"retrieve"` — user picked a specific category |
-| 4 | `user_action == "confirm"` | `"retrieve"` — user confirmed predicted categories |
-| 5 | `predicted_categories` is set AND `available_categories` is set | `"ask_confirmation"` — ambiguous, ask user to confirm |
-| 6 | Fallback | `"retrieve"` — proceed with whatever was predicted |
-
-**State mutations:**
-
-| Field Written | Value |
-|---------------|-------|
-| `action` | `"retrieve"`, `"ask_confirmation"`, or `"cancel"` |
-
----
-
-### 5. `prepare_confirmation`
-
-**File:** [graph_orchestrator.py:155–167](graph_orchestrator.py#L155-L167)
-
-**Responsibility:** Compose a user-facing message that asks the user to confirm the predicted document category before retrieval.
-
-**Logic:** Reads `predicted_categories` and builds a natural language prompt like:
-> "I am going to search your lease, warranty documents to answer this accurately. Can you confirm, cancel, or choose another category?"
-
-**State mutations:**
-
-| Field Written | Value |
-|---------------|-------|
-| `assistant_message` | Confirmation prompt string |
+| `routed_unit_id` / `unknown_unit_mention` / `unit_routing_decided` | The router's unit decision |
 
 **Exits to:** `END`
 
 ---
 
-### 6. `prepare_cancel`
+### 4. `prepare_finance`
 
-**File:** [graph_orchestrator.py:169–173](graph_orchestrator.py#L169-L173)
+**File:** [ask/graph_orchestrator.py:126–127](ask/graph_orchestrator.py#L126-L127)  
+**Terminal node for finance questions.**
 
-**Responsibility:** Compose a user-facing cancellation acknowledgement message.
-
-**Logic:** Writes a fixed cancellation message to `assistant_message`.
-
-**State mutations:**
-
-| Field Written | Value |
-|---------------|-------|
-| `assistant_message` | `"Understood. I cancelled that action. Ask me anytime about your property documents."` |
-
-**Exits to:** `END`
-
----
-
-### 7. `prepare_retrieve`
-
-**File:** [graph_orchestrator.py:175–176](graph_orchestrator.py#L175-L176)
-
-**Responsibility:** Pass-through node. Signals that retrieval should proceed.
-
-**Logic:** Returns the state unchanged. Actual RAG retrieval happens **outside** the graph in `DocuMindService.ask_documind()`.
+**Logic:** Writes `action = "finance"`. The service then skips retrieval: the finance engine computes the figures for `finance_year` and the LLM only narrates them.
 
 **Exits to:** `END`
 
@@ -283,35 +173,24 @@ intent=<conversation|document_question>;rag_needed=<true|false>;confidence=<0.0-
 
 ### Conditional: `route_conversation` → next node
 
-**Router function:** `_route_after_conversation()` — [graph_orchestrator.py:178–184](graph_orchestrator.py#L178-L184)
+**Router function:** `_route_after_conversation()`, [ask/graph_orchestrator.py:129–136](ask/graph_orchestrator.py#L129-L136)
 
 ```
-if rag_needed == True  → "predict_categories"
-if intent == "conversation" → "respond_conversation"
-else (fallback)  → "predict_categories"
+intent == "finance_question" → "prepare_finance"
+rag_needed == True           → "predict_categories"
+intent == "conversation"     → "respond_conversation"
+else (fallback)              → "predict_categories"
 ```
 
-The fallback to `predict` means uncertain intents get treated as document questions (fail-safe toward retrieval).
-
-### Conditional: `decide_action` → next node
-
-**Router function:** `_route_after_decision()` — [graph_orchestrator.py:186–192](graph_orchestrator.py#L186-L192)
-
-```
-action == "ask_confirmation"  → "prepare_confirmation"
-action == "cancel"            → "prepare_cancel"
-else                          → "prepare_retrieve"
-```
+The fallback means an uncertain intent is treated as a document question (fail-safe toward retrieval).
 
 ### Fixed edges
 
 | From | To |
 |------|----|
-| `predict_categories` | `decide_action` |
 | `respond_conversation` | `END` |
-| `prepare_confirmation` | `END` |
-| `prepare_cancel` | `END` |
-| `prepare_retrieve` | `END` |
+| `predict_categories` | `END` |
+| `prepare_finance` | `END` |
 
 ---
 
@@ -386,7 +265,7 @@ If no keywords match, defaults to the first available category.
 
 **File:** [conversation_store.py](conversation_store.py)
 
-Firestore-backed session memory. Persists conversation history and pending confirmation state across requests.
+Firestore-backed session memory. Persists conversation history across requests.
 
 **Firestore collection:** `documind_sessions`
 
@@ -399,8 +278,7 @@ Firestore-backed session memory. Persists conversation history and pending confi
     "created_at": "ServerTimestamp",
     "last_activity": "ServerTimestamp",
     "ttl_seconds": 3600,
-    "conversation_turns": [...],
-    "pending_confirmation": null | { ... }
+    "conversation_turns": [...]
 }
 ```
 
@@ -409,9 +287,6 @@ Firestore-backed session memory. Persists conversation history and pending confi
 | Method | Description |
 |--------|-------------|
 | `get_or_create_session()` | Returns existing session or creates new one. Checks in-memory cache first, then Firestore. |
-| `set_pending_confirmation()` | Saves the pending question + predicted categories for a confirmation checkpoint. |
-| `get_pending_confirmation()` | Reads pending state (cache-first). |
-| `clear_pending_confirmation()` | Nullifies pending state after confirm/cancel/override. |
 | `append_turn()` | Appends a turn dict (with UTC timestamp) to `conversation_turns` via `ArrayUnion`. |
 | `get_turn_count()` | Returns the number of turns in a session. |
 
@@ -435,60 +310,38 @@ respond_conversation
      ↓
 END
 
-DocuMindService: graph_action == "conversation"
+AskOrchestrator: graph_action == "conversation"
   → Returns assistant_message directly, no retrieval
   → Appends turn to ConversationStore
 ```
 
 ---
 
-### Flow B: Direct Document Question (Predicted Category, Confirmed)
+### Flow B: Document Question
 
 ```
-User: "What does my lease say about pets?"
+User: "What does my lease say about pets?"   (session scoped to "Whole property")
 
 route_conversation
   └─ ConversationRouter → intent="document_question", rag_needed=True
-     ↓ _route_after_conversation → "predict_categories"
+     ↓ _route_after_conversation → "predict"
 predict_categories
-  └─ CategoryPredictor → predicted_categories=["lease"], confidence=0.9
-     ↓
-decide_action
-  └─ predicted set, available set, no user_action → action="ask_confirmation"
-     ↓ _route_after_decision → "prepare_confirmation"
-prepare_confirmation
-  └─ assistant_message = "I am going to search your lease documents..."
+  └─ CategoryPredictor → predicted_categories=["lease"], confidence=0.9, no unit named
+  └─ state: action = "retrieve"
      ↓
 END
 
-DocuMindService: graph_action == "ask_confirmation"
-  → Returns clarification prompt to user
-  → Saves pending_confirmation to ConversationStore
-  → Sets user_action_required=True, clarification_options=["lease", ...]
-
---- Next request (user clicks "Confirm") ---
-
-User: user_action="confirm"
-
-route_conversation
-  └─ user_action is "confirm" → bypass LLM, rag_needed=True
-     ↓
-predict_categories → decide_action
-  └─ user_action="confirm" → action="retrieve"
-     ↓
-prepare_retrieve → pass-through
-     ↓
-END
-
-DocuMindService: graph_action == "retrieve"
-  → Reads pending_confirmation from ConversationStore
-  → Uses pending question + predicted_categories
-  → Embeds question → vector search → LLM synthesis → response
+AskOrchestrator: graph_action == "retrieve"
+  → confidence ≥ 0.45, so the search is scoped to lease documents
+  → no unit pinned or named → searches the whole property
+  → retrieve → answer synthesis → response with citations
 ```
+
+If the landlord picked a unit in the app's unit picker, the request carries `unit_id`, the graph gets an empty unit list (no unit routing in the prompt), and retrieval is scoped to that unit plus property-wide documents.
 
 ---
 
-### Flow C: Explicit Category (No Confirmation Needed)
+### Flow C: Explicit Category
 
 ```
 User question with payload.categories = ["lease"]
@@ -496,81 +349,53 @@ User question with payload.categories = ["lease"]
 route_conversation → rag_needed=True
   ↓
 predict_categories
-  └─ explicit_categories=["lease"] set → skips LLM, confidence=1.0
-     ↓
-decide_action
-  └─ explicit set → action="retrieve" immediately
-     ↓
-prepare_retrieve → END
-
-DocuMindService: graph_action == "retrieve"
-  → category_filter_mode = "explicit"
-  → Searches only the "lease" collection
-```
-
----
-
-### Flow D: Cancel
-
-```
-User: user_action="cancel" (responding to a confirmation prompt)
-
-route_conversation
-  └─ user_action="cancel" → bypass LLM, rag_needed=True
-     ↓
-predict_categories → decide_action
-  └─ user_action="cancel" → action="cancel"
-     ↓
-prepare_cancel
-  └─ assistant_message = "Understood. I cancelled..."
+  └─ explicit_categories=["lease"] → skips the LLM, confidence=1.0, action="retrieve"
      ↓
 END
 
-DocuMindService: graph_action == "cancel"
-  → Clears pending_confirmation in ConversationStore
-  → Returns cancel message, no retrieval
+AskOrchestrator: graph_action == "retrieve"
+  → category_filter_mode = "explicit"
+  → Searches only lease documents
 ```
 
 ---
 
-### Flow E: Override Category
+### Flow D: Finance Question
 
 ```
-User: user_action="override:insurance" (user picks different category)
+User: "How much rental profit did I make in 2025?"
 
 route_conversation
-  └─ user_action starts with "override:" → bypass LLM, rag_needed=True
+  └─ ConversationRouter → intent="finance_question", year=2025
+     ↓ _route_after_conversation → "finance"
+prepare_finance
+  └─ state: action = "finance"
      ↓
-predict_categories → decide_action
-  └─ user_action.startswith("override:") → action="retrieve"
-     ↓
-prepare_retrieve → END
+END
 
-DocuMindService: graph_action == "retrieve"
-  → Parses "insurance" from override string
-  → Clears pending_confirmation
-  → Searches insurance docs with original pending question
+AskOrchestrator: graph_action == "finance"
+  → Finance engine computes the 2025 summary (no retrieval)
+  → LLM narrates the computed figures only
 ```
 
 ---
 
 ## Post-Graph Execution
 
-**File:** [documind_service.py:309–694](documind_service.py#L309-L694)
+**File:** [ask/ask_orchestrator.py](ask/ask_orchestrator.py#L71) (`AskOrchestrator.ask()`, called by `DocuMindService.ask_documind()`)
 
-After the graph returns, `DocuMindService.ask_documind()` interprets `graph_action` and runs the actual retrieval pipeline:
+After the graph returns, `AskOrchestrator.ask()` interprets `graph_action` and runs the actual retrieval pipeline:
 
 ### Retrieval Pipeline (when `graph_action == "retrieve"`)
 
-1. **Determine working question and categories**
+1. **Determine categories and unit**
    - Explicit categories → use them directly
-   - `user_action="confirm"` → read `pending_confirmation` from `ConversationStore`, use the original question and predicted categories
-   - `user_action="override:<cat>"` → extract category from the override string
-   - Fallback → use `predicted_categories` from graph state
+   - Otherwise the predicted categories, but only when `prediction_confidence >= 0.45`; a weaker prediction searches every category
+   - Unit: `payload.unit_id` (the app's unit picker) wins; otherwise the router's validated unit, then deterministic label matching. A unit that doesn't exist gets an honest "couldn't find" answer. An ambiguous or multi-unit reference searches the whole property, and the answer attributes each fact to its unit
 
 2. **Embed the question**
    ```python
-   query_vector = self.embeddings.embed_query(working_question)
+   query_vector = self.embeddings.embed_query(payload.question)
    # Gemini Embedding 001, 768 dimensions
    ```
 
@@ -604,7 +429,7 @@ After the graph returns, `DocuMindService.ask_documind()` interprets `graph_acti
 |------------|---------|------------|
 | `documind_chunks` | Vector-embedded text chunks | `doc_id`, `landlord_id`, `property_id`, `category`, `text`, `embedding` (Vector), `page`, `chunk_index` |
 | `documind_docs` | Document metadata | `doc_id`, `landlord_id`, `property_id`, `category`, `filename`, `chunks_indexed`, `file_size`, `status` |
-| `documind_sessions` | Conversation sessions | `session_id`, `landlord_id`, `property_id`, `conversation_turns`, `pending_confirmation`, `ttl_seconds` |
+| `documind_sessions` | Conversation sessions | `session_id`, `landlord_id`, `property_id`, `conversation_turns`, `ttl_seconds` |
 | `properties` | Property info (read-only) | `name` (used for property_name lookups) |
 
 ---
@@ -635,11 +460,8 @@ DocuMindService
 **Why LangGraph over a simple if/else?**  
 The graph makes the decision pipeline explicit, testable, and easily extensible. Each node has a single responsibility and a clear contract (reads from state, writes to state). Adding a new branch (e.g., a "summarize" action) only requires a new node and edge, not touching existing logic.
 
-**Why confirm before retrieving?**  
-Vector search cost (embedding + Firestore query) is non-trivial, and searching the wrong category produces low-quality answers. The confirmation checkpoint ensures the user agrees on the search scope before retrieval runs.
+**Why doesn't the graph ask clarifying questions?**
+It used to: a category-confirmation checkpoint, then a "which unit?" checkpoint. Both are gone. The app's unit picker settles the unit before the first question, and a weak category prediction widens the search to every category instead of stopping to ask. Every routing decision has a deterministic fallback, so the worst case is a broader search, never a question back to the user.
 
-**Why does `prepare_retrieve` do nothing?**  
-It's a semantic placeholder. Its presence makes the graph readable — "retrieval will happen" is an explicit declared state, not just the absence of other actions. The actual retrieval is intentionally kept outside the graph so the graph stays pure (no I/O side effects in nodes).
-
-**Why bypass the LLM for checkpoint actions?**  
-`"confirm"`, `"cancel"`, and `"override:"` are structured signals from the UI, not natural language. Routing them through the LLM would waste tokens and risk misclassification on short, ambiguous strings.
+**Why does retrieval happen outside the graph?**
+So the graph stays pure: nodes only classify and route, with no retrieval I/O. Each terminal node names the action, and `AskOrchestrator.ask()` carries it out.
