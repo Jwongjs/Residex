@@ -62,53 +62,34 @@ String buildDocuMindAssistantText({
 }) {
   var responseText = answer.answer;
 
-  if (answer.userActionRequired) {
-    // The options themselves render as tappable quick-reply chips under the
-    // bubble (buildDocuMindQuickReplies) — the text only points at them.
-    if (answer.needsUnitClarification && answer.unitOptions.isNotEmpty) {
-      responseText += '\n\nTap a unit below, or All units to search across all of them.';
-    } else {
-      final options = answer.clarificationOptions.isNotEmpty
-          ? answer.clarificationOptions
-          : answer.predictedCategories;
-      if (options.isNotEmpty) {
-        responseText +=
-            '\n\nTap Confirm to proceed, Cancel to dismiss, or pick a category below.';
-      }
-    }
+  // Unit ambiguity is the only checkpoint the backend raises. The options
+  // themselves render as tappable quick-reply chips under the bubble
+  // (buildDocuMindQuickReplies) — the text only points at them.
+  if (answer.userActionRequired &&
+      answer.needsUnitClarification &&
+      answer.unitOptions.isNotEmpty) {
+    responseText += '\n\nTap a unit below, or All units to search across all of them.';
   }
 
   return _appendSearchedCategories(responseText, answer, categoryLabelResolver);
 }
 
-/// Tappable quick-reply texts for a checkpoint answer. Each entry is sent
-/// verbatim as a user message, so every label must round-trip through
-/// [mapDocuMindUserAction]: unit labels match exactly, "All units" hits the
-/// `all` sentinel, and Confirm/Cancel/category names match case-insensitively.
+/// Tappable quick-reply texts for a unit-ambiguity checkpoint — the only
+/// checkpoint the backend raises. Each entry is sent verbatim as a user
+/// message, so every label must round-trip through [mapDocuMindUserAction]:
+/// unit labels match exactly and 'All units' hits the `all` sentinel.
 List<String> buildDocuMindQuickReplies(DocuMindAnswer answer) {
   if (!answer.userActionRequired) return const [];
-
-  if (answer.needsUnitClarification && answer.unitOptions.isNotEmpty) {
-    return [
-      for (final option in answer.unitOptions)
-        if (option.unitId != 'all') option.unitLabel,
-      'All units',
-    ];
+  if (!answer.needsUnitClarification || answer.unitOptions.isEmpty) {
+    return const [];
   }
 
-  final options = answer.clarificationOptions.isNotEmpty
-      ? answer.clarificationOptions
-      : answer.predictedCategories;
-  if (options.isEmpty) return const [];
   return [
-    'Confirm',
-    ...options.map(_capitalize),
-    'Cancel',
+    for (final option in answer.unitOptions)
+      if (option.unitId != 'all') option.unitLabel,
+    'All units',
   ];
 }
-
-String _capitalize(String value) =>
-    value.isEmpty ? value : value[0].toUpperCase() + value.substring(1);
 
 String _appendSearchedCategories(
   String responseText,

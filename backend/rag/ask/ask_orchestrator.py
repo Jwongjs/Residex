@@ -198,51 +198,6 @@ Rules:
                 action_reason=graph_state.get("intent_reason"),
             )
 
-        # Type 2 ambiguity: document question but category not explicit -> predict + confirm checkpoint
-        if graph_action == "ask_confirmation":
-            confirmation_message = graph_state.get("assistant_message", "Please confirm the document category to proceed.")
-            if property_name != "Unknown Property" and property_name.lower() not in confirmation_message.lower():
-                confirmation_message = f"For {property_name}, {confirmation_message}"
-            confirmation_options = predicted_categories + [
-                category for category in available_categories if category not in predicted_categories
-            ]
-            self._conversation_store.set_pending_confirmation(
-                session_id,
-                {
-                    "question": payload.question,
-                    "predicted_categories": predicted_categories,
-                    "available_categories": available_categories,
-                    "action_reason": action_reason,
-                },
-            )
-            self._conversation_store.append_turn(
-                session_id,
-                {
-                    "turn": turn_number,
-                    "question": payload.question,
-                    "intent": "document_question",
-                    "action": "ask_confirmation",
-                    "predicted_categories": predicted_categories,
-                    "reason": action_reason,
-                },
-            )
-            return AskResponse(
-                answer=confirmation_message,
-                confidence=graph_state.get("prediction_confidence", 0.6),
-                citations=[],
-                property_name=property_name,
-                searched_categories=[],
-                category_filter_mode="clarification",
-                needs_category_clarification=True,
-                clarification_prompt=confirmation_message,
-                clarification_options=confirmation_options,
-                session_id=session_id,
-                conversation_turn=turn_number,
-                user_action_required=True,
-                predicted_categories=predicted_categories,
-                action_reason=action_reason,
-            )
-
         if graph_action == "cancel":
             self._conversation_store.clear_pending_confirmation(session_id)
             cancel_message = graph_state.get(

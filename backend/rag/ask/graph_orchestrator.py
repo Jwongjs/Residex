@@ -48,9 +48,7 @@ class DocuMindGraphOrchestrator:
         graph.add_node("respond_conversation", self._respond_conversation_node)
         graph.add_node("predict_categories", self._predict_categories_node)
         graph.add_node("decide_action", self._decide_action_node)
-        graph.add_node("prepare_confirmation", self._prepare_confirmation_node)
         graph.add_node("prepare_cancel", self._prepare_cancel_node)
-        graph.add_node("prepare_retrieve", self._prepare_retrieve_node)
         graph.add_node("prepare_finance", self._prepare_finance_node)
 
         graph.set_entry_point("route_conversation")
@@ -71,16 +69,13 @@ class DocuMindGraphOrchestrator:
             "decide_action",
             self._route_after_decision,
             {
-                "ask_confirmation": "prepare_confirmation",
                 "cancel": "prepare_cancel",
-                "retrieve": "prepare_retrieve",
+                "retrieve": END,
             },
         )
 
         graph.add_edge("respond_conversation", END)
-        graph.add_edge("prepare_confirmation", END)
         graph.add_edge("prepare_cancel", END)
-        graph.add_edge("prepare_retrieve", END)
         graph.add_edge("prepare_finance", END)
 
         return graph.compile()
@@ -152,59 +147,23 @@ class DocuMindGraphOrchestrator:
         }
 
     async def _decide_action_node(self, state: DocuMindState) -> DocuMindState:
+        # Cancelling a checkpoint is the only thing that diverts a question
+        # away from retrieval. Everything else — fresh questions, confirm /
+        # override / unit resumes, explicit category filters — retrieves:
+        # predicted categories scope the search when the predictor is confident
+        # and the whole corpus is searched otherwise (decided in the service).
+        # Confirming a category on every question added friction without
+        # improving answers, so no category checkpoint is raised any more.
         user_action = (state.get("user_action") or "").strip().lower()
-        explicit = state.get("explicit_categories", [])
-
-        if explicit:
-            return {**state, "action": "retrieve"}
-
-        if user_action == "cancel":
+        if user_action == "cancel" and not state.get("explicit_categories"):
             return {**state, "action": "cancel"}
-
-        if user_action.startswith("override:"):
-            return {**state, "action": "retrieve"}
-
-        if user_action.startswith("unit:"):
-            return {**state, "action": "retrieve"}
-
-        if user_action == "confirm":
-            return {**state, "action": "retrieve"}
-
-        # Fresh questions go straight to retrieval: predicted categories scope
-        # the search when the predictor is confident and the whole corpus is
-        # searched otherwise (decided in the service). Confirming a category on
-        # every question added friction without improving answers, so the
-        # ask_confirmation path now only serves legacy checkpoint resumes.
         return {**state, "action": "retrieve"}
-
-    async def _prepare_confirmation_node(self, state: DocuMindState) -> DocuMindState:
-        predicted = state.get("predicted_categories", [])
-
-        if predicted:
-            prediction_label = ", ".join(predicted)
-            message = (
-                f"I am going to search your {prediction_label} documents to answer this accurately. "
-                "Can you confirm, cancel, or choose another category?"
-            )
-        else:
-            message = (
-                "I couldn't tell which document category fits this question. "
-                "Which category should I search?"
-            )
-
-        return {
-            **state,
-            "assistant_message": message,
-        }
 
     async def _prepare_cancel_node(self, state: DocuMindState) -> DocuMindState:
         return {
             **state,
             "assistant_message": "Understood. I cancelled that action. Ask me anytime about your property documents.",
         }
-
-    async def _prepare_retrieve_node(self, state: DocuMindState) -> DocuMindState:
-        return state
 
     async def _prepare_finance_node(self, state: DocuMindState) -> DocuMindState:
         return {**state, "action": "finance"}
@@ -220,9 +179,4 @@ class DocuMindGraphOrchestrator:
         return "predict"
 
     def _route_after_decision(self, state: DocuMindState) -> str:
-        action = state.get("action", "retrieve")
-        if action == "ask_confirmation":
-            return "ask_confirmation"
-        if action == "cancel":
-            return "cancel"
-        return "retrieve"
+        return "cancel" if state.get("action") == "cancel" else "retrieve"

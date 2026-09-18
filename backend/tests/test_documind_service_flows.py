@@ -594,52 +594,6 @@ def _build_service(fake_db, fake_store, fake_graph, fake_llm):
 
 
 class DocuMindServiceFlowTests(unittest.IsolatedAsyncioTestCase):
-    async def test_empty_prediction_checkpoint_offers_all_available_categories(self):
-        fake_db = _FakeDB(docs=[
-            {"doc_id": "doc-1", "landlord_id": "l1", "property_id": "p1", "category": "lease"},
-            {"doc_id": "doc-2", "landlord_id": "l1", "property_id": "p1", "category": "insurance"},
-        ])
-        fake_store = _FakeConversationStore()
-        fake_graph = _FakeGraphOrchestrator({
-            "action": "ask_confirmation",
-            "predicted_categories": [],
-            "prediction_confidence": 0.0,
-            "prediction_reason": "no clear category signal",
-            "assistant_message": "Which category should I search?",
-            "intent": "document_question",
-        })
-        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
-
-        payload = AskRequest(property_id="p1", question="zzz qqq")
-        response = await service.ask_documind(payload, "l1")
-
-        self.assertTrue(response.needs_category_clarification)
-        self.assertEqual(response.clarification_options, ["lease", "insurance"])
-        self.assertEqual(response.predicted_categories, [])
-
-    async def test_ask_confirmation_returns_checkpoint_response(self):
-        fake_db = _FakeDB(docs=[{"landlord_id": "l1", "property_id": "p1", "category": "warranty"}])
-        fake_store = _FakeConversationStore()
-        fake_graph = _FakeGraphOrchestrator(
-            {
-                "action": "ask_confirmation",
-                "predicted_categories": ["warranty"],
-                "prediction_confidence": 0.84,
-                "prediction_reason": "mentions coverage",
-                "assistant_message": "Please confirm warranty category.",
-                "intent": "document_question",
-            }
-        )
-        service = _build_service(fake_db, fake_store, fake_graph, _FakeLLM("unused"))
-
-        payload = AskRequest(property_id="p1", question="what is covered")
-        response = await service.ask_documind(payload, "l1")
-
-        self.assertTrue(response.user_action_required)
-        self.assertTrue(response.needs_category_clarification)
-        self.assertEqual(response.predicted_categories, ["warranty"])
-        self.assertEqual(fake_store.pending[response.session_id]["predicted_categories"], ["warranty"])
-
     async def test_cancel_clears_pending_and_returns_cancel_mode(self):
         fake_db = _FakeDB(docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}])
         fake_store = _FakeConversationStore()
