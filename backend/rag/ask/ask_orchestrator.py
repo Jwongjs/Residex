@@ -106,14 +106,26 @@ Rules:
         recent_turns = session.get("conversation_turns", []) if isinstance(session, dict) else []
 
         # Units go into the graph so the routing node can decide the unit
-        # scope in the same LLM call that picks categories.
+        # scope in the same LLM call that picks categories — but only when
+        # that routing output would actually be read. It's discarded
+        # whenever the unit is already resolved before this call: the
+        # frontend's proactive picker pinned unit_id directly, or this turn
+        # resumes a prior unit-ambiguity checkpoint via user_action=
+        # "unit:<id>". CategoryPredictor.predict() already treats an empty
+        # unit list as "no unit routing needed" (shorter prompt, no unit
+        # section), so this is a prompt-size optimization, not a behavior
+        # change — the "whole property" per-question override still gets the
+        # full list, since that's the one path that actually reads it.
         property_units = self._list_property_units(payload.property_id)
+        unit_already_resolved = bool(payload.unit_id) or (
+            payload.user_action or ""
+        ).strip().lower().startswith("unit:")
 
         graph_state = await self._graph_orchestrator.run({
             "user_input": payload.question,
             "explicit_categories": explicit_valid,
             "available_categories": available_categories,
-            "available_units": property_units,
+            "available_units": [] if unit_already_resolved else property_units,
             "user_action": payload.user_action or "",
             "recent_turns": recent_turns,
             "property_name": property_name,

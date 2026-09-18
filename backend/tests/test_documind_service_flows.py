@@ -486,8 +486,10 @@ class _FakeConversationStore:
 class _FakeGraphOrchestrator:
     def __init__(self, state):
         self._state = state
+        self.received_states = []
 
-    async def run(self, _state):
+    async def run(self, state):
+        self.received_states.append(state)
         return self._state
 
 
@@ -1432,6 +1434,77 @@ class UnitMentionResolutionTests(unittest.TestCase):
         units = [{"unit_id": "unit-AB", "label": "Unit AB-2"}]
         result = resolve_unit_mention("rent for unit a?", units)
         self.assertEqual(result["kind"], "unknown")
+
+
+class SkipUnitRoutingWhenAlreadyResolvedTests(unittest.IsolatedAsyncioTestCase):
+    """CategoryPredictor bundles unit routing into its one category-prediction
+    LLM call. That routing output is only ever read when
+    ask_orchestrator.py's own `effective_unit_id is None` check passes — which
+    is false whenever the caller already pinned a unit (frontend's proactive
+    picker) or this turn resumes a unit-ambiguity checkpoint. In both cases
+    the LLM was still being asked to route a unit nobody reads; the fix is to
+    hand the predictor an empty unit list in exactly those two cases, which
+    CategoryPredictor.predict() already treats as "no unit-routing needed"
+    (see its `if units:` branch) — so this is a prompt-size optimization, not
+    a behavior change."""
+
+    def _fake_db_with_units(self):
+        return _FakeDB(
+            docs=[{"landlord_id": "l1", "property_id": "p1", "category": "lease"}],
+            units=[
+                {"unit_id": "unit-A", "label": "Unit A"},
+                {"unit_id": "unit-B", "label": "Unit B"},
+            ],
+        )
+
+    async def test_pinned_unit_id_sends_no_units_to_the_predictor(self):
+        fake_db = self._fake_db_with_units()
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": [],
+            "intent": "document_question",
+        })
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, _FakeLLM("ans"))
+
+        payload = AskRequest(property_id="p1", question="what is the rent?", unit_id="unit-A")
+        await service.ask_documind(payload, "l1")
+
+        self.assertEqual(fake_graph.received_states[-1]["available_units"], [])
+
+    async def test_unit_checkpoint_resume_sends_no_units_to_the_predictor(self):
+        fake_db = self._fake_db_with_units()
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": [],
+            "intent": "document_question",
+        })
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, _FakeLLM("ans"))
+
+        payload = AskRequest(
+            property_id="p1", question="Unit A", user_action="unit:unit-A",
+        )
+        await service.ask_documind(payload, "l1")
+
+        self.assertEqual(fake_graph.received_states[-1]["available_units"], [])
+
+    async def test_unscoped_question_still_sends_the_full_unit_list(self):
+        # Regression guard: the optimization must not apply when the unit is
+        # genuinely still undecided — that's exactly when the predictor's
+        # routing output is the primary mechanism (see Context-Aware
+        # Filtering / the "whole property" per-question override).
+        fake_db = self._fake_db_with_units()
+        fake_graph = _FakeGraphOrchestrator({
+            "action": "retrieve",
+            "predicted_categories": [],
+            "intent": "document_question",
+        })
+        service = _build_service(fake_db, _FakeConversationStore(), fake_graph, _FakeLLM("ans"))
+
+        payload = AskRequest(property_id="p1", question="what is the rent?")
+        await service.ask_documind(payload, "l1")
+
+        sent_units = fake_graph.received_states[-1]["available_units"]
+        self.assertEqual({u["unit_id"] for u in sent_units}, {"unit-A", "unit-B"})
 
 
 class CategoryTaxonomyIngestTests(unittest.IsolatedAsyncioTestCase):

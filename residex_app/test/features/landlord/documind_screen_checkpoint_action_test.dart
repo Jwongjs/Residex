@@ -20,6 +20,7 @@ void main() {
       required String question,
       int topK = 4,
       List<String>? categories,
+      String? unitId,
       String? sessionId,
       int conversationTurn = 1,
       String? userAction,
@@ -78,6 +79,7 @@ void main() {
         overrides: [
           propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
           askDocuMindQuestionActionProvider.overrideWith((ref) => askAction),
+          unitsForPropertyStreamProvider.overrideWith((ref, propertyId) => Stream.value(const [])),
         ],
         child: const MaterialApp(home: DocuMindScreen()),
       ),
@@ -118,6 +120,7 @@ void main() {
       required String question,
       int topK = 4,
       List<String>? categories,
+      String? unitId,
       String? sessionId,
       int conversationTurn = 1,
       String? userAction,
@@ -176,6 +179,7 @@ void main() {
         overrides: [
           propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
           askDocuMindQuestionActionProvider.overrideWith((ref) => askAction),
+          unitsForPropertyStreamProvider.overrideWith((ref, propertyId) => Stream.value(const [])),
         ],
         child: const MaterialApp(home: DocuMindScreen()),
       ),
@@ -216,6 +220,7 @@ void main() {
       required String question,
       int topK = 4,
       List<String>? categories,
+      String? unitId,
       String? sessionId,
       int conversationTurn = 1,
       String? userAction,
@@ -273,6 +278,7 @@ void main() {
         overrides: [
           propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
           askDocuMindQuestionActionProvider.overrideWith((ref) => askAction),
+          unitsForPropertyStreamProvider.overrideWith((ref, propertyId) => Stream.value(const [])),
         ],
         child: const MaterialApp(home: DocuMindScreen()),
       ),
@@ -310,6 +316,7 @@ void main() {
       required String question,
       int topK = 4,
       List<String>? categories,
+      String? unitId,
       String? sessionId,
       int conversationTurn = 1,
       String? userAction,
@@ -357,6 +364,7 @@ void main() {
         overrides: [
           propertiesStreamProvider.overrideWith((ref) => Stream.value([testProperty])),
           askDocuMindQuestionActionProvider.overrideWith((ref) => askAction),
+          unitsForPropertyStreamProvider.overrideWith((ref, propertyId) => Stream.value(const [])),
         ],
         child: const MaterialApp(home: DocuMindScreen()),
       ),
@@ -386,6 +394,7 @@ void main() {
       required String question,
       int topK = 4,
       List<String>? categories,
+      String? unitId,
       String? sessionId,
       int conversationTurn = 1,
       String? userAction,
@@ -470,6 +479,10 @@ void main() {
       ),
     );
 
+    await tester.pumpAndSettle();
+
+    // Two units, so the unit-scope picker gates the first question.
+    await tester.tap(find.text('Whole property'));
     await tester.pumpAndSettle();
 
     final dashChat = tester.widget<DashChat>(find.byType(DashChat));

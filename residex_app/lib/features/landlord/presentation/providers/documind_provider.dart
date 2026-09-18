@@ -123,6 +123,7 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
   required String question,
   int topK,
   List<String>? categories,
+  String? unitId,
   String? sessionId,
   int conversationTurn,
   String? userAction,
@@ -132,19 +133,22 @@ final askDocuMindQuestionActionProvider = Provider<Future<DocuMindAnswer> Functi
     required String question,
     int topK = 4,
     List<String>? categories,
+    String? unitId,
     String? sessionId,
     int conversationTurn = 1,
     String? userAction,
   }) async {
     final useCase = ref.read(askDocuMindQuestionUseCaseProvider);
 
-    // No client-side unit scoping: the backend's search router infers the
-    // unit from the question and the recent conversation.
+    // unitId scopes every question to a unit the chat screen has pinned for
+    // the session (the "which unit is this about?" picker); null means the
+    // backend's own search router infers scope from the question text.
     return await useCase(
       propertyId: propertyId,
       question: question,
       topK: topK,
       categories: categories,
+      unitId: unitId,
       sessionId: sessionId,
       conversationTurn: conversationTurn,
       userAction: userAction,

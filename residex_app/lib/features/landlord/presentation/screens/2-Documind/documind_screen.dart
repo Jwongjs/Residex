@@ -39,6 +39,16 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   bool _awaitingUserAction = false;
   List<UnitOption> _pendingUnitOptions = const [];
 
+  // Unit scope: which unit (if any) this chat session is pinned to. Chosen
+  // via a proactive picker before the first question on a multi-unit
+  // property; null means "whole property" (or the property has <=1 unit, so
+  // there was nothing to ask). Distinct from _pendingUnitOptions above, which
+  // is the backend's own *reactive* checkpoint for a question whose wording
+  // ambiguously names more than one unit.
+  String? _selectedUnitScopeId;
+  bool _unitScopeChosen = false;
+  bool _unitScopePickerShown = false;
+
   // Granular category vocabulary the chat checkpoint can override to.
   static const List<String> _overrideCategories = [
     'lease',
@@ -129,6 +139,9 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
       _docuMindSessionId = null;
       _docuMindConversationTurn = 1;
       _awaitingUserAction = false;
+      _selectedUnitScopeId = null;
+      _unitScopeChosen = false;
+      _unitScopePickerShown = false;
       _messages.add(
         ChatMessage(
           user: _aiUser,
@@ -141,6 +154,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
   }
 
   Widget _buildMainUI(List<Property> properties) {
+    _maybeShowUnitScopePicker();
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -268,7 +282,77 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
               ),
             ),
           ),
+          _buildUnitScopeControl(),
         ],
+      ),
+    );
+  }
+
+  /// Compact "change unit" control: only appears once the proactive
+  /// unit-scope picker has been answered, on a property with more than one
+  /// unit — it's the escape hatch for pinning a different unit (or the whole
+  /// property) without starting a new chat session.
+  Widget _buildUnitScopeControl() {
+    final units = _liveUnits();
+    if (units.length <= 1 || !_unitScopeChosen) return const SizedBox.shrink();
+
+    // A manual loop rather than List.firstWhere(orElse:): the live units
+    // list is reified as List<UnitModel> at runtime even though it's typed
+    // List<Unit> here, and firstWhere's orElse closure return type is
+    // inferred from the static type — a Unit Function() doesn't satisfy the
+    // UnitModel Function() the reified list actually requires, throwing at
+    // runtime. A plain loop never invokes that generic closure check.
+    String currentLabel = 'All units';
+    if (_selectedUnitScopeId != null) {
+      for (final unit in units) {
+        if (unit.id == _selectedUnitScopeId) {
+          currentLabel = unit.label;
+          break;
+        }
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: PopupMenuButton<String>(
+        key: const Key('documind_change_unit_control'),
+        tooltip: 'Change unit',
+        onSelected: (label) => _applyUnitScope(label, units),
+        itemBuilder: (context) => [
+          for (final unit in units)
+            PopupMenuItem<String>(value: unit.label, child: Text(unit.label)),
+          const PopupMenuItem<String>(
+            value: 'Whole property',
+            child: Text('Whole property'),
+          ),
+        ],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceLight,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.meeting_room_outlined,
+                  size: 16, color: AppColors.primaryCyan),
+              const SizedBox(width: 6),
+              Text(
+                currentLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.expand_more, size: 16, color: AppColors.primaryCyan),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -462,14 +546,24 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                       final quickReplies =
                           message.customProperties?['quickReplies']
                               as List<String>?;
+                      final unitScopeOptions =
+                          message.customProperties?['unitScopeOptions']
+                              as List<String>?;
                       final showQuickReplies = quickReplies != null &&
                           quickReplies.isNotEmpty &&
                           _awaitingUserAction &&
                           _messages.isNotEmpty &&
                           identical(_messages.first, message);
+                      final showUnitScopeOptions = unitScopeOptions != null &&
+                          unitScopeOptions.isNotEmpty &&
+                          !_unitScopeChosen &&
+                          _messages.isNotEmpty &&
+                          identical(_messages.first, message);
                       final hasCitations =
                           citations != null && citations.isNotEmpty;
-                      if (!hasCitations && !showQuickReplies) {
+                      if (!hasCitations &&
+                          !showQuickReplies &&
+                          !showUnitScopeOptions) {
                         return const SizedBox.shrink();
                       }
                       return Column(
@@ -479,6 +573,12 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
                           if (hasCitations) _buildRelevanceMeter(citations),
                           if (showQuickReplies)
                             _buildQuickReplyChips(quickReplies),
+                          if (showUnitScopeOptions)
+                            _buildQuickReplyChips(
+                              unitScopeOptions,
+                              onTap: (label) =>
+                                  _applyUnitScope(label, _liveUnits()),
+                            ),
                         ],
                       );
                     },
@@ -582,6 +682,16 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
 
   Future<void> _onSendMessage(ChatMessage message) async {
     if (_selectedPropertyId == null || _isThinking) return;
+    // Only block once the picker has actually been shown and not yet
+    // resolved — while the unit list is still loading (or never resolves,
+    // e.g. a permissions hiccup), sending proceeds unscoped rather than
+    // wedging the chat indefinitely on data that may never arrive.
+    if (_unitScopePickerShown && !_unitScopeChosen) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a unit above first.')),
+      );
+      return;
+    }
 
     setState(() {
       _messages.insert(0, message);
@@ -600,6 +710,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         propertyId: _selectedPropertyId!,
         question: message.text,
         categories: null,
+        unitId: _selectedUnitScopeId,
         sessionId: _docuMindSessionId,
         conversationTurn: _docuMindConversationTurn,
         userAction: userAction,
@@ -653,10 +764,14 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
     });
   }
 
-  /// Checkpoint quick replies: tapping a chip sends its text as a normal
-  /// user message, so the transcript shows the choice and the reply flows
-  /// through the same mapDocuMindUserAction path as a typed answer.
-  Widget _buildQuickReplyChips(List<String> replies) {
+  /// Checkpoint quick replies: by default tapping a chip sends its text as a
+  /// normal user message, so the transcript shows the choice and the reply
+  /// flows through the same mapDocuMindUserAction path as a typed answer.
+  /// The unit-scope picker passes its own [onTap] instead, since that choice
+  /// is resolved locally and never becomes a chat message sent to the
+  /// backend.
+  Widget _buildQuickReplyChips(List<String> replies, {void Function(String)? onTap}) {
+    final handleTap = onTap ?? _sendQuickReply;
     return Container(
       margin: const EdgeInsets.only(top: 6, bottom: 4),
       child: Wrap(
@@ -665,7 +780,7 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         children: replies.map((reply) {
           return InkWell(
             borderRadius: BorderRadius.circular(20),
-            onTap: () => _sendQuickReply(reply),
+            onTap: () => handleTap(reply),
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -699,6 +814,63 @@ class _DocuMindScreenState extends ConsumerState<DocuMindScreen> {
         text: reply,
       ),
     );
+  }
+
+  /// Shows the "which unit is this about?" picker once, the first time a
+  /// multi-unit property's unit list resolves for this session. A property
+  /// with 0 or 1 units has nothing to disambiguate, so scope is considered
+  /// chosen immediately and no prompt appears.
+  void _maybeShowUnitScopePicker() {
+    if (_unitScopeChosen || _unitScopePickerShown || _selectedPropertyId == null) {
+      return;
+    }
+    final units = ref
+        .watch(unitsForPropertyStreamProvider(_selectedPropertyId!))
+        .value;
+    if (units == null) return; // still loading — decide once data arrives
+
+    if (units.length <= 1) {
+      _unitScopeChosen = true;
+      return;
+    }
+
+    _unitScopePickerShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _messages.insert(
+          0,
+          ChatMessage(
+            user: _aiUser,
+            createdAt: DateTime.now(),
+            text: 'Which unit is this about?',
+            customProperties: {
+              'unitScopeOptions': buildUnitScopeQuickReplies(units),
+            },
+          ),
+        );
+      });
+    });
+  }
+
+  /// Pins the chat session to [label]'s unit (or clears the pin for "Whole
+  /// property"), and drops a short confirmation into the transcript. Used by
+  /// both the initial picker and the header's change-unit control.
+  void _applyUnitScope(String label, List<Unit> units) {
+    setState(() {
+      _selectedUnitScopeId = resolveUnitScopeSelection(label, units);
+      _unitScopeChosen = true;
+      _messages.insert(
+        0,
+        ChatMessage(
+          user: _aiUser,
+          createdAt: DateTime.now(),
+          text: label == 'Whole property'
+              ? 'Scoped to the whole property — ask away.'
+              : 'Scoped to $label — ask away.',
+        ),
+      );
+    });
   }
 
   /// Live units for the selected property (empty while loading/unavailable —

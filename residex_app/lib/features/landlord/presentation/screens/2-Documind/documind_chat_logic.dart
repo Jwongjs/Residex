@@ -1,4 +1,5 @@
 import '../../../domain/entities/documind_document.dart';
+import '../../../domain/entities/unit.dart';
 
 String? mapDocuMindUserAction({
   required bool awaitingUserAction,
@@ -89,6 +90,24 @@ List<String> buildDocuMindQuickReplies(DocuMindAnswer answer) {
       if (option.unitId != 'all') option.unitLabel,
     'All units',
   ];
+}
+
+/// Quick-reply labels for the "which unit is this chat about" picker shown
+/// before the first question on a multi-unit property.
+List<String> buildUnitScopeQuickReplies(List<Unit> units) {
+  return [
+    for (final unit in units) unit.label,
+    'Whole property',
+  ];
+}
+
+/// Resolves a tapped unit-scope quick-reply back to a unit id, or null for
+/// "Whole property" (and any unrecognised label, as a safe fallback).
+String? resolveUnitScopeSelection(String label, List<Unit> units) {
+  for (final unit in units) {
+    if (unit.label == label) return unit.id;
+  }
+  return null;
 }
 
 String _appendSearchedCategories(
